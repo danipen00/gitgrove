@@ -433,21 +433,52 @@ button {
   border-color: var(--accent-border);
 }
 .popover__list {
-  overflow-y: auto;
-  padding: 6px;
-  /* Allow the flex item to shrink below its content size so its own
-     scrollbar engages and clientHeight is a real, measurable viewport. */
+  /* Custom main-thread scrolling (see BranchSwitcher): native overflow scroll
+     runs on the compositor thread and outruns the windowed render on fast
+     flings, leaving unpainted frames. We translate the content ourselves so a
+     frame is only ever shown once its rows are painted. */
+  overflow: hidden;
+  position: relative;
   min-height: 0;
-  /* Paint the panel colour on the scroll layer so any unpainted strip during a
-     fast fling shows as the panel, never a bright white flash. */
   background: var(--bg-elevated);
-  /* Keep the scroller on a permanent GPU compositing layer. Without this,
-     Chromium promotes it to a composited layer on scroll-start and demotes it
-     when idle; each fresh gesture re-rasterizes the layer and shows one
-     unpainted (white/black) frame. Pinning the layer removes that flash. */
-  transform: translateZ(0);
+}
+/* In-flow spacer: gives the viewport its flex-basis (clamped by the popover's
+   max-height) since the translated content below is absolutely positioned. */
+.vlist__sizer {
+  width: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.vlist__content {
+  position: absolute;
+  top: 0;
+  left: 6px;
+  right: 6px;
   will-change: transform;
-  backface-visibility: hidden;
+}
+.vlist__bar {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  bottom: 2px;
+  width: 8px;
+}
+.vlist__thumb {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  border-radius: 4px;
+  background: var(--border-strong);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.popover__list:hover .vlist__thumb,
+.vlist__thumb:active {
+  opacity: 0.7;
+}
+.vlist__thumb:hover,
+.vlist__thumb:active {
+  opacity: 0.9;
 }
 .popover__group-label {
   padding: 8px 8px 4px;
