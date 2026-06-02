@@ -41,8 +41,14 @@
 
   /* @pierre/trees dark overrides (custom properties pierce the shadow root).
      The library defaults use light-dark(), which the shadow root resolves to
-     the light value — so we pin the *-override vars to bypass it entirely. */
-  --trees-bg-override: transparent;
+     the light value — so we pin the *-override vars to bypass it entirely.
+
+     --trees-bg must be a *solid* surface color: the middle-truncation marker
+     ("…") paints this color to mask the clipped filename and fade it out. A
+     transparent value leaves the clipped text bleeding straight into the
+     extension with no visible ellipsis. It's re-pinned per-surface
+     (.sidebar / .commit-detail) so it always matches what sits behind the tree. */
+  --trees-bg-override: var(--bg-panel);
   --trees-fg-override: #d6dae2;
   --trees-fg-muted-override: #8b909c;
   --trees-bg-muted-override: var(--bg-hover);
@@ -571,6 +577,9 @@ button {
   min-height: 0;
   border-top: 1px solid var(--border);
   background: var(--bg);
+  /* This tree sits on --bg, not --bg-panel; keep the truncation marker's mask
+     color matched to the surface behind it. */
+  --trees-bg-override: var(--bg);
 }
 
 /* ── Resizers ────────────────────────────────────────────────────────────── */
