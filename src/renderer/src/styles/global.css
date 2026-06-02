@@ -807,6 +807,10 @@ button {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  /* body sets user-select:none for native chrome feel; re-enable it here so
+     diff code is selectable. The property inherits across pierre's shadow DOM,
+     and pierre keeps its own user-select:none on gutters/line numbers. */
+  user-select: text;
 }
 .diff-body pierre-diff,
 .diff-body .pierre-diffs {
