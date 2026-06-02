@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { PatchDiff, MultiFileDiff } from '@pierre/diffs/react'
 import type { BaseDiffOptions } from '@pierre/diffs/react'
 
@@ -29,8 +29,37 @@ function countChanges(patch: string): { additions: number; deletions: number } {
   return { additions, deletions }
 }
 
-export function DiffViewer({ diff, loading, mode, wrap, theme, onModeChange, onWrapChange }: Props) {
+function DiffViewerImpl({ diff, loading, mode, wrap, theme, onModeChange, onWrapChange }: Props) {
   const stats = useMemo(() => (diff?.patch ? countChanges(diff.patch) : null), [diff?.patch])
+
+  const diffOptions = useMemo(
+    () =>
+      ({
+        theme: theme === 'light' ? 'pierre-light' : 'pierre-dark',
+        themeType: theme,
+        diffStyle: mode,
+        overflow: wrap ? 'wrap' : 'scroll',
+        diffIndicators: 'bars',
+        hunkSeparators: 'line-info-basic',
+        lineDiffType: 'word',
+        disableFileHeader: true,
+        stickyHeader: false
+      }) satisfies BaseDiffOptions,
+    [theme, mode, wrap]
+  )
+
+  // Full file contents let us render an expandable diff (MultiFileDiff); without
+  // them (binary / too large / unreadable) we fall back to the patch-only view.
+  const canExpand = diff?.oldContents != null && diff?.newContents != null
+
+  const oldFile = useMemo(
+    () => ({ name: diff?.oldPath ?? diff?.path ?? '', contents: diff?.oldContents ?? '' }),
+    [diff?.oldPath, diff?.path, diff?.oldContents]
+  )
+  const newFile = useMemo(
+    () => ({ name: diff?.path ?? '', contents: diff?.newContents ?? '' }),
+    [diff?.path, diff?.newContents]
+  )
 
   if (!diff && !loading) {
     return (
@@ -47,22 +76,6 @@ export function DiffViewer({ diff, loading, mode, wrap, theme, onModeChange, onW
   }
 
   const { dir, name } = diff ? splitPath(diff.path) : { dir: '', name: '' }
-
-  const diffOptions = {
-    theme: theme === 'light' ? 'pierre-light' : 'pierre-dark',
-    themeType: theme,
-    diffStyle: mode,
-    overflow: wrap ? 'wrap' : 'scroll',
-    diffIndicators: 'bars',
-    hunkSeparators: 'line-info-basic',
-    lineDiffType: 'word',
-    disableFileHeader: true,
-    stickyHeader: false
-  } satisfies BaseDiffOptions
-
-  // Full file contents let us render an expandable diff (MultiFileDiff); without
-  // them (binary / too large / unreadable) we fall back to the patch-only view.
-  const canExpand = diff?.oldContents != null && diff?.newContents != null
 
   return (
     <div className="diff-pane">
@@ -138,8 +151,8 @@ export function DiffViewer({ diff, loading, mode, wrap, theme, onModeChange, onW
         {!loading && diff && !diff.notice && diff.patch && canExpand && (
           <MultiFileDiff
             key={`${diff.path}:${theme}`}
-            oldFile={{ name: diff.oldPath ?? diff.path, contents: diff.oldContents! }}
-            newFile={{ name: diff.path, contents: diff.newContents! }}
+            oldFile={oldFile}
+            newFile={newFile}
             disableWorkerPool
             options={diffOptions}
             style={{ minHeight: '100%' }}
@@ -167,3 +180,8 @@ export function DiffViewer({ diff, loading, mode, wrap, theme, onModeChange, onW
     </div>
   )
 }
+
+// Memoized so the per-pixel `App` re-renders fired while dragging the sidebar
+// splitter don't cascade into the (expensive) diff render. All props are
+// referentially stable across a resize, so the memo bails out entirely.
+export const DiffViewer = memo(DiffViewerImpl)
