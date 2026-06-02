@@ -8,6 +8,7 @@ import { HistoryView } from './components/HistoryView'
 import { DiffViewer, type DiffMode } from './components/DiffViewer'
 import { Resizer } from './components/Resizer'
 import { Icon } from './lib/icons'
+import { useTheme } from './lib/theme'
 
 type Tab = 'changes' | 'history'
 
@@ -63,6 +64,7 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = usePersistentState('gg.sidebarWidth', 340)
   const [diffMode, setDiffMode] = usePersistentState<DiffMode>('gg.diffMode', 'split')
   const [diffWrap, setDiffWrap] = usePersistentState('gg.diffWrap', false)
+  const { pref: themePref, resolved: theme, setPref: setThemePref } = useTheme()
 
   const repoRef = useRef<RepoSummary | null>(null)
   repoRef.current = repo
@@ -325,10 +327,13 @@ export function App() {
           branch={null}
           busy={false}
           refreshing={false}
+          themePref={themePref}
+          resolvedTheme={theme}
           onOpenRepo={openRepoByPath}
           onPickRepo={pickRepo}
           onCheckout={checkout}
           onRefresh={refresh}
+          onThemeChange={setThemePref}
         />
         <div className="app__body">
           <Welcome onPickRepo={pickRepo} onOpenRepo={openRepoByPath} />
@@ -347,10 +352,13 @@ export function App() {
         branch={branch}
         busy={busy}
         refreshing={refreshing}
+        themePref={themePref}
+        resolvedTheme={theme}
         onOpenRepo={openRepoByPath}
         onPickRepo={pickRepo}
         onCheckout={checkout}
         onRefresh={refresh}
+        onThemeChange={setThemePref}
       />
       <div className="app__body">
         <aside className="sidebar" style={{ width: sidebarWidth, flexBasis: sidebarWidth }}>
@@ -404,6 +412,7 @@ export function App() {
           loading={diffLoading}
           mode={diffMode}
           wrap={diffWrap}
+          theme={theme}
           onModeChange={setDiffMode}
           onWrapChange={setDiffWrap}
         />

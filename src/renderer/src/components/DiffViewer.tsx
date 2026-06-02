@@ -3,6 +3,7 @@ import { PatchDiff } from '@pierre/diffs/react'
 
 import type { DiffPayload } from '@shared/types'
 import { Icon } from '../lib/icons'
+import type { ResolvedTheme } from '../lib/theme'
 import { splitPath, statusLabel } from '../lib/format'
 
 export type DiffMode = 'split' | 'unified'
@@ -12,6 +13,7 @@ interface Props {
   loading: boolean
   mode: DiffMode
   wrap: boolean
+  theme: ResolvedTheme
   onModeChange: (mode: DiffMode) => void
   onWrapChange: (wrap: boolean) => void
 }
@@ -26,7 +28,7 @@ function countChanges(patch: string): { additions: number; deletions: number } {
   return { additions, deletions }
 }
 
-export function DiffViewer({ diff, loading, mode, wrap, onModeChange, onWrapChange }: Props) {
+export function DiffViewer({ diff, loading, mode, wrap, theme, onModeChange, onWrapChange }: Props) {
   const stats = useMemo(() => (diff?.patch ? countChanges(diff.patch) : null), [diff?.patch])
 
   if (!diff && !loading) {
@@ -111,12 +113,12 @@ export function DiffViewer({ diff, loading, mode, wrap, onModeChange, onWrapChan
         )}
         {!loading && diff && !diff.notice && diff.patch && (
           <PatchDiff
-            key={diff.path}
+            key={`${diff.path}:${theme}`}
             patch={diff.patch}
             disableWorkerPool
             options={{
-              theme: 'pierre-dark',
-              themeType: 'dark',
+              theme: theme === 'light' ? 'pierre-light' : 'pierre-dark',
+              themeType: theme,
               diffStyle: mode,
               overflow: wrap ? 'wrap' : 'scroll',
               diffIndicators: 'bars',

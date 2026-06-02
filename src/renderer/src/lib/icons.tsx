@@ -120,5 +120,22 @@ export const Icon = {
     <Svg {...p}>
       <path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" />
     </Svg>
+  ),
+  Sun: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </Svg>
+  ),
+  Moon: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M20 13a8 8 0 1 1-9-9 6 6 0 0 0 9 9z" />
+    </Svg>
+  ),
+  Monitor: (p: IconProps) => (
+    <Svg {...p}>
+      <rect x="3" y="4" width="18" height="12" rx="1.6" />
+      <path d="M8 20h8M12 16v4" />
+    </Svg>
   )
 }

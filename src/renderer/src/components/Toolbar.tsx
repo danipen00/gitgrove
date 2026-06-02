@@ -1,17 +1,22 @@
 import type { BranchInfo, RepoSummary } from '@shared/types'
 import { Icon } from '../lib/icons'
+import type { ResolvedTheme, ThemePref } from '../lib/theme'
 import { RepoSwitcher } from './RepoSwitcher'
 import { BranchSwitcher } from './BranchSwitcher'
+import { ThemeSwitcher } from './ThemeSwitcher'
 
 interface Props {
   repo: RepoSummary | null
   branch: BranchInfo | null
   busy: boolean
   refreshing: boolean
+  themePref: ThemePref
+  resolvedTheme: ResolvedTheme
   onOpenRepo: (path: string) => void
   onPickRepo: () => void
   onCheckout: (branch: string) => void
   onRefresh: () => void
+  onThemeChange: (pref: ThemePref) => void
 }
 
 export function Toolbar({
@@ -19,10 +24,13 @@ export function Toolbar({
   branch,
   busy,
   refreshing,
+  themePref,
+  resolvedTheme,
   onOpenRepo,
   onPickRepo,
   onCheckout,
-  onRefresh
+  onRefresh,
+  onThemeChange
 }: Props) {
   return (
     <header className="toolbar">
@@ -46,6 +54,7 @@ export function Toolbar({
           <Icon.Refresh size={16} />
         </button>
       )}
+      <ThemeSwitcher pref={themePref} resolved={resolvedTheme} onChange={onThemeChange} />
     </header>
   )
 }
