@@ -55,6 +55,10 @@ export function App() {
 
   const [commits, setCommits] = useState<Commit[]>([])
   const [commitsLoading, setCommitsLoading] = useState(false)
+  // History is loaded lazily the first time the tab is opened; this tracks
+  // whether the current repo's log has been fetched so later refreshes only
+  // re-fetch it when it's actually in use.
+  const [logLoaded, setLogLoaded] = useState(false)
   const [selectedCommit, setSelectedCommit] = useState<Commit | null>(null)
   const [commitFiles, setCommitFiles] = useState<ChangedFile[]>([])
   const [commitFilesLoading, setCommitFilesLoading] = useState(false)
@@ -81,6 +85,8 @@ export function App() {
   tabRef.current = tab
   const changeSelRef = useRef<string | null>(changeSelPath)
   changeSelRef.current = changeSelPath
+  const logLoadedRef = useRef(logLoaded)
+  logLoadedRef.current = logLoaded
 
   const fail = useCallback((e: unknown) => {
     const message = e instanceof Error ? e.message : String(e)
@@ -115,6 +121,7 @@ export function App() {
     try {
       const log = await window.gitgrove.log(repoPath, { limit: LOG_LIMIT, ref })
       setCommits(log)
+      setLogLoaded(true)
       return log
     } finally {
       setCommitsLoading(false)
@@ -211,6 +218,9 @@ export function App() {
           diffReq.current++
         }
       } else {
+        // First visit to History: fetch the log on demand.
+        const repoPath = repoRef.current?.path
+        if (repoPath && !logLoaded && !commitsLoading) loadLog(repoPath).catch(fail)
         if (selectedCommit && commitSelPath) selectCommitFile(commitSelPath, selectedCommit.hash)
         else {
           setDiff(null)
@@ -218,21 +228,32 @@ export function App() {
         }
       }
     },
-    [changeSelPath, commitSelPath, selectedCommit, selectChangeFile, selectCommitFile]
+    [
+      changeSelPath,
+      commitSelPath,
+      selectedCommit,
+      logLoaded,
+      commitsLoading,
+      loadLog,
+      selectChangeFile,
+      selectCommitFile,
+      fail
+    ]
   )
 
   // ── Repository lifecycle ───────────────────────────────────────────────────
   const applyRepo = useCallback(
     async (summary: RepoSummary) => {
       // `summary` carries only the current branch name (a cheap open); the full
-      // branch list, status and log are fetched here in parallel so the repo
-      // switch itself is instant and each panel shows its own progress.
+      // branch list and status are fetched here so the repo switch itself is
+      // instant and each panel shows its own progress.
       setRepo(summary)
       setBranch(summary.branch)
       // Clear the previous repo's lists so the panels show their loading state
       // instead of stale entries while the new repo's data loads.
       setChanges([])
       setCommits([])
+      setLogLoaded(false)
       setSelectedCommit(null)
       setCommitFiles([])
       setCommitSelPath(null)
@@ -241,16 +262,17 @@ export function App() {
       setTab('changes')
       diffReq.current++
       // Branch enumeration is the slowest part on big repos; let it fill in the
-      // combo on its own so it never gates the first diff appearing.
+      // combo on its own so it never gates the first diff appearing. The log is
+      // loaded lazily when the History tab is first opened (see switchTab).
       loadBranches(summary.path).catch(fail)
       try {
-        const [files] = await Promise.all([loadStatus(summary.path), loadLog(summary.path)])
+        const files = await loadStatus(summary.path)
         if (files.length > 0) selectChangeFile(files[0].path, files)
       } catch (e) {
         fail(e)
       }
     },
-    [loadStatus, loadLog, loadBranches, selectChangeFile, fail]
+    [loadStatus, loadBranches, selectChangeFile, fail]
   )
 
   const pickRepo = useCallback(async () => {
@@ -286,9 +308,14 @@ export function App() {
         setCommitFiles([])
         setCommitSelPath(null)
         setChangeSelPath(null)
+        setCommits([])
+        setLogLoaded(false)
         setDiff(null)
         diffReq.current++
-        const [files] = await Promise.all([loadStatus(repoPath), loadLog(repoPath)])
+        // The new branch invalidates the log; reload it now only if History is
+        // showing, otherwise leave it for the next time the tab is opened.
+        if (tabRef.current === 'history') loadLog(repoPath).catch(fail)
+        const files = await loadStatus(repoPath)
         if (files.length > 0) selectChangeFile(files[0].path, files)
       } catch (e) {
         fail(e)
@@ -306,7 +333,9 @@ export function App() {
     try {
       const [files, , freshBranch] = await Promise.all([
         loadStatus(repoPath),
-        loadLog(repoPath),
+        // Only refresh the log if it's already been loaded; no point fetching
+        // history for a repo the user has only viewed in the Changes tab.
+        logLoadedRef.current ? loadLog(repoPath) : Promise.resolve(null),
         window.gitgrove.branches(repoPath)
       ])
       setBranch(freshBranch)
