@@ -1,0 +1,54 @@
+{
+  // F5 in Cursor / VS Code.
+  //   • "GitGrove: Dev" (the default — first in the list) launches the full app
+  //     in dev mode with hot reload and debugs the MAIN process.
+  //   • The compound below also attaches the debugger to the RENDERER process.
+  // Stopping the session (Shift+F5) tears the app down.
+  "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "GitGrove: Dev (Main + Renderer)",
+      "configurations": ["GitGrove: Dev", "GitGrove: Attach to Renderer"],
+      "stopAll": true,
+      "presentation": { "order": 1 }
+    }
+  ],
+  "configurations": [
+    {
+      "name": "GitGrove: Dev",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron-vite",
+      "windows": {
+        "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron-vite.cmd"
+      },
+      // electron-vite starts the Vite dev server, builds main/preload, and
+      // launches Electron. --sourcemap maps breakpoints back to the TS sources;
+      // --remoteDebuggingPort lets the renderer config attach.
+      "runtimeArgs": ["dev", "--sourcemap", "--remoteDebuggingPort=9222"],
+      "console": "integratedTerminal",
+      "autoAttachChildProcesses": true,
+      "sourceMaps": true,
+      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/**",
+        "!**/node_modules/**"
+      ],
+      "presentation": { "order": 2 }
+    },
+    {
+      "name": "GitGrove: Attach to Renderer",
+      "type": "chrome",
+      "request": "attach",
+      "port": 9222,
+      "timeout": 60000,
+      "webRoot": "${workspaceFolder}/src/renderer",
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/**",
+        "!**/node_modules/**"
+      ],
+      "presentation": { "order": 3 }
+    }
+  ]
+}
