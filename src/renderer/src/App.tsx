@@ -42,6 +42,7 @@ function usePersistentState<T>(key: string, initial: T): [T, (v: T) => void] {
 export function App() {
   const [repo, setRepo] = useState<RepoSummary | null>(null)
   const [branch, setBranch] = useState<BranchInfo | null>(null)
+  const [branchesLoading, setBranchesLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -95,6 +96,17 @@ export function App() {
       return files
     } finally {
       setChangesLoading(false)
+    }
+  }, [])
+
+  const loadBranches = useCallback(async (repoPath: string) => {
+    setBranchesLoading(true)
+    try {
+      const info = await window.gitgrove.branches(repoPath)
+      setBranch(info)
+      return info
+    } finally {
+      setBranchesLoading(false)
     }
   }, [])
 
@@ -212,6 +224,9 @@ export function App() {
   // ── Repository lifecycle ───────────────────────────────────────────────────
   const applyRepo = useCallback(
     async (summary: RepoSummary) => {
+      // `summary` carries only the current branch name (a cheap open); the full
+      // branch list, status and log are fetched here in parallel so the repo
+      // switch itself is instant and each panel shows its own progress.
       setRepo(summary)
       setBranch(summary.branch)
       setSelectedCommit(null)
@@ -219,20 +234,19 @@ export function App() {
       setCommitSelPath(null)
       setChangeSelPath(null)
       setDiff(null)
+      setTab('changes')
       diffReq.current++
+      // Branch enumeration is the slowest part on big repos; let it fill in the
+      // combo on its own so it never gates the first diff appearing.
+      loadBranches(summary.path).catch(fail)
       try {
         const [files] = await Promise.all([loadStatus(summary.path), loadLog(summary.path)])
-        if (files.length > 0) {
-          setTab('changes')
-          selectChangeFile(files[0].path, files)
-        } else {
-          setTab('changes')
-        }
+        if (files.length > 0) selectChangeFile(files[0].path, files)
       } catch (e) {
         fail(e)
       }
     },
-    [loadStatus, loadLog, selectChangeFile, fail]
+    [loadStatus, loadLog, loadBranches, selectChangeFile, fail]
   )
 
   const pickRepo = useCallback(async () => {
@@ -331,6 +345,7 @@ export function App() {
         <Toolbar
           repo={null}
           branch={null}
+          branchesLoading={false}
           busy={false}
           refreshing={false}
           themePref={themePref}
@@ -356,6 +371,7 @@ export function App() {
       <Toolbar
         repo={repo}
         branch={branch}
+        branchesLoading={branchesLoading}
         busy={busy}
         refreshing={refreshing}
         themePref={themePref}

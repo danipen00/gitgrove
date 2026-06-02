@@ -8,6 +8,7 @@ import { ThemeSwitcher } from './ThemeSwitcher'
 interface Props {
   repo: RepoSummary | null
   branch: BranchInfo | null
+  branchesLoading: boolean
   busy: boolean
   refreshing: boolean
   themePref: ThemePref
@@ -22,6 +23,7 @@ interface Props {
 export function Toolbar({
   repo,
   branch,
+  branchesLoading,
   busy,
   refreshing,
   themePref,
@@ -42,7 +44,14 @@ export function Toolbar({
       </div>
       <div className="toolbar__sep" />
       <RepoSwitcher repo={repo} onOpenRepo={onOpenRepo} onPickRepo={onPickRepo} />
-      {repo && <BranchSwitcher branch={branch} busy={busy} onCheckout={onCheckout} />}
+      {repo && (
+        <BranchSwitcher
+          branch={branch}
+          loading={branchesLoading}
+          busy={busy}
+          onCheckout={onCheckout}
+        />
+      )}
       <div className="toolbar__spacer" />
       {repo && (
         <button

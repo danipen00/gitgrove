@@ -14,8 +14,8 @@ import {
   getCommitDiff,
   getCommitFiles,
   getLog,
+  getQuickSummary,
   getStatus,
-  getSummary,
   getWorkingDiff,
   resolveRepoRoot
 } from './git'
@@ -117,13 +117,17 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-/** Open a folder, resolve it to a repo root, persist as recent, watch it. */
+/**
+ * Open a folder, resolve it to a repo root, persist as recent, watch it.
+ * Returns a cheap summary (current branch only) so the renderer can switch
+ * instantly; branches and status are fetched separately by the renderer.
+ */
 async function openRepoAtPath(rawPath: string) {
   const root = await resolveRepoRoot(rawPath)
   if (!root) {
     throw new Error('The selected folder is not a git repository.')
   }
-  const summary = await getSummary(root)
+  const summary = await getQuickSummary(root)
   rememberRepo({ path: summary.path, name: summary.name })
   watcher.watch(root)
   return summary

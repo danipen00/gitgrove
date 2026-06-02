@@ -109,19 +109,56 @@ function mapStatusCode(index: string, working: string): FileStatus {
 
 export async function getBranches(repoPath: string): Promise<BranchInfo> {
   const git = getGit(repoPath)
-  const local = await git.branchLocal()
-  let remote: string[] = []
-  try {
-    const remoteRaw = await git.branch(['-r'])
-    remote = Object.keys(remoteRaw.branches).filter((name) => !name.includes('->'))
-  } catch {
-    remote = []
-  }
+  // Enumerating local and remote branches are independent git invocations;
+  // run them together so a repo with many remote refs (e.g. unity) isn't
+  // billed for both serially.
+  const [local, remote] = await Promise.all([
+    git.branchLocal(),
+    git
+      .branch(['-r'])
+      .then((raw) => Object.keys(raw.branches).filter((name) => !name.includes('->')))
+      .catch(() => [] as string[])
+  ])
   return {
     current: local.current,
     detached: local.detached,
     local: local.all,
     remote
+  }
+}
+
+/**
+ * A repo summary cheap enough to return synchronously on open: just the current
+ * branch (one git call), no branch enumeration and no working-tree status. The
+ * renderer uses this to switch repos instantly, then fetches the full branch
+ * list and status in the background. Counts are left at zero — they aren't
+ * surfaced in the UI.
+ */
+export async function getQuickSummary(repoPath: string): Promise<RepoSummary> {
+  let current = ''
+  let detached = false
+  // symbolic-ref resolves the branch name on a normal (or unborn) branch and
+  // exits 1 when HEAD is detached.
+  try {
+    current = (await runGit(repoPath, ['symbolic-ref', '--short', '-q', 'HEAD'], [1])).trim()
+  } catch {
+    /* fall through to detached handling */
+  }
+  if (!current) {
+    detached = true
+    try {
+      current = (await runGit(repoPath, ['rev-parse', '--short', 'HEAD'])).trim()
+    } catch {
+      current = 'HEAD'
+    }
+  }
+  return {
+    path: repoPath,
+    name: basename(repoPath),
+    branch: { current, detached, local: [], remote: [] },
+    changeCount: 0,
+    ahead: 0,
+    behind: 0
   }
 }
 

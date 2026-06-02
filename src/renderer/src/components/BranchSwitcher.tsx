@@ -6,11 +6,13 @@ import { Popover } from './Popover'
 
 interface Props {
   branch: BranchInfo | null
+  /** True while the full branch list is being fetched after a repo open. */
+  loading?: boolean
   busy: boolean
   onCheckout: (branch: string) => void
 }
 
-export function BranchSwitcher({ branch, busy, onCheckout }: Props) {
+export function BranchSwitcher({ branch, loading = false, busy, onCheckout }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const anchor = useRef<HTMLButtonElement>(null)
@@ -37,15 +39,16 @@ export function BranchSwitcher({ branch, busy, onCheckout }: Props) {
       <button
         ref={anchor}
         className="pill"
-        disabled={!branch || busy}
+        disabled={!branch || busy || loading}
+        title={loading ? 'Loading branches…' : undefined}
         onClick={() => setOpen((v) => !v)}
       >
         <span className="pill__icon">
           <Icon.Branch size={16} />
         </span>
         <span className="pill__label">{label}</span>
-        <span className="pill__chev">
-          <Icon.Chevron size={14} />
+        <span className={`pill__chev${loading ? ' is-spinning' : ''}`}>
+          {loading ? <Icon.Refresh size={14} /> : <Icon.Chevron size={14} />}
         </span>
       </button>
 
