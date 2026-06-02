@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import type { ChangedFile, Commit } from '@shared/types'
 import { Icon } from '../lib/icons'
@@ -20,6 +20,8 @@ interface Props {
 
 /** How many ref chips to show inline in the list before collapsing to "+N". */
 const MAX_LIST_REFS = 2
+/** How many ref chips the detail panel shows before a "+N" expander. */
+const MAX_DETAIL_REFS = 4
 
 interface Ref {
   name: string
@@ -80,6 +82,104 @@ function DiffStat({ files }: { files: ChangedFile[] }) {
   )
 }
 
+interface CommitDetailProps {
+  commit: Commit
+  files: ChangedFile[]
+  filesLoading: boolean
+  selectedFilePath: string | null
+  onSelectFile: (path: string) => void
+}
+
+// Rendered with `key={commit.hash}` so it remounts per commit — that resets the
+// collapse state and lets the body-overflow probe run against a fresh, collapsed
+// layout without effect-ordering races.
+function CommitDetail({ commit, files, filesLoading, selectedFilePath, onSelectFile }: CommitDetailProps) {
+  const refs = parseRefs(commit.refs)
+  const [bodyExpanded, setBodyExpanded] = useState(false)
+  const [refsExpanded, setRefsExpanded] = useState(false)
+  const [bodyOverflows, setBodyOverflows] = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
+
+  // Does the clamped body actually overflow? Only then do we offer a toggle.
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (el) setBodyOverflows(el.scrollHeight - el.clientHeight > 2)
+  }, [])
+
+  const visibleRefs = refsExpanded ? refs : refs.slice(0, MAX_DETAIL_REFS)
+  const hiddenRefs = refs.length - MAX_DETAIL_REFS
+
+  return (
+    <>
+      <div className="commit-detail__head">
+        <Avatar name={commit.authorName} email={commit.authorEmail} size={34} />
+        <div className="commit-detail__head-main">
+          <div className="commit-detail__subject">{commit.subject}</div>
+          <div className="commit-detail__byline">
+            <span className="commit-detail__author">{commit.authorName}</span>
+            <span title={new Date(commit.date).toLocaleString()}>
+              committed {commit.relativeDate}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {commit.body && (
+        <div className="commit-detail__body-wrap">
+          <div ref={bodyRef} className={`commit-detail__body${bodyExpanded ? ' is-expanded' : ''}`}>
+            {commit.body}
+          </div>
+          {(bodyOverflows || bodyExpanded) && (
+            <button className="link-toggle" onClick={() => setBodyExpanded((v) => !v)}>
+              {bodyExpanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {refs.length > 0 && (
+        <div className="commit__refs commit-detail__refs">
+          {visibleRefs.map((ref) => (
+            <RefChip key={ref.name} refItem={ref} />
+          ))}
+          {hiddenRefs > 0 && (
+            <button
+              className="ref-chip ref-chip--more ref-chip--toggle"
+              onClick={() => setRefsExpanded((v) => !v)}
+            >
+              {refsExpanded ? 'Show less' : `+${hiddenRefs}`}
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="section-head commit-detail__bar">
+        <span className="commit__hash">{commit.shortHash}</span>
+        <CopyButton value={commit.hash} label="Copy commit SHA" />
+        <span className="section-head__spacer" />
+        <span className="commit-detail__stats">
+          {!filesLoading && <DiffStat files={files} />}
+          <span className="commit-detail__count">
+            {filesLoading ? 'Loading…' : pluralize(files.length, 'file')}
+          </span>
+        </span>
+      </div>
+
+      <div className="tree-wrap">
+        {filesLoading ? (
+          <div className="center-state">
+            <div className="spinner" />
+          </div>
+        ) : files.length === 0 ? (
+          <div className="list-empty">No file changes in this commit.</div>
+        ) : (
+          <FileTreeView files={files} selectedPath={selectedFilePath} onSelectFile={onSelectFile} />
+        )}
+      </div>
+    </>
+  )
+}
+
 export function HistoryView({
   commits,
   loading,
@@ -111,8 +211,6 @@ export function HistoryView({
       </div>
     )
   }
-
-  const detailRefs = selectedCommit ? parseRefs(selectedCommit.refs) : []
 
   return (
     <div className="history">
@@ -152,58 +250,14 @@ export function HistoryView({
         <>
           <Resizer orientation="y" onResize={(d) => setDetailHeight((h) => clamp(h - d, 180, 640))} />
           <div className="commit-detail" style={{ height: detailHeight }}>
-            <div className="commit-detail__head">
-              <Avatar name={selectedCommit.authorName} email={selectedCommit.authorEmail} size={34} />
-              <div className="commit-detail__head-main">
-                <div className="commit-detail__subject">{selectedCommit.subject}</div>
-                <div className="commit-detail__byline">
-                  <span className="commit-detail__author">{selectedCommit.authorName}</span>
-                  <span title={new Date(selectedCommit.date).toLocaleString()}>
-                    committed {selectedCommit.relativeDate}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {selectedCommit.body && (
-              <div className="commit-detail__body">{selectedCommit.body}</div>
-            )}
-
-            {detailRefs.length > 0 && (
-              <div className="commit__refs commit-detail__refs">
-                {detailRefs.map((ref) => (
-                  <RefChip key={ref.name} refItem={ref} />
-                ))}
-              </div>
-            )}
-
-            <div className="section-head commit-detail__bar">
-              <span className="commit__hash">{selectedCommit.shortHash}</span>
-              <CopyButton value={selectedCommit.hash} label="Copy commit SHA" />
-              <span className="section-head__spacer" />
-              <span className="commit-detail__stats">
-                {!commitFilesLoading && <DiffStat files={commitFiles} />}
-                <span className="commit-detail__count">
-                  {commitFilesLoading ? 'Loading…' : pluralize(commitFiles.length, 'file')}
-                </span>
-              </span>
-            </div>
-
-            <div className="tree-wrap">
-              {commitFilesLoading ? (
-                <div className="center-state">
-                  <div className="spinner" />
-                </div>
-              ) : commitFiles.length === 0 ? (
-                <div className="list-empty">No file changes in this commit.</div>
-              ) : (
-                <FileTreeView
-                  files={commitFiles}
-                  selectedPath={selectedFilePath}
-                  onSelectFile={onSelectFile}
-                />
-              )}
-            </div>
+            <CommitDetail
+              key={selectedCommit.hash}
+              commit={selectedCommit}
+              files={commitFiles}
+              filesLoading={commitFilesLoading}
+              selectedFilePath={selectedFilePath}
+              onSelectFile={onSelectFile}
+            />
           </div>
         </>
       )}
