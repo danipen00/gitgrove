@@ -262,26 +262,34 @@ function parseStatusLetter(letter: string): FileStatus {
 }
 
 export async function getCommitFiles(repoPath: string, hash: string): Promise<ChangedFile[]> {
+  // Diff against the first parent so merge commits report only what the merge
+  // introduced on top of the mainline (like GitHub Desktop) rather than the
+  // union of every parent. `diff-tree -m --first-parent` does NOT do this —
+  // `-m` emits a section per parent and silently ignores `--first-parent`,
+  // producing the union — so we name the two trees explicitly. Root commits
+  // have no parent, so they diff against the empty tree via `--root`.
+  let hasParent = true
+  try {
+    await runGit(repoPath, ['rev-parse', '--verify', '--quiet', `${hash}^`])
+  } catch {
+    hasParent = false
+  }
+  // Trees to diff: `<hash>^ <hash>` for normal/merge commits, `--root <hash>`
+  // (against the empty tree) for the initial commit.
+  const treeArgs = hasParent ? [`${hash}^`, hash] : ['--root', hash]
+
   // name-status gives us per-file status plus rename source/target.
-  // `-m --first-parent` makes merge commits report the diff against their
-  // first parent (like GitHub Desktop); without it diff-tree emits nothing
-  // for merges. It is harmless for non-merge and root commits.
   const nameStatus = await runGit(repoPath, [
     'diff-tree',
     '--no-commit-id',
     '--name-status',
     '-M',
     '-r',
-    '--root',
-    '-m',
-    '--first-parent',
-    hash
+    ...treeArgs
   ])
 
-  // `-m` emits one section per parent, so a file touched against more than one
-  // parent of a merge shows up multiple times. Keep only the first occurrence
-  // (the first-parent diff) — both because that's the view we want and because a
-  // duplicate path makes the file-tree renderer throw.
+  // Defensive dedup: a single tree-pair diff yields each path once, but a stray
+  // duplicate path would make the file-tree renderer throw, so guard anyway.
   const files: ChangedFile[] = []
   const seen = new Set<string>()
   for (const line of nameStatus.split('\n')) {
@@ -309,10 +317,7 @@ export async function getCommitFiles(repoPath: string, hash: string): Promise<Ch
       '--numstat',
       '-M',
       '-r',
-      '--root',
-      '-m',
-      '--first-parent',
-      hash
+      ...treeArgs
     ])
     const counts = new Map<string, { insertions?: number; deletions?: number; binary: boolean }>()
     for (const line of numstat.split('\n')) {
