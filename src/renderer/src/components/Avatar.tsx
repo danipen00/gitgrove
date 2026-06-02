@@ -43,7 +43,12 @@ export function Avatar({ name, email, size = 28 }: Props) {
       {showImage ? (
         <img src={src} alt="" width={size} height={size} onError={() => setFailed(true)} />
       ) : (
-        initials(name, email)
+        // Flex centering aligns the line box, whose ascent/descent are asymmetric, so
+        // uppercase initials land ~1px below the optical center at small sizes. Trimming
+        // the text box to the cap/baseline edges centers the actual letters at any size.
+        <span style={{ textBoxTrim: 'trim-both', textBoxEdge: 'cap alphabetic' }}>
+          {initials(name, email)}
+        </span>
       )}
     </span>
   )
