@@ -504,7 +504,10 @@ button {
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 .sidebar {
-  flex: 0 0 auto;
+  /* Width is driven by --sidebar-w (set on .app__body); the splitter updates that
+     variable imperatively during a drag so resizing never re-renders React. */
+  flex: 0 0 var(--sidebar-w, 340px);
+  width: var(--sidebar-w, 340px);
   display: flex;
   flex-direction: column;
   min-width: 220px;

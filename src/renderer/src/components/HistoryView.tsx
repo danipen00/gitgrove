@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import type { ChangedFile, Commit } from '@shared/types'
 import { Icon } from '../lib/icons'
@@ -33,6 +33,9 @@ export function HistoryView({
   onSelectFile
 }: Props) {
   const [filesHeight, setFilesHeight] = useState(360)
+  // Height is applied to this node directly while dragging (see Resizer.onPreview)
+  // so resizing the commit-files panel never re-renders the history list.
+  const filesRef = useRef<HTMLDivElement>(null)
 
   if (loading && commits.length === 0) {
     return (
@@ -92,8 +95,18 @@ export function HistoryView({
 
       {selectedCommit && (
         <>
-          <Resizer orientation="y" onResize={(d) => setFilesHeight((h) => clamp(h - d, 140, 640))} />
-          <div className="commit-files" style={{ height: filesHeight }}>
+          <Resizer
+            orientation="y"
+            invert
+            size={filesHeight}
+            min={140}
+            max={640}
+            onPreview={(h) => {
+              if (filesRef.current) filesRef.current.style.height = `${h}px`
+            }}
+            onCommit={setFilesHeight}
+          />
+          <div className="commit-files" ref={filesRef} style={{ height: filesHeight }}>
             <div className="section-head commit-files__head">
               {commitFilesLoading ? 'Loading…' : pluralize(commitFiles.length, 'file')}
             </div>
@@ -117,8 +130,4 @@ export function HistoryView({
       )}
     </div>
   )
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value))
 }

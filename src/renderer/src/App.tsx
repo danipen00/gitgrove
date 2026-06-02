@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 
 import type { BranchInfo, ChangedFile, Commit, DiffPayload, RepoSummary } from '@shared/types'
 import { Toolbar } from './components/Toolbar'
@@ -64,6 +64,10 @@ export function App() {
   const diffReq = useRef(0)
 
   const [sidebarWidth, setSidebarWidth] = usePersistentState('gg.sidebarWidth', 340)
+  // The sidebar width is driven by a CSS variable on `.app__body`. While dragging
+  // the splitter we write the var straight to this node (see Resizer.onPreview),
+  // so a resize never re-renders React — only the final size is committed to state.
+  const bodyRef = useRef<HTMLDivElement>(null)
   const [diffMode, setDiffMode] = usePersistentState<DiffMode>('gg.diffMode', 'split')
   const [diffWrap, setDiffWrap] = usePersistentState('gg.diffWrap', false)
   const { pref: themePref, resolved: theme, setPref: setThemePref } = useTheme()
@@ -362,8 +366,12 @@ export function App() {
         onRefresh={refresh}
         onThemeChange={setThemePref}
       />
-      <div className="app__body">
-        <aside className="sidebar" style={{ width: sidebarWidth, flexBasis: sidebarWidth }}>
+      <div
+        className="app__body"
+        ref={bodyRef}
+        style={{ '--sidebar-w': `${sidebarWidth}px` } as CSSProperties}
+      >
+        <aside className="sidebar">
           <div className="sidebar__tabs">
             <button
               className={`tab${tab === 'changes' ? ' is-active' : ''}`}
@@ -406,7 +414,11 @@ export function App() {
 
         <Resizer
           orientation="x"
-          onResize={(d) => setSidebarWidth(clamp(sidebarWidth + d, 220, 620))}
+          size={sidebarWidth}
+          min={220}
+          max={620}
+          onPreview={(w) => bodyRef.current?.style.setProperty('--sidebar-w', `${w}px`)}
+          onCommit={setSidebarWidth}
         />
 
         <div className="workspace">
@@ -445,8 +457,4 @@ function ErrorToast({ message, onClose }: { message: string; onClose: () => void
       </button>
     </div>
   )
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value))
 }
