@@ -50,6 +50,26 @@ export function pluralize(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
+export interface CommitRef {
+  name: string
+  isTag: boolean
+}
+
+/** Parse git's `%D` decoration string into displayable branch/tag refs. */
+export function parseRefs(refs: string): CommitRef[] {
+  if (!refs) return []
+  return refs
+    .split(',')
+    .map((r) => r.trim())
+    .filter(Boolean)
+    .map((r) => {
+      if (r.startsWith('tag:')) return { name: r.slice(4).trim(), isTag: true }
+      // "HEAD -> main" → show "main"
+      const arrow = r.split('->')
+      return { name: arrow[arrow.length - 1].trim(), isTag: false }
+    })
+}
+
 /** Shorten an absolute path for display, collapsing the home directory. */
 export function prettyPath(path: string): string {
   return path.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~')

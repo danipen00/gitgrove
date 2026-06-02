@@ -5,6 +5,8 @@ import { Toolbar } from './components/Toolbar'
 import { Welcome } from './components/Welcome'
 import { ChangesView } from './components/ChangesView'
 import { HistoryView } from './components/HistoryView'
+import { CommitSummary } from './components/CommitSummary'
+import { TooltipLayer } from './components/TooltipLayer'
 import { DiffViewer, type DiffMode } from './components/DiffViewer'
 import { Resizer } from './components/Resizer'
 import { Icon } from './lib/icons'
@@ -407,18 +409,29 @@ export function App() {
           onResize={(d) => setSidebarWidth(clamp(sidebarWidth + d, 220, 620))}
         />
 
-        <DiffViewer
-          diff={diff}
-          loading={diffLoading}
-          mode={diffMode}
-          wrap={diffWrap}
-          theme={theme}
-          onModeChange={setDiffMode}
-          onWrapChange={setDiffWrap}
-        />
+        <div className="workspace">
+          {tab === 'history' && selectedCommit && (
+            <CommitSummary
+              key={selectedCommit.hash}
+              commit={selectedCommit}
+              files={commitFiles}
+              filesLoading={commitFilesLoading}
+            />
+          )}
+          <DiffViewer
+            diff={diff}
+            loading={diffLoading}
+            mode={diffMode}
+            wrap={diffWrap}
+            theme={theme}
+            onModeChange={setDiffMode}
+            onWrapChange={setDiffWrap}
+          />
+        </div>
       </div>
 
       {error && <ErrorToast message={error} onClose={() => setError(null)} />}
+      <TooltipLayer />
     </div>
   )
 }
