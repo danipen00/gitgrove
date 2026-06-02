@@ -229,6 +229,10 @@ export function App() {
       // switch itself is instant and each panel shows its own progress.
       setRepo(summary)
       setBranch(summary.branch)
+      // Clear the previous repo's lists so the panels show their loading state
+      // instead of stale entries while the new repo's data loads.
+      setChanges([])
+      setCommits([])
       setSelectedCommit(null)
       setCommitFiles([])
       setCommitSelPath(null)
