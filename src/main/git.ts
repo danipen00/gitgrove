@@ -226,6 +226,9 @@ function parseStatusLetter(letter: string): FileStatus {
 
 export async function getCommitFiles(repoPath: string, hash: string): Promise<ChangedFile[]> {
   // name-status gives us per-file status plus rename source/target.
+  // `-m --first-parent` makes merge commits report the diff against their
+  // first parent (like GitHub Desktop); without it diff-tree emits nothing
+  // for merges. It is harmless for non-merge and root commits.
   const nameStatus = await runGit(repoPath, [
     'diff-tree',
     '--no-commit-id',
@@ -233,6 +236,8 @@ export async function getCommitFiles(repoPath: string, hash: string): Promise<Ch
     '-M',
     '-r',
     '--root',
+    '-m',
+    '--first-parent',
     hash
   ])
 
@@ -258,6 +263,8 @@ export async function getCommitFiles(repoPath: string, hash: string): Promise<Ch
       '-M',
       '-r',
       '--root',
+      '-m',
+      '--first-parent',
       hash
     ])
     const counts = new Map<string, { insertions?: number; deletions?: number; binary: boolean }>()
