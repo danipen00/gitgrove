@@ -4,7 +4,8 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { basename } from 'node:path'
+import { basename, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
 import simpleGit, { type SimpleGit } from 'simple-git'
 
 import type {
@@ -24,6 +25,13 @@ const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 
 /** Refuse to ship patches larger than this to the renderer (bytes). */
 const MAX_PATCH_BYTES = 3 * 1024 * 1024
+
+/**
+ * Cap on the combined old+new file contents shipped to enable expandable
+ * context. Above this we omit contents and the viewer falls back to the
+ * (non-expandable) patch render.
+ */
+const MAX_CONTENTS_BYTES = 3 * 1024 * 1024
 
 const gitCache = new Map<string, SimpleGit>()
 
@@ -300,6 +308,40 @@ function finalizeDiff(payload: Omit<DiffPayload, 'binary' | 'notice'> & { patch:
   return { ...payload, binary }
 }
 
+/** Read a blob's contents at a ref (`git show <ref>:<path>`); null if absent. */
+async function showFile(repoPath: string, ref: string, path: string): Promise<string | null> {
+  try {
+    return await runGit(repoPath, ['show', `${ref}:${path}`])
+  } catch {
+    return null
+  }
+}
+
+/** Read a working-tree file from disk; null if unreadable. */
+async function readWorkingFile(repoPath: string, path: string): Promise<string | null> {
+  try {
+    return await readFile(join(repoPath, path), 'utf8')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Attach full old/new contents to a diff payload so the viewer can render an
+ * expandable diff. No-ops (returns the payload unchanged) when either side is
+ * unreadable or the combined size exceeds the cap.
+ */
+function withContents(
+  payload: DiffPayload,
+  oldContents: string | null,
+  newContents: string | null
+): DiffPayload {
+  if (oldContents == null || newContents == null) return payload
+  const size = Buffer.byteLength(oldContents, 'utf8') + Buffer.byteLength(newContents, 'utf8')
+  if (size > MAX_CONTENTS_BYTES) return payload
+  return { ...payload, oldContents, newContents }
+}
+
 export async function getWorkingDiff(repoPath: string, file: ChangedFile): Promise<DiffPayload> {
   const base = { path: file.path, oldPath: file.oldPath, status: file.status }
   let patch = ''
@@ -315,7 +357,33 @@ export async function getWorkingDiff(repoPath: string, file: ChangedFile): Promi
     patch = await runGit(repoPath, args, [1])
   }
 
-  return finalizeDiff({ ...base, patch })
+  const payload = finalizeDiff({ ...base, patch })
+  if (payload.notice || payload.binary) return payload
+
+  // Working tree (staged + unstaged) vs HEAD, mirroring the patch above.
+  let oldContents: string | null
+  let newContents: string | null
+  switch (file.status) {
+    case 'untracked':
+    case 'added':
+      oldContents = ''
+      newContents = await readWorkingFile(repoPath, file.path)
+      break
+    case 'deleted':
+      oldContents = await showFile(repoPath, 'HEAD', file.oldPath ?? file.path)
+      newContents = ''
+      break
+    case 'modified':
+    case 'renamed':
+      oldContents = await showFile(repoPath, 'HEAD', file.oldPath ?? file.path)
+      newContents = await readWorkingFile(repoPath, file.path)
+      break
+    default:
+      // conflicted / ignored: leave non-expandable.
+      return payload
+  }
+
+  return withContents(payload, oldContents, newContents)
 }
 
 export async function getCommitDiff(
@@ -339,7 +407,16 @@ export async function getCommitDiff(
     : ['diff', '--no-color', '-M', EMPTY_TREE, hash, '--', ...paths]
 
   const patch = await runGit(repoPath, args, [1])
-  return finalizeDiff({ ...base, patch })
+  const payload = finalizeDiff({ ...base, patch })
+  if (payload.notice || payload.binary) return payload
+
+  const oldContents =
+    file.status === 'added' || !hasParent
+      ? ''
+      : await showFile(repoPath, `${hash}^`, file.oldPath ?? file.path)
+  const newContents = file.status === 'deleted' ? '' : await showFile(repoPath, hash, file.path)
+
+  return withContents(payload, oldContents, newContents)
 }
 
 export function forgetRepo(repoPath: string): void {

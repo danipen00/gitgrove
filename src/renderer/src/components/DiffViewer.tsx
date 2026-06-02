@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { PatchDiff } from '@pierre/diffs/react'
+import { PatchDiff, MultiFileDiff } from '@pierre/diffs/react'
+import type { BaseDiffOptions } from '@pierre/diffs/react'
 
 import type { DiffPayload } from '@shared/types'
 import { Icon } from '../lib/icons'
@@ -46,6 +47,22 @@ export function DiffViewer({ diff, loading, mode, wrap, theme, onModeChange, onW
   }
 
   const { dir, name } = diff ? splitPath(diff.path) : { dir: '', name: '' }
+
+  const diffOptions = {
+    theme: theme === 'light' ? 'pierre-light' : 'pierre-dark',
+    themeType: theme,
+    diffStyle: mode,
+    overflow: wrap ? 'wrap' : 'scroll',
+    diffIndicators: 'bars',
+    hunkSeparators: 'line-info-basic',
+    lineDiffType: 'word',
+    disableFileHeader: true,
+    stickyHeader: false
+  } satisfies BaseDiffOptions
+
+  // Full file contents let us render an expandable diff (MultiFileDiff); without
+  // them (binary / too large / unreadable) we fall back to the patch-only view.
+  const canExpand = diff?.oldContents != null && diff?.newContents != null
 
   return (
     <div className="diff-pane">
@@ -111,21 +128,22 @@ export function DiffViewer({ diff, loading, mode, wrap, theme, onModeChange, onW
             <p>{diff.notice}</p>
           </div>
         )}
-        {!loading && diff && !diff.notice && diff.patch && (
+        {!loading && diff && !diff.notice && diff.patch && canExpand && (
+          <MultiFileDiff
+            key={`${diff.path}:${theme}`}
+            oldFile={{ name: diff.oldPath ?? diff.path, contents: diff.oldContents! }}
+            newFile={{ name: diff.path, contents: diff.newContents! }}
+            disableWorkerPool
+            options={diffOptions}
+            style={{ minHeight: '100%' }}
+          />
+        )}
+        {!loading && diff && !diff.notice && diff.patch && !canExpand && (
           <PatchDiff
             key={`${diff.path}:${theme}`}
             patch={diff.patch}
             disableWorkerPool
-            options={{
-              theme: theme === 'light' ? 'pierre-light' : 'pierre-dark',
-              themeType: theme,
-              diffStyle: mode,
-              overflow: wrap ? 'wrap' : 'scroll',
-              diffIndicators: 'bars',
-              lineDiffType: 'word',
-              disableFileHeader: true,
-              stickyHeader: false
-            }}
+            options={diffOptions}
             style={{ minHeight: '100%' }}
           />
         )}

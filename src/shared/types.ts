@@ -86,6 +86,15 @@ export interface DiffPayload {
   /** Set when the file is too large / binary and no patch is produced. */
   notice?: string
   language?: string
+  /**
+   * Full old/new file contents. When both are present the diff viewer renders
+   * with @pierre/diffs' MultiFileDiff so collapsed context becomes expandable
+   * (PatchDiff alone only has the patch's limited context). Omitted for binary,
+   * too-large, or unreadable files, in which case the viewer falls back to the
+   * non-expandable patch render.
+   */
+  oldContents?: string
+  newContents?: string
 }
 
 export interface AppError {
