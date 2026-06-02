@@ -945,13 +945,52 @@ button {
 .diff-head__path {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   min-width: 0;
   font-family: var(--font-mono);
   font-size: 12.5px;
+  /* body sets user-select:none for a native feel; let the path be copyable. */
+  user-select: text;
+}
+.diff-head__badge {
+  flex: 0 0 auto;
+  /* match the sans font @pierre/trees uses for its M/R/A letters */
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 12px;
+}
+.diff-head__badge.st-added {
+  color: var(--st-added);
+}
+.diff-head__badge.st-modified {
+  color: var(--st-modified);
+}
+.diff-head__badge.st-deleted {
+  color: var(--st-deleted);
+}
+.diff-head__badge.st-renamed {
+  color: var(--st-renamed);
+}
+.diff-head__badge.st-untracked {
+  color: var(--st-untracked);
+}
+.diff-head__badge.st-conflicted {
+  color: var(--st-conflicted);
+}
+.diff-head__badge.st-ignored {
+  color: var(--fg-faint);
+}
+.diff-head__file {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
 }
 .diff-head__dir {
   color: var(--fg-faint);
+  /* shrink the directory prefix (with an ellipsis) before the filename */
+  min-width: 0;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -959,6 +998,9 @@ button {
 .diff-head__name {
   color: var(--fg);
   font-weight: 600;
+  white-space: nowrap;
+  /* keep the basename fully visible */
+  flex: 0 0 auto;
 }
 .diff-head__spacer {
   flex: 1;
@@ -1221,30 +1263,4 @@ button {
 }
 .toast button:hover {
   opacity: 1;
-}
-
-/* status dot used in commit-file tree section header etc. */
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-}
-.dot--added {
-  background: var(--st-added);
-}
-.dot--modified {
-  background: var(--st-modified);
-}
-.dot--deleted {
-  background: var(--st-deleted);
-}
-.dot--renamed {
-  background: var(--st-renamed);
-}
-.dot--untracked {
-  background: var(--st-untracked);
-}
-.dot--conflicted {
-  background: var(--st-conflicted);
 }

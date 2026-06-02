@@ -11,6 +11,19 @@ interface Tip {
 const SHOW_DELAY = 120
 
 /**
+ * True when the element's text is clipped, or any descendant's is — so a
+ * `data-tip-overflow` host can wrap children that do the actual truncating
+ * (e.g. a path whose directory segment ellipsizes while the filename stays).
+ */
+function isClipped(el: HTMLElement): boolean {
+  if (el.scrollWidth > el.clientWidth + 1) return true
+  for (const child of el.querySelectorAll('*')) {
+    if (child.scrollWidth > child.clientWidth + 1) return true
+  }
+  return false
+}
+
+/**
  * A single delegated tooltip for the whole app. Any element carrying a `data-tip`
  * attribute shows it on hover — rendered in a portal so the truncation
  * `overflow: hidden` ancestors can't clip it. Add `data-tip-overflow` to only
@@ -50,7 +63,7 @@ export function TooltipLayer() {
       const text = el.getAttribute('data-tip')
       if (!text) return hide()
       // Skip when the label isn't actually clipped.
-      if (el.hasAttribute('data-tip-overflow') && el.scrollWidth <= el.clientWidth + 1) {
+      if (el.hasAttribute('data-tip-overflow') && !isClipped(el)) {
         return hide()
       }
       clear()

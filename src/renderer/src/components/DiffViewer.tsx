@@ -5,7 +5,7 @@ import type { BaseDiffOptions } from '@pierre/diffs/react'
 import type { DiffPayload } from '@shared/types'
 import { Icon } from '../lib/icons'
 import type { ResolvedTheme } from '../lib/theme'
-import { splitPath, statusLabel } from '../lib/format'
+import { splitPath, statusLabel, statusLetter } from '../lib/format'
 
 export type DiffMode = 'split' | 'unified'
 
@@ -69,13 +69,20 @@ export function DiffViewer({ diff, loading, mode, wrap, theme, onModeChange, onW
       <div className="diff-head">
         {diff && (
           <>
-            <div className="diff-head__path" title={diff.path}>
-              <span className={`dot dot--${diff.status}`} />
-              {dir && <span className="diff-head__dir">{dir}</span>}
-              <span className="diff-head__name">{name}</span>
+            <div className="diff-head__path">
+              <span
+                className={`diff-head__badge st-${diff.status}`}
+                data-tip={statusLabel(diff.status)}
+              >
+                {statusLetter(diff.status)}
+              </span>
+              <span className="diff-head__file" data-tip={diff.path} data-tip-overflow="">
+                {dir && <span className="diff-head__dir">{dir}</span>}
+                <span className="diff-head__name">{name}</span>
+              </span>
             </div>
             {diff.oldPath && (
-              <span className="diff-head__dir" title={`renamed from ${diff.oldPath}`}>
+              <span className="diff-head__dir" data-tip={`renamed from ${diff.oldPath}`}>
                 ← {splitPath(diff.oldPath).name}
               </span>
             )}
