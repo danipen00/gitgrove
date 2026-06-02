@@ -1164,6 +1164,9 @@ button {
 /* ── States: empty / loading / error ─────────────────────────────────────── */
 .center-state {
   flex: 1;
+  /* Also fill height when the parent isn't a flex container (e.g. .diff-body,
+     which is overflow:auto block) so the state stays vertically centered. */
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
