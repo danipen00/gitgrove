@@ -19,6 +19,8 @@ const ROW_H = 32
 const OVERSCAN = 4
 /** Minimum draggable scrollbar thumb height. */
 const MIN_THUMB = 24
+/** Empty space kept below the last row so it never sits flush against the edge. */
+const PAD_BOTTOM = 8
 
 type Row =
   | { kind: 'label'; key: string; text: string }
@@ -65,7 +67,7 @@ export function BranchSwitcher({ branch, loading = false, busy, onCheckout }: Pr
   const [viewportH, setViewportH] = useState(ROW_H * 12)
   const [scrollTop, setScrollTop] = useState(0)
 
-  const total = rows.length * ROW_H
+  const total = rows.length * ROW_H + PAD_BOTTOM
   const maxScroll = Math.max(0, total - viewportH)
   const top = clamp(scrollTop, 0, maxScroll)
 
