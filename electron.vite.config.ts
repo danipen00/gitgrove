@@ -4,9 +4,12 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: [] })],
     build: {
       rollupOptions: {
+        // electron is a devDependency, so externalizeDepsPlugin won't catch it;
+        // it must stay external (it's provided by the runtime).
+        external: ['electron'],
         input: { index: resolve(__dirname, 'src/main/index.ts') }
       }
     },
@@ -15,9 +18,10 @@ export default defineConfig({
     }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: [] })],
     build: {
       rollupOptions: {
+        external: ['electron'],
         input: { index: resolve(__dirname, 'src/preload/index.ts') }
       }
     },

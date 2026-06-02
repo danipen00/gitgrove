@@ -66,6 +66,12 @@ export function App() {
 
   const repoRef = useRef<RepoSummary | null>(null)
   repoRef.current = repo
+  // Refs so the filesystem-driven refresh can read the latest view without
+  // being re-created (which would re-subscribe the watcher).
+  const tabRef = useRef<Tab>(tab)
+  tabRef.current = tab
+  const changeSelRef = useRef<string | null>(changeSelPath)
+  changeSelRef.current = changeSelPath
 
   const fail = useCallback((e: unknown) => {
     const message = e instanceof Error ? e.message : String(e)
@@ -278,15 +284,16 @@ export function App() {
         window.gitgrove.branches(repoPath)
       ])
       setBranch(freshBranch)
-      // Keep the working selection valid and refresh its diff to reflect edits.
-      setChangeSelPath((current) => {
-        if (current && files.some((f) => f.path === current)) {
-          const file = files.find((f) => f.path === current)!
-          loadWorkingDiff(file)
-          return current
-        }
-        return null
-      })
+      // Keep the working selection valid; only re-fetch its diff when the
+      // Changes tab is actually showing it, so a background edit never clobbers
+      // a commit diff the user is reading in History.
+      const current = changeSelRef.current
+      if (current && !files.some((f) => f.path === current)) {
+        setChangeSelPath(null)
+      } else if (current && tabRef.current === 'changes') {
+        const file = files.find((f) => f.path === current)!
+        loadWorkingDiff(file)
+      }
     } catch (e) {
       fail(e)
     } finally {

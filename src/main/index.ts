@@ -1,5 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// The main bundle is emitted as ESM (package.json "type": "module"), where
+// __dirname is not defined — reconstruct it from the module URL.
+const moduleDir = dirname(fileURLToPath(import.meta.url))
 
 import { IPC } from '@shared/ipc'
 import type { ChangedFile, LogOptions } from '@shared/types'
@@ -35,7 +40,7 @@ function createWindow(): void {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(moduleDir, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false
@@ -52,7 +57,7 @@ function createWindow(): void {
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(join(moduleDir, '../renderer/index.html'))
   }
 
   mainWindow.on('closed', () => {
