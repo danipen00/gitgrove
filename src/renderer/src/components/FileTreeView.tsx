@@ -49,10 +49,17 @@ interface Props {
  * place when the file set changes so search/scroll state is preserved.
  */
 export function FileTreeView({ files, selectedPath, onSelectFile }: Props) {
-  const paths = useMemo(() => files.map((f) => f.path), [files])
+  // @pierre/trees throws if any path repeats, which (with no error boundary)
+  // blanks the whole window. Drop duplicates here so a malformed file list
+  // degrades gracefully no matter where it came from.
+  const uniqueFiles = useMemo(() => {
+    const seen = new Set<string>()
+    return files.filter((f) => (seen.has(f.path) ? false : (seen.add(f.path), true)))
+  }, [files])
+  const paths = useMemo(() => uniqueFiles.map((f) => f.path), [uniqueFiles])
   const gitStatus = useMemo(
-    () => files.map((f) => ({ path: f.path, status: toTreeStatus(f.status) })),
-    [files]
+    () => uniqueFiles.map((f) => ({ path: f.path, status: toTreeStatus(f.status) })),
+    [uniqueFiles]
   )
   const expandedDirs = useMemo(() => ancestorDirs(paths), [paths])
   const fileSet = useMemo(() => new Set(paths), [paths])

@@ -67,6 +67,11 @@ export function App() {
   const [diff, setDiff] = useState<DiffPayload | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
   const diffReq = useRef(0)
+  // Like `diffReq`, but for commit selection: selecting a commit fires an async
+  // `commitFiles` fetch, and a slow one can resolve after the user has already
+  // picked another commit. This token lets a superseded selection bail out
+  // instead of clobbering the current commit's files/diff with a torn state.
+  const commitReq = useRef(0)
 
   const [sidebarWidth, setSidebarWidth] = usePersistentState('gg.sidebarWidth', 340)
   // The sidebar width is driven by a CSS variable on `.app__body`. While dragging
@@ -186,12 +191,16 @@ export function App() {
     async (commit: Commit) => {
       const repoPath = repoRef.current?.path
       if (!repoPath) return
+      const id = ++commitReq.current
       setSelectedCommit(commit)
       setCommitSelPath(null)
       setCommitFiles([])
       setCommitFilesLoading(true)
       try {
         const files = await window.gitgrove.commitFiles(repoPath, commit.hash)
+        // A newer commit was selected while this one was loading — drop the
+        // stale result so it can't overwrite the current commit's state.
+        if (id !== commitReq.current) return
         setCommitFiles(files)
         if (files.length > 0) selectCommitFile(files[0].path, commit.hash, files)
         else {
@@ -199,9 +208,9 @@ export function App() {
           diffReq.current++
         }
       } catch (e) {
-        fail(e)
+        if (id === commitReq.current) fail(e)
       } finally {
-        setCommitFilesLoading(false)
+        if (id === commitReq.current) setCommitFilesLoading(false)
       }
     },
     [fail, selectCommitFile]

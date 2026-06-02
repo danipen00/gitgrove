@@ -278,16 +278,26 @@ export async function getCommitFiles(repoPath: string, hash: string): Promise<Ch
     hash
   ])
 
+  // `-m` emits one section per parent, so a file touched against more than one
+  // parent of a merge shows up multiple times. Keep only the first occurrence
+  // (the first-parent diff) — both because that's the view we want and because a
+  // duplicate path makes the file-tree renderer throw.
   const files: ChangedFile[] = []
+  const seen = new Set<string>()
   for (const line of nameStatus.split('\n')) {
     if (!line.trim()) continue
     const parts = line.split('\t')
     const code = parts[0]
     const status = parseStatusLetter(code)
+    let file: ChangedFile | null = null
     if ((code.startsWith('R') || code.startsWith('C')) && parts.length >= 3) {
-      files.push({ path: parts[2], oldPath: parts[1], status, staged: true })
+      file = { path: parts[2], oldPath: parts[1], status, staged: true }
     } else if (parts.length >= 2) {
-      files.push({ path: parts[1], status, staged: true })
+      file = { path: parts[1], status, staged: true }
+    }
+    if (file && !seen.has(file.path)) {
+      seen.add(file.path)
+      files.push(file)
     }
   }
 
