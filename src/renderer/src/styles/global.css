@@ -512,9 +512,8 @@ button {
   min-width: 0;
 }
 .popover__item-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  /* Block (not flex) so text-overflow can render the ellipsis on the text. */
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

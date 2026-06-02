@@ -184,6 +184,8 @@ export function BranchSwitcher({ branch, loading = false, busy, onCheckout }: Pr
                     key={row.key}
                     className={`popover__item${row.current ? ' is-active' : ''}`}
                     style={rowStyle}
+                    data-tip={row.name}
+                    data-tip-overflow=""
                     onClick={() => select(row.name)}
                   >
                     <span className="icon-muted branch-glyph" aria-hidden="true" />
