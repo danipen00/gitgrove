@@ -349,6 +349,26 @@ button {
   pointer-events: none;
   animation: pop-in 0.1s ease-out;
 }
+/* Caret: a small rotated square that points at the cursor. Only the two edges
+   facing away from the bubble carry a border so it reads as a seamless arrow. */
+.tooltip__arrow {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  transform: rotate(45deg);
+}
+.tooltip--above .tooltip__arrow {
+  bottom: -5px;
+  border-top: none;
+  border-left: none;
+}
+.tooltip--below .tooltip__arrow {
+  top: -5px;
+  border-bottom: none;
+  border-right: none;
+}
 .popover {
   position: fixed;
   z-index: 41;

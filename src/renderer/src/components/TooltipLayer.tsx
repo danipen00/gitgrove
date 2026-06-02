@@ -18,7 +18,12 @@ const SHOW_DELAY = 120
  */
 export function TooltipLayer() {
   const [tip, setTip] = useState<Tip | null>(null)
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+  const [coords, setCoords] = useState<{
+    top: number
+    left: number
+    placement: 'above' | 'below'
+    arrowX: number
+  } | null>(null)
   const tipRef = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const pointer = useRef({ x: 0, y: 0 })
@@ -73,29 +78,37 @@ export function TooltipLayer() {
     }
   }, [])
 
-  // Standard cursor-tooltip placement: top-left just below-right of the pointer.
-  // Horizontally it shifts left to stay on screen (keeping it under the cursor);
-  // vertically it flips above the cursor only when there's no room below. A final
-  // clamp guarantees it can never be cut off at a screen edge.
+  // A cursor-anchored tooltip with a caret that points at the pointer. It drops
+  // just below the cursor (caret on top pointing up) and flips above only near
+  // the bottom edge. The bubble starts a little left of the cursor so the caret
+  // sits near its leading edge, then shifts to stay on screen while the caret
+  // keeps tracking the cursor X.
   useLayoutEffect(() => {
     if (!tip || !tipRef.current) return
     const t = tipRef.current.getBoundingClientRect()
     const m = 8 // viewport margin
-    const offX = 12
-    const offY = 18 // clears the cursor glyph
+    const gap = 18 // cursor → bubble edge: clears the cursor glyph so the caret shows
+    const arrowInset = 18 // where the caret prefers to sit from the near edge
     const { pointerX, pointerY } = tip
     const vw = window.innerWidth
     const vh = window.innerHeight
 
-    // Shift (not flip) horizontally so the tip stays beside the cursor.
-    const left = Math.max(m, Math.min(pointerX + offX, vw - t.width - m))
-
-    // Prefer below the cursor; flip above if it wouldn't fit below.
-    let top = pointerY + offY
-    if (top + t.height > vh - m) top = pointerY - offY - t.height
+    // Below the cursor by default; flip above if it wouldn't fit below.
+    let placement: 'above' | 'below' = 'below'
+    let top = pointerY + gap
+    if (top + t.height > vh - m) {
+      placement = 'above'
+      top = pointerY - gap - t.height
+    }
     top = Math.max(m, Math.min(top, vh - t.height - m))
 
-    setCoords({ top, left })
+    // Anchor the leading edge near the cursor, then shift to stay on screen.
+    const left = Math.max(m, Math.min(pointerX - arrowInset, vw - t.width - m))
+
+    // The caret keeps pointing at the cursor, clamped inside the rounded ends.
+    const arrowX = Math.max(14, Math.min(pointerX - left, t.width - 14))
+
+    setCoords({ top, left, placement, arrowX })
   }, [tip])
 
   if (!tip) return null
@@ -103,11 +116,12 @@ export function TooltipLayer() {
   return createPortal(
     <div
       ref={tipRef}
-      className="tooltip"
+      className={`tooltip${coords ? ` tooltip--${coords.placement}` : ''}`}
       role="tooltip"
       style={coords ? { top: coords.top, left: coords.left } : { top: -9999, left: -9999 }}
     >
       {tip.text}
+      {coords && <span className="tooltip__arrow" style={{ left: coords.arrowX - 5 }} />}
     </div>,
     document.body
   )
