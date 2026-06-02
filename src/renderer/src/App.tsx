@@ -267,7 +267,13 @@ export function App() {
       loadBranches(summary.path).catch(fail)
       try {
         const files = await loadStatus(summary.path)
-        if (files.length > 0) selectChangeFile(files[0].path, files)
+        // Status can resolve after the user has already moved to History; in
+        // that case just remember the selection (switchTab loads its diff on
+        // return) rather than displaying it behind the History view.
+        if (files.length > 0) {
+          if (tabRef.current === 'changes') selectChangeFile(files[0].path, files)
+          else setChangeSelPath(files[0].path)
+        }
       } catch (e) {
         fail(e)
       }
@@ -316,7 +322,12 @@ export function App() {
         // showing, otherwise leave it for the next time the tab is opened.
         if (tabRef.current === 'history') loadLog(repoPath).catch(fail)
         const files = await loadStatus(repoPath)
-        if (files.length > 0) selectChangeFile(files[0].path, files)
+        // Don't pull the diff pane onto a working file if the user is viewing
+        // History; just keep the selection for when they return to Changes.
+        if (files.length > 0) {
+          if (tabRef.current === 'changes') selectChangeFile(files[0].path, files)
+          else setChangeSelPath(files[0].path)
+        }
       } catch (e) {
         fail(e)
       } finally {
