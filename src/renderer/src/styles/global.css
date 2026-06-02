@@ -39,7 +39,9 @@
   --font-ui: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', 'Fira Code', Menlo, monospace;
 
-  /* @pierre/trees dark overrides (custom properties pierce the shadow root) */
+  /* @pierre/trees dark overrides (custom properties pierce the shadow root).
+     The library defaults use light-dark(), which the shadow root resolves to
+     the light value — so we pin the *-override vars to bypass it entirely. */
   --trees-bg-override: transparent;
   --trees-fg-override: #d6dae2;
   --trees-fg-muted-override: #8b909c;
@@ -47,6 +49,10 @@
   --trees-accent-override: var(--accent);
   --trees-border-color-override: var(--border);
   --trees-border-radius-override: 6px;
+  /* Search / text input inside the tree */
+  --trees-input-bg-override: var(--bg);
+  --trees-search-bg-override: var(--bg);
+  --trees-search-fg-override: var(--fg);
 
   color-scheme: dark;
 }
