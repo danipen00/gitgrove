@@ -180,10 +180,12 @@ export function HistoryView({
             <div className="section-head commit-detail__bar">
               <span className="commit__hash">{selectedCommit.shortHash}</span>
               <CopyButton value={selectedCommit.hash} label="Copy commit SHA" />
-              {!commitFilesLoading && <DiffStat files={commitFiles} />}
               <span className="section-head__spacer" />
-              <span className="commit-detail__count">
-                {commitFilesLoading ? 'Loading…' : pluralize(commitFiles.length, 'file')}
+              <span className="commit-detail__stats">
+                {!commitFilesLoading && <DiffStat files={commitFiles} />}
+                <span className="commit-detail__count">
+                  {commitFilesLoading ? 'Loading…' : pluralize(commitFiles.length, 'file')}
+                </span>
               </span>
             </div>
 

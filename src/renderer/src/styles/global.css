@@ -739,8 +739,16 @@ button {
   font-weight: 500;
   border-top: 1px solid var(--border);
 }
+/* Keep the +/− stat and the file count on a shared text baseline; box-centering
+   them misaligns the mono digits against the proportional "N files" label. */
+.commit-detail__stats {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
 .commit-detail__count {
   color: var(--fg-muted);
+  font-size: 11.5px;
 }
 
 /* Subtle ghost button used for the copy-SHA action. */
