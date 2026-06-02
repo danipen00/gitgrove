@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { ChangedFile, Commit } from '@shared/types'
 import { Icon } from '../lib/icons'
@@ -36,6 +36,14 @@ export function HistoryView({
   // Height is applied to this node directly while dragging (see Resizer.onPreview)
   // so resizing the commit-files panel never re-renders the history list.
   const filesRef = useRef<HTMLDivElement>(null)
+  // Selecting a commit reveals the files panel below the list, which shrinks the
+  // scroll viewport — a bottom row can end up below the fold. Pull the active row
+  // back into view (block:'nearest' leaves already-visible rows untouched).
+  const activeRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [selectedCommit?.hash, filesHeight])
 
   if (loading && commits.length === 0) {
     return (
@@ -67,6 +75,7 @@ export function HistoryView({
           return (
             <button
               key={commit.hash}
+              ref={active ? activeRef : null}
               className={`commit${active ? ' is-active' : ''}`}
               onClick={() => onSelectCommit(commit)}
             >
