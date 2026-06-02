@@ -1,0 +1,347 @@
+// Git access layer for the main process. Uses `simple-git` for the convenient
+// structured commands (status, branches, checkout) and a thin execFile wrapper
+// for diff/log where we need exact control over formatting and exit codes.
+
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { basename } from 'node:path'
+import simpleGit, { type SimpleGit } from 'simple-git'
+
+import type {
+  BranchInfo,
+  ChangedFile,
+  Commit,
+  DiffPayload,
+  FileStatus,
+  LogOptions,
+  RepoSummary
+} from '@shared/types'
+
+const execFileAsync = promisify(execFile)
+
+/** Git's well-known empty tree object, used to diff root commits. */
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+
+/** Refuse to ship patches larger than this to the renderer (bytes). */
+const MAX_PATCH_BYTES = 3 * 1024 * 1024
+
+const gitCache = new Map<string, SimpleGit>()
+
+function getGit(repoPath: string): SimpleGit {
+  let git = gitCache.get(repoPath)
+  if (!git) {
+    git = simpleGit({ baseDir: repoPath, maxConcurrentProcesses: 6 })
+    gitCache.set(repoPath, git)
+  }
+  return git
+}
+
+/**
+ * Run a raw git command, returning stdout regardless of exit code when the code
+ * is in `tolerateExitCodes` (git diff family uses code 1 to mean "differences
+ * found", which is not an error for us).
+ */
+async function runGit(
+  repoPath: string,
+  args: string[],
+  tolerateExitCodes: number[] = []
+): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync('git', args, {
+      cwd: repoPath,
+      maxBuffer: 256 * 1024 * 1024,
+      windowsHide: true
+    })
+    return stdout
+  } catch (err) {
+    const e = err as { code?: number; stdout?: string; stderr?: string; message?: string }
+    if (typeof e.code === 'number' && tolerateExitCodes.includes(e.code)) {
+      return e.stdout ?? ''
+    }
+    throw new Error(e.stderr?.trim() || e.message || 'git command failed')
+  }
+}
+
+export async function isGitRepo(repoPath: string): Promise<boolean> {
+  try {
+    return await getGit(repoPath).checkIsRepo()
+  } catch {
+    return false
+  }
+}
+
+/** Resolve the top-level working directory for any path inside a repo. */
+export async function resolveRepoRoot(somePath: string): Promise<string | null> {
+  try {
+    const out = await runGit(somePath, ['rev-parse', '--show-toplevel'])
+    const root = out.trim()
+    return root || null
+  } catch {
+    return null
+  }
+}
+
+function mapStatusCode(index: string, working: string): FileStatus {
+  if (index === '?' || working === '?') return 'untracked'
+  if (index === '!' || working === '!') return 'ignored'
+  if (
+    index === 'U' ||
+    working === 'U' ||
+    (index === 'A' && working === 'A') ||
+    (index === 'D' && working === 'D')
+  ) {
+    return 'conflicted'
+  }
+  if (index === 'R' || working === 'R') return 'renamed'
+  if (index === 'C' || working === 'C') return 'added'
+  if (index === 'A' || working === 'A') return 'added'
+  if (index === 'D' || working === 'D') return 'deleted'
+  return 'modified'
+}
+
+export async function getBranches(repoPath: string): Promise<BranchInfo> {
+  const git = getGit(repoPath)
+  const local = await git.branchLocal()
+  let remote: string[] = []
+  try {
+    const remoteRaw = await git.branch(['-r'])
+    remote = Object.keys(remoteRaw.branches).filter((name) => !name.includes('->'))
+  } catch {
+    remote = []
+  }
+  return {
+    current: local.current,
+    detached: local.detached,
+    local: local.all,
+    remote
+  }
+}
+
+export async function getStatus(repoPath: string): Promise<ChangedFile[]> {
+  const git = getGit(repoPath)
+  const status = await git.status()
+
+  // Map "to" path -> "from" path for renames so the tree can show both.
+  const renameFrom = new Map<string, string>()
+  for (const r of status.renamed) renameFrom.set(r.to, r.from)
+
+  return status.files.map((f) => {
+    const index = f.index || ' '
+    const working = f.working_dir || ' '
+    const mapped = mapStatusCode(index, working)
+    const staged = index !== ' ' && index !== '?' && index !== '!'
+    const unstaged = working !== ' ' && working !== '?' && working !== '!'
+    return {
+      path: f.path,
+      oldPath: renameFrom.get(f.path),
+      status: mapped,
+      staged,
+      partiallyStaged: staged && unstaged
+    }
+  })
+}
+
+export async function getSummary(repoPath: string): Promise<RepoSummary> {
+  const git = getGit(repoPath)
+  const [branch, status] = await Promise.all([getBranches(repoPath), git.status()])
+  return {
+    path: repoPath,
+    name: basename(repoPath),
+    branch,
+    changeCount: status.files.length,
+    ahead: status.ahead,
+    behind: status.behind
+  }
+}
+
+export async function checkout(repoPath: string, branch: string): Promise<BranchInfo> {
+  await getGit(repoPath).checkout(branch)
+  gitCache.delete(repoPath)
+  return getBranches(repoPath)
+}
+
+const SEP = '\x1f'
+const REC = '\x1e'
+const LOG_FORMAT = ['%H', '%h', '%s', '%b', '%an', '%ae', '%aI', '%ar', '%D', '%P'].join(SEP) + REC
+
+export async function getLog(repoPath: string, options: LogOptions = {}): Promise<Commit[]> {
+  const { ref, limit = 200, skip = 0, search } = options
+  const args = ['log', `--pretty=format:${LOG_FORMAT}`, `--max-count=${limit}`]
+  if (skip > 0) args.push(`--skip=${skip}`)
+  if (search && search.trim()) {
+    args.push(`--grep=${search.trim()}`, '-i', '--all-match')
+  }
+  args.push(ref && ref.trim() ? ref : 'HEAD')
+
+  const out = await runGit(repoPath, args)
+  return out
+    .split(REC)
+    .map((rec) => rec.replace(/^\n/, ''))
+    .filter((rec) => rec.trim().length > 0)
+    .map((rec) => {
+      const [hash, shortHash, subject, body, authorName, authorEmail, date, relativeDate, refs, parents] =
+        rec.split(SEP)
+      return {
+        hash,
+        shortHash,
+        subject,
+        body: (body ?? '').trim(),
+        authorName,
+        authorEmail,
+        date,
+        relativeDate,
+        refs: refs ?? '',
+        parents: (parents ?? '').trim() ? parents.trim().split(' ') : []
+      } satisfies Commit
+    })
+}
+
+function parseStatusLetter(letter: string): FileStatus {
+  switch (letter[0]) {
+    case 'A':
+      return 'added'
+    case 'D':
+      return 'deleted'
+    case 'R':
+      return 'renamed'
+    case 'C':
+      return 'added'
+    case 'M':
+    case 'T':
+      return 'modified'
+    case 'U':
+      return 'conflicted'
+    default:
+      return 'modified'
+  }
+}
+
+export async function getCommitFiles(repoPath: string, hash: string): Promise<ChangedFile[]> {
+  // name-status gives us per-file status plus rename source/target.
+  const nameStatus = await runGit(repoPath, [
+    'diff-tree',
+    '--no-commit-id',
+    '--name-status',
+    '-M',
+    '-r',
+    '--root',
+    hash
+  ])
+
+  const files: ChangedFile[] = []
+  for (const line of nameStatus.split('\n')) {
+    if (!line.trim()) continue
+    const parts = line.split('\t')
+    const code = parts[0]
+    const status = parseStatusLetter(code)
+    if ((code.startsWith('R') || code.startsWith('C')) && parts.length >= 3) {
+      files.push({ path: parts[2], oldPath: parts[1], status, staged: true })
+    } else if (parts.length >= 2) {
+      files.push({ path: parts[1], status, staged: true })
+    }
+  }
+
+  // Best-effort line counts from numstat, matched on the new path.
+  try {
+    const numstat = await runGit(repoPath, [
+      'diff-tree',
+      '--no-commit-id',
+      '--numstat',
+      '-M',
+      '-r',
+      '--root',
+      hash
+    ])
+    const counts = new Map<string, { insertions?: number; deletions?: number; binary: boolean }>()
+    for (const line of numstat.split('\n')) {
+      if (!line.trim()) continue
+      const [ins, del, ...rest] = line.split('\t')
+      const rawPath = rest.join('\t')
+      // Normalise rename notation `old => new` / `dir/{a => b}` to the new path.
+      const path = rawPath
+        .replace(/.*\{(?:.*) => (.*)\}/, '$1')
+        .replace(/^.* => /, '')
+      const binary = ins === '-' && del === '-'
+      counts.set(path, {
+        insertions: binary ? undefined : Number(ins),
+        deletions: binary ? undefined : Number(del),
+        binary
+      })
+    }
+    for (const f of files) {
+      const c = counts.get(f.path)
+      if (c) {
+        f.insertions = c.insertions
+        f.deletions = c.deletions
+        f.binary = c.binary
+      }
+    }
+  } catch {
+    // counts are optional
+  }
+
+  return files.sort((a, b) => a.path.localeCompare(b.path))
+}
+
+function finalizeDiff(payload: Omit<DiffPayload, 'binary' | 'notice'> & { patch: string }): DiffPayload {
+  const { patch } = payload
+  const binary = /^Binary files |GIT binary patch/m.test(patch)
+  if (Buffer.byteLength(patch, 'utf8') > MAX_PATCH_BYTES) {
+    return {
+      ...payload,
+      patch: '',
+      binary,
+      notice: 'This diff is too large to display.'
+    }
+  }
+  if (binary && !patch.includes('@@')) {
+    return { ...payload, binary, notice: 'Binary file — no textual diff available.' }
+  }
+  return { ...payload, binary }
+}
+
+export async function getWorkingDiff(repoPath: string, file: ChangedFile): Promise<DiffPayload> {
+  const base = { path: file.path, oldPath: file.oldPath, status: file.status }
+  let patch = ''
+
+  if (file.status === 'untracked') {
+    // Untracked files have no index entry; diff against /dev/null. git returns
+    // exit code 1 when the files differ, which is expected here.
+    patch = await runGit(repoPath, ['diff', '--no-color', '--no-index', '--', '/dev/null', file.path], [1])
+  } else {
+    // Everything tracked: full working-tree state (staged + unstaged) vs HEAD.
+    const args = ['diff', '--no-color', 'HEAD', '--', file.path]
+    if (file.oldPath) args.push(file.oldPath)
+    patch = await runGit(repoPath, args, [1])
+  }
+
+  return finalizeDiff({ ...base, patch })
+}
+
+export async function getCommitDiff(
+  repoPath: string,
+  hash: string,
+  file: ChangedFile
+): Promise<DiffPayload> {
+  const base = { path: file.path, oldPath: file.oldPath, status: file.status }
+
+  // Detect whether the commit has a parent; root commits diff against the empty tree.
+  let hasParent = true
+  try {
+    await runGit(repoPath, ['rev-parse', '--verify', '--quiet', `${hash}^`])
+  } catch {
+    hasParent = false
+  }
+
+  const paths = file.oldPath ? [file.path, file.oldPath] : [file.path]
+  const args = hasParent
+    ? ['diff', '--no-color', '-M', `${hash}^`, hash, '--', ...paths]
+    : ['diff', '--no-color', '-M', EMPTY_TREE, hash, '--', ...paths]
+
+  const patch = await runGit(repoPath, args, [1])
+  return finalizeDiff({ ...base, patch })
+}
+
+export function forgetRepo(repoPath: string): void {
+  gitCache.delete(repoPath)
+}
