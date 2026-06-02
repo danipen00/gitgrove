@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { ChangedFile, Commit } from '@shared/types'
 import { Icon } from '../lib/icons'
 import { pluralize } from '../lib/format'
+import { Avatar } from './Avatar'
 import { FileTreeView } from './FileTreeView'
 import { Resizer } from './Resizer'
 
@@ -17,7 +18,15 @@ interface Props {
   onSelectFile: (path: string) => void
 }
 
-function parseRefs(refs: string): { name: string; isTag: boolean }[] {
+/** How many ref chips to show inline in the list before collapsing to "+N". */
+const MAX_LIST_REFS = 2
+
+interface Ref {
+  name: string
+  isTag: boolean
+}
+
+function parseRefs(refs: string): Ref[] {
   if (!refs) return []
   return refs
     .split(',')
@@ -31,6 +40,46 @@ function parseRefs(refs: string): { name: string; isTag: boolean }[] {
     })
 }
 
+function RefChip({ refItem }: { refItem: Ref }) {
+  return <span className={`ref-chip${refItem.isTag ? ' ref-chip--tag' : ''}`}>{refItem.name}</span>
+}
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const t = setTimeout(() => setCopied(false), 1200)
+    return () => clearTimeout(t)
+  }, [copied])
+  return (
+    <button
+      className={`copy-btn${copied ? ' is-copied' : ''}`}
+      title={copied ? 'Copied!' : label}
+      onClick={() => {
+        navigator.clipboard.writeText(value).then(() => setCopied(true))
+      }}
+    >
+      {copied ? <Icon.Check size={13} /> : <Icon.Copy size={13} />}
+    </button>
+  )
+}
+
+function DiffStat({ files }: { files: ChangedFile[] }) {
+  let insertions = 0
+  let deletions = 0
+  for (const f of files) {
+    insertions += f.insertions ?? 0
+    deletions += f.deletions ?? 0
+  }
+  if (insertions === 0 && deletions === 0) return null
+  return (
+    <span className="diff-stat">
+      <span className="diff-stat__add">+{insertions}</span>
+      <span className="diff-stat__del">−{deletions}</span>
+    </span>
+  )
+}
+
 export function HistoryView({
   commits,
   loading,
@@ -41,7 +90,7 @@ export function HistoryView({
   selectedFilePath,
   onSelectFile
 }: Props) {
-  const [detailHeight, setDetailHeight] = useState(300)
+  const [detailHeight, setDetailHeight] = useState(400)
 
   if (loading && commits.length === 0) {
     return (
@@ -63,11 +112,14 @@ export function HistoryView({
     )
   }
 
+  const detailRefs = selectedCommit ? parseRefs(selectedCommit.refs) : []
+
   return (
     <div className="history">
       <div className="commit-list">
         {commits.map((commit) => {
           const refs = parseRefs(commit.refs)
+          const overflow = refs.length - MAX_LIST_REFS
           const active = selectedCommit?.hash === commit.hash
           return (
             <button
@@ -75,26 +127,19 @@ export function HistoryView({
               className={`commit${active ? ' is-active' : ''}`}
               onClick={() => onSelectCommit(commit)}
             >
-              <div className="commit__rail">
-                <span className="commit__dot" />
-              </div>
+              <Avatar name={commit.authorName} email={commit.authorEmail} size={28} />
               <div className="commit__main">
                 <div className="commit__subject">{commit.subject}</div>
                 {refs.length > 0 && (
                   <div className="commit__refs">
-                    {refs.map((ref) => (
-                      <span
-                        key={ref.name}
-                        className={`ref-chip${ref.isTag ? ' ref-chip--tag' : ''}`}
-                      >
-                        {ref.name}
-                      </span>
+                    {refs.slice(0, MAX_LIST_REFS).map((ref) => (
+                      <RefChip key={ref.name} refItem={ref} />
                     ))}
+                    {overflow > 0 && <span className="ref-chip ref-chip--more">+{overflow}</span>}
                   </div>
                 )}
                 <div className="commit__meta">
-                  <span className="commit__hash">{commit.shortHash}</span>
-                  <span>{commit.authorName}</span>
+                  <span className="commit__author">{commit.authorName}</span>
                   <span>· {commit.relativeDate}</span>
                 </div>
               </div>
@@ -105,15 +150,43 @@ export function HistoryView({
 
       {selectedCommit && (
         <>
-          <Resizer orientation="y" onResize={(d) => setDetailHeight((h) => clamp(h - d, 150, 640))} />
+          <Resizer orientation="y" onResize={(d) => setDetailHeight((h) => clamp(h - d, 180, 640))} />
           <div className="commit-detail" style={{ height: detailHeight }}>
-            <div className="section-head">
+            <div className="commit-detail__head">
+              <Avatar name={selectedCommit.authorName} email={selectedCommit.authorEmail} size={34} />
+              <div className="commit-detail__head-main">
+                <div className="commit-detail__subject">{selectedCommit.subject}</div>
+                <div className="commit-detail__byline">
+                  <span className="commit-detail__author">{selectedCommit.authorName}</span>
+                  <span title={new Date(selectedCommit.date).toLocaleString()}>
+                    committed {selectedCommit.relativeDate}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {selectedCommit.body && (
+              <div className="commit-detail__body">{selectedCommit.body}</div>
+            )}
+
+            {detailRefs.length > 0 && (
+              <div className="commit__refs commit-detail__refs">
+                {detailRefs.map((ref) => (
+                  <RefChip key={ref.name} refItem={ref} />
+                ))}
+              </div>
+            )}
+
+            <div className="section-head commit-detail__bar">
               <span className="commit__hash">{selectedCommit.shortHash}</span>
-              <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--fg-muted)' }}>
+              <CopyButton value={selectedCommit.hash} label="Copy commit SHA" />
+              {!commitFilesLoading && <DiffStat files={commitFiles} />}
+              <span className="section-head__spacer" />
+              <span className="commit-detail__count">
                 {commitFilesLoading ? 'Loading…' : pluralize(commitFiles.length, 'file')}
               </span>
-              <span className="section-head__spacer" />
             </div>
+
             <div className="tree-wrap">
               {commitFilesLoading ? (
                 <div className="center-state">
