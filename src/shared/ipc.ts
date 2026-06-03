@@ -8,15 +8,17 @@ import type {
   ChangedFile,
   Commit,
   DiffPayload,
+  GitAvailability,
   LogOptions,
   RecentRepo,
-  RepoSummary,
+  RepoOpenResult,
   UpdateStatus
 } from './types'
 
 export const IPC = {
   pickRepo: 'repo:pick',
   openRepo: 'repo:open',
+  trustRepo: 'repo:trust',
   recentRepos: 'repo:recent',
   removeRecent: 'repo:recent:remove',
   status: 'repo:status',
@@ -26,7 +28,8 @@ export const IPC = {
   commitFiles: 'repo:commit:files',
   workingDiff: 'repo:diff:working',
   commitDiff: 'repo:diff:commit',
-  // app / updates
+  // environment / app / updates
+  checkGit: 'git:check',
   appInfo: 'app:info',
   checkForUpdates: 'update:check',
   installUpdate: 'update:install',
@@ -49,10 +52,12 @@ export const IPC = {
 export interface GitGroveApi {
   /** Host platform, resolved synchronously at preload so the UI can branch on it. */
   platform: NodeJS.Platform
-  /** Open the native folder picker; resolves null if cancelled or not a repo. */
-  pickRepo(): Promise<RepoSummary | null>
+  /** Open the native folder picker; resolves null if cancelled, else the outcome. */
+  pickRepo(): Promise<RepoOpenResult | null>
   /** Open a known path as a repository. */
-  openRepo(path: string): Promise<RepoSummary>
+  openRepo(path: string): Promise<RepoOpenResult>
+  /** Trust a folder git flagged as untrusted (persist a safe.directory exception), then open it. */
+  trustRepo(path: string): Promise<RepoOpenResult>
   recentRepos(): Promise<RecentRepo[]>
   removeRecent(path: string): Promise<RecentRepo[]>
   status(repoPath: string): Promise<ChangedFile[]>
@@ -62,6 +67,11 @@ export interface GitGroveApi {
   commitFiles(repoPath: string, hash: string): Promise<ChangedFile[]>
   workingDiff(repoPath: string, file: ChangedFile): Promise<DiffPayload>
   commitDiff(repoPath: string, hash: string, file: ChangedFile): Promise<DiffPayload>
+  /**
+   * Check whether git is available. Pass `force` to re-probe after the user has
+   * (e.g.) installed git, bypassing the cached result.
+   */
+  checkGit(force?: boolean): Promise<GitAvailability>
   /** Build/runtime info for the About dialog. */
   appInfo(): Promise<AppInfo>
   /** Ask the main process to check the update feed. `manual` drives "up to date" UI. */

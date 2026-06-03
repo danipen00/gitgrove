@@ -66,6 +66,15 @@ export interface RecentRepo extends RepoInfo {
   lastOpened: number
 }
 
+/**
+ * Outcome of trying to open a repo. Expected, recoverable cases are modelled as
+ * data (not thrown) so the renderer can react: `not-git` shows an error,
+ * `untrusted` (git "dubious ownership") prompts the user to trust the folder.
+ */
+export type RepoOpenResult =
+  | { ok: true; summary: RepoSummary }
+  | { ok: false; reason: 'not-git' | 'untrusted'; path: string }
+
 export interface LogOptions {
   /** Branch / ref to read history from. Defaults to the checked-out branch. */
   ref?: string
@@ -100,6 +109,21 @@ export interface DiffPayload {
 export interface AppError {
   message: string
   detail?: string
+}
+
+/**
+ * Whether a usable `git` executable was found, used to gate the UI: when git is
+ * missing the renderer shows a guided setup screen instead of letting the user
+ * hit cryptic failures on every repo action.
+ */
+export interface GitAvailability {
+  available: boolean
+  /** Resolved git version (e.g. `2.53.0`) when available. */
+  version?: string
+  /** Path / command used to invoke git (`'git'` when found on PATH). */
+  path?: string
+  /** Host platform, so the setup screen can show OS-specific install guidance. */
+  platform: NodeJS.Platform
 }
 
 /** Static information about the running build, surfaced in the About dialog. */

@@ -143,5 +143,25 @@ export const Icon = {
       <rect x="3" y="4" width="18" height="12" rx="1.6" />
       <path d="M8 20h8M12 16v4" />
     </Svg>
+  ),
+  Download: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M12 3v12" />
+      <path d="m7 11 5 5 5-5" />
+      <path d="M5 21h14" />
+    </Svg>
+  ),
+  Terminal: (p: IconProps) => (
+    <Svg {...p}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="m7 9 3 3-3 3M13 15h4" />
+    </Svg>
+  ),
+  Alert: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M12 3 2.7 19.5a1 1 0 0 0 .87 1.5h16.86a1 1 0 0 0 .87-1.5z" />
+      <path d="M12 9.5v4.5" />
+      <path d="M12 17.5h.01" />
+    </Svg>
   )
 }

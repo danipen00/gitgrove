@@ -16,6 +16,7 @@ import type {
   RepoSummary
 } from '@shared/types'
 import simpleGit, { type SimpleGit } from 'simple-git'
+import { locateGit } from './git-bin'
 
 const execFileAsync = promisify(execFile)
 
@@ -32,12 +33,36 @@ const MAX_PATCH_BYTES = 3 * 1024 * 1024
  */
 const MAX_CONTENTS_BYTES = 3 * 1024 * 1024
 
+/**
+ * Raised when git refuses a repo because it can't verify directory ownership
+ * ("detected dubious ownership") — a false positive on Parallels shared folders,
+ * network drives, and other filesystems that don't record ownership (e.g.
+ * //Mac/Home/...). Carries the repo path (for display) and the exact
+ * `safe.directory` value git recommends, so the app can offer to trust it after
+ * the user confirms (see {@link addSafeDirectory}).
+ */
+export class DubiousOwnershipError extends Error {
+  readonly path: string
+  readonly safeValue: string
+  constructor(stderr: string) {
+    super('Git repository has dubious ownership.')
+    this.name = 'DubiousOwnershipError'
+    // "...dubious ownership in repository at '//Mac/Home/.../oniguruma'"
+    this.path = stderr.match(/repository at '([^']+)'/)?.[1] ?? ''
+    // git prints the exact remedy: `... safe.directory '<value>'`
+    this.safeValue = stderr.match(/safe\.directory '([^']+)'/)?.[1] ?? this.path
+  }
+}
+
 const gitCache = new Map<string, SimpleGit>()
 
-function getGit(repoPath: string): SimpleGit {
+async function getGit(repoPath: string): Promise<SimpleGit> {
   let git = gitCache.get(repoPath)
   if (!git) {
-    git = simpleGit({ baseDir: repoPath, maxConcurrentProcesses: 6 })
+    // Pin the binary so simple-git uses the same git we resolved for execFile —
+    // important when git lives off PATH (e.g. bundled in GitHub Desktop).
+    const binary = await locateGit()
+    git = simpleGit({ baseDir: repoPath, binary, maxConcurrentProcesses: 6 })
     gitCache.set(repoPath, git)
   }
   return git
@@ -53,8 +78,9 @@ async function runGit(
   args: string[],
   tolerateExitCodes: number[] = []
 ): Promise<string> {
+  const bin = await locateGit()
   try {
-    const { stdout } = await execFileAsync('git', args, {
+    const { stdout } = await execFileAsync(bin, args, {
       cwd: repoPath,
       maxBuffer: 256 * 1024 * 1024,
       windowsHide: true
@@ -65,13 +91,31 @@ async function runGit(
     if (typeof e.code === 'number' && tolerateExitCodes.includes(e.code)) {
       return e.stdout ?? ''
     }
-    throw new Error(e.stderr?.trim() || e.message || 'git command failed')
+    const stderr = e.stderr ?? ''
+    // Surface the ownership case as a distinct, recoverable error so the app can
+    // offer to trust the folder rather than reporting "not a git repository".
+    if (/dubious ownership/i.test(stderr)) throw new DubiousOwnershipError(stderr)
+    throw new Error(stderr.trim() || e.message || 'git command failed')
   }
+}
+
+/**
+ * Persist a global `safe.directory` exception so git trusts this repo from now
+ * on (in GitGrove, the terminal, and other git tools alike) — the same thing
+ * GitHub Desktop's "add an exception for this directory" does. Only call this
+ * after the user has explicitly chosen to trust the folder.
+ */
+export async function addSafeDirectory(value: string): Promise<void> {
+  const bin = await locateGit()
+  await execFileAsync(bin, ['config', '--global', '--add', 'safe.directory', value], {
+    windowsHide: true
+  })
 }
 
 export async function isGitRepo(repoPath: string): Promise<boolean> {
   try {
-    return await getGit(repoPath).checkIsRepo()
+    const git = await getGit(repoPath)
+    return await git.checkIsRepo()
   } catch {
     return false
   }
@@ -83,7 +127,10 @@ export async function resolveRepoRoot(somePath: string): Promise<string | null> 
     const out = await runGit(somePath, ['rev-parse', '--show-toplevel'])
     const root = out.trim()
     return root || null
-  } catch {
+  } catch (e) {
+    // A trust problem is recoverable (the caller can offer to trust the folder),
+    // so let it through; any other failure just means "not a repo here".
+    if (e instanceof DubiousOwnershipError) throw e
     return null
   }
 }
@@ -107,7 +154,7 @@ function mapStatusCode(index: string, working: string): FileStatus {
 }
 
 export async function getBranches(repoPath: string): Promise<BranchInfo> {
-  const git = getGit(repoPath)
+  const git = await getGit(repoPath)
   // Enumerating local and remote branches are independent git invocations;
   // run them together so a repo with many remote refs (e.g. unity) isn't
   // billed for both serially.
@@ -162,7 +209,7 @@ export async function getQuickSummary(repoPath: string): Promise<RepoSummary> {
 }
 
 export async function getStatus(repoPath: string): Promise<ChangedFile[]> {
-  const git = getGit(repoPath)
+  const git = await getGit(repoPath)
   const status = await git.status()
 
   // Map "to" path -> "from" path for renames so the tree can show both.
@@ -186,7 +233,7 @@ export async function getStatus(repoPath: string): Promise<ChangedFile[]> {
 }
 
 export async function getSummary(repoPath: string): Promise<RepoSummary> {
-  const git = getGit(repoPath)
+  const git = await getGit(repoPath)
   const [branch, status] = await Promise.all([getBranches(repoPath), git.status()])
   return {
     path: repoPath,
@@ -199,7 +246,8 @@ export async function getSummary(repoPath: string): Promise<RepoSummary> {
 }
 
 export async function checkout(repoPath: string, branch: string): Promise<BranchInfo> {
-  await getGit(repoPath).checkout(branch)
+  const git = await getGit(repoPath)
+  await git.checkout(branch)
   gitCache.delete(repoPath)
   return getBranches(repoPath)
 }
