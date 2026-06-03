@@ -248,6 +248,47 @@ button {
   -webkit-app-region: no-drag;
 }
 
+/* Windows/Linux: the toolbar doubles as the title bar (no native frame). Pad the
+   left edge where the macOS traffic-light drag-pad would sit, and let the caption
+   buttons run flush to the right edge. */
+:root[data-platform='win32'] .toolbar,
+:root[data-platform='linux'] .toolbar {
+  padding-left: 10px;
+  padding-right: 0;
+}
+
+/* ── Window controls (custom caption buttons; Windows/Linux) ──────────────── */
+.winctl {
+  display: flex;
+  align-self: stretch;
+  margin-left: 4px;
+}
+.winctl__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  transition: background 0.12s, color 0.12s;
+}
+.winctl__btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.winctl__btn:active {
+  background: var(--bg-active);
+}
+.winctl__btn--close:hover {
+  background: #e81123;
+  color: #fff;
+}
+.winctl__btn--close:active {
+  background: #c50f1f;
+  color: #fff;
+}
+
 .toolbar__brand {
   display: flex;
   align-items: center;
