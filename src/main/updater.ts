@@ -16,6 +16,8 @@ import electronUpdater, { type UpdateInfo } from 'electron-updater'
 import { IPC } from '@shared/ipc'
 import type { UpdateStatus } from '@shared/types'
 
+import { describeUpdateError } from './update-error'
+
 // electron-updater is CommonJS; under our ESM main bundle the instance lives on
 // the default export.
 const { autoUpdater } = electronUpdater
@@ -62,9 +64,7 @@ export function initAutoUpdater(getWindow: () => BrowserWindow | null): void {
   autoUpdater.on('update-downloaded', (info) =>
     push({ state: 'downloaded', newVersion: info.version, notes: notesToText(info.releaseNotes) })
   )
-  autoUpdater.on('error', (err) =>
-    push({ state: 'error', error: err == null ? 'unknown error' : (err.message ?? String(err)) })
-  )
+  autoUpdater.on('error', (err) => push({ state: 'error', error: describeUpdateError(err) }))
 
   // One quiet check shortly after startup so we don't compete with first paint.
   setTimeout(() => void checkForUpdates(getWindow, false), 4000)
@@ -96,7 +96,7 @@ export async function checkForUpdates(
       state: 'error',
       version,
       manual,
-      error: err instanceof Error ? err.message : String(err)
+      error: describeUpdateError(err)
     } satisfies UpdateStatus)
   }
 }
