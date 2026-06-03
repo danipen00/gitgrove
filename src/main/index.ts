@@ -272,6 +272,20 @@ function registerIpc(): void {
   ipcMain.handle(IPC.windowClose, () => mainWindow?.close())
   ipcMain.handle(IPC.windowIsMaximized, () => mainWindow?.isMaximized() ?? false)
 
+  // Custom always-visible menu bar (Windows/Linux): the renderer draws the
+  // top-level labels and asks us to pop the corresponding native submenu, so all
+  // the existing menu actions/roles work without being reimplemented in the UI.
+  ipcMain.handle(IPC.menuLabels, () => {
+    const menu = Menu.getApplicationMenu()
+    return menu ? menu.items.filter((i) => i.submenu).map((i) => i.label) : []
+  })
+  ipcMain.handle(IPC.menuPopup, (_e, label: string, x: number, y: number) => {
+    const item = Menu.getApplicationMenu()?.items.find((i) => i.label === label)
+    if (item?.submenu && mainWindow) {
+      item.submenu.popup({ window: mainWindow, x: Math.round(x), y: Math.round(y) })
+    }
+  })
+
   ipcMain.handle(IPC.appInfo, () => appInfo())
   ipcMain.handle(IPC.checkForUpdates, (_e, manual: boolean) =>
     checkForUpdates(() => mainWindow, manual)

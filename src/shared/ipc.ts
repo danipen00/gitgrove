@@ -35,6 +35,9 @@ export const IPC = {
   windowMaximizeToggle: 'window:maximize-toggle',
   windowClose: 'window:close',
   windowIsMaximized: 'window:is-maximized',
+  // custom menu bar (Windows/Linux title bar)
+  menuLabels: 'menu:labels',
+  menuPopup: 'menu:popup',
   // main -> renderer pushes
   repoChanged: 'repo:changed',
   menuOpenRepo: 'menu:open-repo',
@@ -73,6 +76,10 @@ export interface GitGroveApi {
   windowClose(): Promise<void>
   /** Current maximize state, for picking the maximize vs. restore glyph. */
   windowIsMaximized(): Promise<boolean>
+  /** Top-level application-menu labels, for the custom always-visible menu bar. */
+  menuLabels(): Promise<string[]>
+  /** Open a top-level menu's native submenu anchored at window coords (x, y). */
+  menuPopup(label: string, x: number, y: number): Promise<void>
   /** Subscribe to maximize/restore changes. Returns an unsubscribe fn. */
   onWindowMaximized(handler: (maximized: boolean) => void): () => void
   /** Subscribe to filesystem-driven repo change notifications. Returns an unsubscribe fn. */

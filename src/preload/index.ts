@@ -23,6 +23,8 @@ const api: GitGroveApi = {
   windowMaximizeToggle: () => ipcRenderer.invoke(IPC.windowMaximizeToggle),
   windowClose: () => ipcRenderer.invoke(IPC.windowClose),
   windowIsMaximized: () => ipcRenderer.invoke(IPC.windowIsMaximized),
+  menuLabels: () => ipcRenderer.invoke(IPC.menuLabels),
+  menuPopup: (label, x, y) => ipcRenderer.invoke(IPC.menuPopup, label, x, y),
   onWindowMaximized: (handler) => {
     const listener = (_e: unknown, maximized: boolean) => handler(maximized)
     ipcRenderer.on(IPC.windowMaximized, listener)

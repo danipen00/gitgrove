@@ -19,18 +19,16 @@ function Maximize({ maximized }: { maximized: boolean }) {
     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
       {maximized ? (
         // Restore: two equal squares offset diagonally, matching the native
-        // Windows glyph. The back square is drawn as an L (top + right edges)
-        // with a rounded top-right corner since the front square covers the rest.
+        // Windows glyph. The back square is drawn as an L (top + right edges);
+        // sharp corners like the native (Segoe Fluent) glyph.
         <>
-          <rect x="1.5" y="2.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1" />
-          <path
-            d="M3.5 2.5V1.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-1"
-            stroke="currentColor"
-            strokeWidth="1"
-          />
+          <rect x="1" y="3" width="6" height="6" stroke="currentColor" strokeWidth="1" />
+          <path d="M3 3V1h6v6H7" stroke="currentColor" strokeWidth="1" />
         </>
       ) : (
-        <rect x="1.5" y="1.5" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1" />
+        // Maximize: a single sharp-cornered square (no border radius), matching
+        // the native glyph.
+        <rect x="1" y="1" width="8" height="8" stroke="currentColor" strokeWidth="1" />
       )}
     </svg>
   )

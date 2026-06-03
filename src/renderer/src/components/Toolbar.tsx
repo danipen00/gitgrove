@@ -3,6 +3,7 @@ import { Icon } from '../lib/icons'
 import { isMac } from '../lib/platform'
 import type { ResolvedTheme, ThemePref } from '../lib/theme'
 import { BranchSwitcher } from './BranchSwitcher'
+import { MenuBar } from './MenuBar'
 import { RepoSwitcher } from './RepoSwitcher'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { WindowControls } from './WindowControls'
@@ -42,6 +43,11 @@ export function Toolbar({
     <header className="toolbar">
       {/* leaves room for the macOS traffic lights in the draggable region */}
       {isMac && <div className="toolbar__drag-pad" />}
+      {/* Windows/Linux: the native menu bar is hidden behind the custom title
+          bar, so surface it here at the far left, always visible. macOS keeps
+          its system menu. */}
+      {!isMac && <MenuBar />}
+      {!isMac && <div className="toolbar__sep" />}
       <button className="toolbar__brand" title="About GitGrove" onClick={onAbout}>
         <Icon.Tree size={18} />
         GitGrove
