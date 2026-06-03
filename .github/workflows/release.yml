@@ -1,0 +1,61 @@
+name: Release
+
+# Cutting a release: bump "version" in package.json, commit, then push a
+# matching tag, e.g.
+#   git tag v1.0.1 && git push origin v1.0.1
+# That tag triggers this workflow, which builds the installers on each OS and
+# uploads them — plus the latest*.yml auto-update feeds electron-updater reads —
+# to a GitHub Release. electron-builder publishes the release as a DRAFT, so you
+# get to write release notes (they show in the in-app update banner) and then
+# click "Publish release" to make the update go live.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# electron-builder uploads artifacts to the Release using the built-in
+# GITHUB_TOKEN, which needs write access to repo contents/releases.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      # Don't cancel the other OS builds if one fails; a partial release can be
+      # completed by re-running the failed leg.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest # builds the macOS dmg + zip (arm64 & x64)
+          - os: windows-latest # builds the Windows NSIS installer
+          - os: ubuntu-latest # builds the Linux AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      # `bun run release` = electron-vite build && electron-builder --publish
+      # always. With no platform flag electron-builder builds for the host OS,
+      # so each matrix leg produces just its own platform's artifacts.
+      - name: Build and publish
+        run: bun run release
+        env:
+          # electron-builder's GitHub publisher authenticates with this.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # macOS code signing + notarization. These secrets are optional: when
+          # unset they're empty and electron-builder skips signing (the app
+          # still builds, but macOS won't silently auto-update). Add them later
+          # to enable signed, notarized, self-updating macOS builds — no
+          # workflow change needed.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # Don't probe the runner keychain for a signing identity; we sign only
+          # when CSC_LINK above provides an explicit cert. Avoids flaky / noisy
+          # auto-discovery on the unsigned path.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
