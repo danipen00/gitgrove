@@ -124,7 +124,20 @@ async function downloadForManualInstall(
     } satisfies UpdateStatus)
 
   try {
-    const zipName = info.files?.[0]?.url ?? `GitGrove-${info.version}-macOS-universal.zip`
+    // latest-mac.yml lists every arch's artifacts and the update-available
+    // event hands us that whole list unfiltered — electron-updater only narrows
+    // it by arch inside the Squirrel download path we bypass here, so files[0]
+    // is just whatever built first (x64). Picking it blindly would hand Apple
+    // Silicon users the Intel build, which then runs the entire app under
+    // Rosetta (slow). Select the artifact matching the host arch instead. Our
+    // names carry an explicit token (…-macOS-arm64.* / …-macOS-x64.*), and
+    // runningUnderARM64Translation lets an x64 build already stuck under Rosetta
+    // self-heal to native arm64 on its next update.
+    const hostArch = app.runningUnderARM64Translation ? 'arm64' : process.arch
+    const zipName =
+      info.files?.find((f) => f.url.includes(`-macOS-${hostArch}.zip`))?.url ??
+      info.files?.[0]?.url ??
+      `GitGrove-${info.version}-macOS-${hostArch}.zip`
     const dmgName = zipName.replace(/\.zip$/i, '.dmg')
     const dest = path.join(app.getPath('downloads'), dmgName)
     const notes = notesToText(info.releaseNotes)
