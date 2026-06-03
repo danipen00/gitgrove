@@ -1,6 +1,8 @@
-// Renders build/icon.svg to build/icon.png at 1024x1024 using the Playwright
-// Chromium that already ships as a devDependency. electron-builder turns that
-// single PNG into the platform .icns / .ico at build time.
+// Renders the source icon (src/renderer/src/assets/icon.svg — the single
+// hand-edited source of truth, also imported by the About dialog) to
+// build/icon.png at 1024x1024 using the Playwright Chromium that already ships
+// as a devDependency. electron-builder turns that single PNG into the platform
+// .icns / .ico at build time. build/icon.png is the only generated artifact.
 //
 //   bun run scripts/make-icon.mjs
 //
@@ -10,8 +12,9 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 
 const here = dirname(fileURLToPath(import.meta.url))
+const sourceSvg = resolve(here, '../src/renderer/src/assets/icon.svg')
 const buildDir = resolve(here, '../build')
-const svg = readFileSync(resolve(buildDir, 'icon.svg'), 'utf8')
+const svg = readFileSync(sourceSvg, 'utf8')
 const SIZE = 1024
 
 const browser = await chromium.launch()
