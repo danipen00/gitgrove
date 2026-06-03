@@ -37,11 +37,11 @@
     <g fill="#ffffff">
       <g transform="translate(396 322) rotate(-13)">
       <path fill="#ffffff" d="M0 0 C-28 -12 -48 -42 -48 -78 C-48 -112 -16 -150 0 -156 C16 -150 48 -112 48 -78 C48 -42 28 -12 0 0 Z"/>
-        <path d="M0 -24 V-132" stroke="url(#bg)" stroke-width="11" stroke-linecap="round"/>
+        <path d="M0 -28 V-128" stroke="url(#bg)" stroke-width="11" stroke-linecap="round"/>
       </g>
       <g transform="translate(652 372) rotate(34)">
-      <path fill="#ffffff" d="M0 0 C-28 -12 -48 -42 -48 -78 C-48 -112 -16 -150 0 -156 C16 -150 48 -112 48 -78 C48 -42 28 -12 0 0 Z"/>
-        <path d="M0 -32 V-134" stroke="url(#bg)" stroke-width="10" stroke-linecap="round"/>
+        <path fill="#ffffff" d="M0 0 C-28 -12 -48 -42 -48 -78 C-48 -112 -16 -150 0 -156 C16 -150 48 -112 48 -78 C48 -42 28 -12 0 0 Z"/>
+        <path d="M0 -32 V-126" stroke="url(#bg)" stroke-width="10" stroke-linecap="round"/>
       </g>
     </g>
   </g>
