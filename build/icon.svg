@@ -36,12 +36,12 @@
     <!-- leaves sprouting at the stem tips -->
     <g fill="#ffffff">
       <g transform="translate(396 322) rotate(-13)">
-        <path d="M0 0 C-46 -36 -50 -108 0 -156 C50 -108 46 -36 0 0 Z"/>
-        <path d="M0 -14 V-132" stroke="url(#bg)" stroke-width="11" stroke-linecap="round"/>
+      <path fill="#ffffff" d="M0 0 C-28 -12 -48 -42 -48 -78 C-48 -112 -16 -150 0 -156 C16 -150 48 -112 48 -78 C48 -42 28 -12 0 0 Z"/>
+        <path d="M0 -24 V-132" stroke="url(#bg)" stroke-width="11" stroke-linecap="round"/>
       </g>
       <g transform="translate(652 372) rotate(34)">
-        <path d="M0 0 C-40 -32 -44 -96 0 -138 C44 -96 40 -32 0 0 Z"/>
-        <path d="M0 -12 V-116" stroke="url(#bg)" stroke-width="10" stroke-linecap="round"/>
+      <path fill="#ffffff" d="M0 0 C-28 -12 -48 -42 -48 -78 C-48 -112 -16 -150 0 -156 C16 -150 48 -112 48 -78 C48 -42 28 -12 0 0 Z"/>
+        <path d="M0 -32 V-134" stroke="url(#bg)" stroke-width="10" stroke-linecap="round"/>
       </g>
     </g>
   </g>
