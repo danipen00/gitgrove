@@ -36,6 +36,35 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
+      # macOS code signing is optional. If the CSC_LINK secret is set we export
+      # the full signing + notarization env so electron-builder produces a
+      # signed, notarized, silently self-updating build. If it isn't, we disable
+      # signing cleanly (passing an *empty* CSC_LINK makes electron-builder try
+      # to read it as a cert path and fail). Add the secrets later to switch on
+      # signing — no edit to this workflow needed.
+      - name: Configure macOS code signing
+        if: runner.os == 'macOS'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$CSC_LINK" ]; then
+            {
+              echo "CSC_LINK=$CSC_LINK"
+              echo "CSC_KEY_PASSWORD=$CSC_KEY_PASSWORD"
+              echo "APPLE_ID=$APPLE_ID"
+              echo "APPLE_APP_SPECIFIC_PASSWORD=$APPLE_APP_SPECIFIC_PASSWORD"
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            } >> "$GITHUB_ENV"
+            echo "macOS code signing: ENABLED"
+          else
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "macOS code signing: disabled (no CSC_LINK secret set)"
+          fi
+
       # `bun run release` = electron-vite build && electron-builder --publish
       # always. With no platform flag electron-builder builds for the host OS,
       # so each matrix leg produces just its own platform's artifacts.
@@ -44,18 +73,3 @@ jobs:
         env:
           # electron-builder's GitHub publisher authenticates with this.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-          # macOS code signing + notarization. These secrets are optional: when
-          # unset they're empty and electron-builder skips signing (the app
-          # still builds, but macOS won't silently auto-update). Add them later
-          # to enable signed, notarized, self-updating macOS builds — no
-          # workflow change needed.
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          # Don't probe the runner keychain for a signing identity; we sign only
-          # when CSC_LINK above provides an explicit cert. Avoids flaky / noisy
-          # auto-discovery on the unsigned path.
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
