@@ -1,10 +1,24 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  shell,
+  type MenuItemConstructorOptions
+} from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // The main bundle is emitted as ESM (package.json "type": "module"), where
 // __dirname is not defined — reconstruct it from the module URL.
 const moduleDir = dirname(fileURLToPath(import.meta.url))
+
+// In a packaged build the app's icon comes from the .app/.exe bundle. While
+// developing we run inside the generic Electron binary, so point the dock /
+// window icon at build/icon.png (sits two levels up from out/main) ourselves.
+const devIconPath = join(moduleDir, '../../build/icon.png')
 
 import { IPC } from '@shared/ipc'
 import type { AppInfo, ChangedFile, LogOptions } from '@shared/types'
@@ -54,6 +68,9 @@ function createWindow(): void {
     minHeight: 560,
     show: false,
     backgroundColor: '#0c0d10',
+    // Window icon is used on Windows/Linux (ignored on macOS); only needed in
+    // dev — packaged builds carry the icon in the executable.
+    ...(isDev ? { icon: devIconPath } : {}),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
@@ -227,6 +244,13 @@ app.whenReady().then(() => {
     copyright: 'Copyright © 2026 GitGrove',
     website: REPO_URL
   })
+
+  // macOS ignores the BrowserWindow icon and shows the bundle icon in the dock;
+  // in dev that's the generic Electron icon, so override it explicitly.
+  if (isDev && process.platform === 'darwin' && app.dock) {
+    const img = nativeImage.createFromPath(devIconPath)
+    if (!img.isEmpty()) app.dock.setIcon(img)
+  }
 
   registerIpc()
   buildMenu()
