@@ -40,13 +40,18 @@ mac:
   hardenedRuntime: true
   gatekeeperAssess: false
   artifactName: ${productName}-${version}-macOS-${arch}.${ext}
-  # One universal binary runs on both Intel and Apple Silicon, so we ship a
-  # single dmg/zip per release instead of one per architecture.
+  # Ship a separate dmg/zip per architecture instead of one universal binary:
+  # only the native slices (Electron, V8, *.node) differ between arches, so two
+  # per-arch installers (~110 MB each) roughly halve each user's download versus
+  # the ~200 MB universal build. electron-builder writes a single latest-mac.yml
+  # listing both arches' zips (the arch suffix is Linux-only), and electron-updater's
+  # MacUpdater filters that list at runtime by the "arm64" token in the filename,
+  # so auto-update keeps working as long as both arches build in one invocation.
   target:
     - target: dmg
-      arch: [universal]
+      arch: [x64, arm64]
     - target: zip # zip target is required by electron-updater on macOS
-      arch: [universal]
+      arch: [x64, arm64]
 dmg:
   contents:
     - x: 130
