@@ -1,15 +1,15 @@
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   app,
   BrowserWindow,
   dialog,
   ipcMain,
   Menu,
+  type MenuItemConstructorOptions,
   nativeImage,
-  shell,
-  type MenuItemConstructorOptions
+  shell
 } from 'electron'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 // The main bundle is emitted as ESM (package.json "type": "module"), where
 // __dirname is not defined — reconstruct it from the module URL.
@@ -34,8 +34,8 @@ import {
   resolveRepoRoot
 } from './git'
 import { getRecentRepos, rememberRepo, removeRecentRepo } from './store'
-import { RepoWatcher } from './watcher'
 import { checkForUpdates, initAutoUpdater, quitAndInstall } from './updater'
+import { RepoWatcher } from './watcher'
 
 const isDev = !app.isPackaged
 const REPO_URL = 'https://github.com/danipen/gitgrove'
@@ -221,7 +221,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.branches, (_e, repoPath: string) => getBranches(repoPath))
   ipcMain.handle(IPC.checkout, (_e, repoPath: string, branch: string) => checkout(repoPath, branch))
   ipcMain.handle(IPC.log, (_e, repoPath: string, options?: LogOptions) => getLog(repoPath, options))
-  ipcMain.handle(IPC.commitFiles, (_e, repoPath: string, hash: string) => getCommitFiles(repoPath, hash))
+  ipcMain.handle(IPC.commitFiles, (_e, repoPath: string, hash: string) =>
+    getCommitFiles(repoPath, hash)
+  )
   ipcMain.handle(IPC.workingDiff, (_e, repoPath: string, file: ChangedFile) =>
     getWorkingDiff(repoPath, file)
   )

@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
-
 import type { ChangedFile, Commit } from '@shared/types'
-import { Icon } from '../lib/icons'
+import { useEffect, useRef, useState } from 'react'
 import { parseRefs, pluralize } from '../lib/format'
+import { Icon } from '../lib/icons'
 import { Avatar } from './Avatar'
 import { RefChip } from './CommitSummary'
 import { FileTreeView } from './FileTreeView'
@@ -41,6 +40,7 @@ export function HistoryView({
   // back into view (block:'nearest' leaves already-visible rows untouched).
   const activeRef = useRef<HTMLButtonElement>(null)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these are intentional triggers; the body only reads a ref.
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest' })
   }, [selectedCommit?.hash, filesHeight])

@@ -1,7 +1,6 @@
+import type { BranchInfo } from '@shared/types'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-
-import type { BranchInfo } from '@shared/types'
 import { Icon } from '../lib/icons'
 import { Popover } from './Popover'
 
@@ -82,6 +81,7 @@ export function BranchSwitcher({ branch, loading = false, busy, onCheckout }: Pr
   }, [listEl])
 
   // Reset scroll position when the result set changes or the popover opens.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: query/open are intentional triggers; the body only calls a setter.
   useEffect(() => {
     setScrollTop(0)
   }, [query, open])
@@ -123,7 +123,11 @@ export function BranchSwitcher({ branch, loading = false, busy, onCheckout }: Pr
     window.addEventListener('mouseup', onUp)
   }
 
-  const label = branch ? (branch.detached ? `detached @ ${branch.current.slice(0, 7)}` : branch.current) : '—'
+  const label = branch
+    ? branch.detached
+      ? `detached @ ${branch.current.slice(0, 7)}`
+      : branch.current
+    : '—'
 
   const select = (name: string) => {
     setOpen(false)

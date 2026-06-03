@@ -1,5 +1,5 @@
-import { createRoot } from 'react-dom/client'
 import { preloadHighlighter } from '@pierre/diffs'
+import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
 import { applyInitialTheme } from './lib/theme'

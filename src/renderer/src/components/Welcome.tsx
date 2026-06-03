@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
-
 import type { RecentRepo } from '@shared/types'
-import { Icon } from '../lib/icons'
+import { useEffect, useState } from 'react'
 import { prettyPath } from '../lib/format'
+import { Icon } from '../lib/icons'
 
 interface Props {
   onPickRepo: () => void

@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
-
 import type { RecentRepo, RepoSummary } from '@shared/types'
-import { Icon } from '../lib/icons'
+import { useEffect, useRef, useState } from 'react'
 import { prettyPath } from '../lib/format'
+import { Icon } from '../lib/icons'
 import { Popover } from './Popover'
 
 interface Props {

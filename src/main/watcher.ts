@@ -2,7 +2,7 @@
 // edits) and notifies the renderer with a debounced "repo changed" event so the
 // UI can refresh status/history without a manual reload.
 
-import { watch, type FSWatcher } from 'node:fs'
+import { type FSWatcher, watch } from 'node:fs'
 import { join, sep } from 'node:path'
 
 type ChangeHandler = (repoPath: string) => void

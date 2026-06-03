@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react'
 import { FileTree, useFileTree } from '@pierre/trees/react'
-
 import type { ChangedFile, FileStatus } from '@shared/types'
+import { useEffect, useMemo, useRef } from 'react'
 
 // @pierre/trees understands this subset of git statuses.
 type TreeGitStatus = 'added' | 'deleted' | 'ignored' | 'modified' | 'renamed' | 'untracked'
@@ -18,8 +17,6 @@ function toTreeStatus(status: FileStatus): TreeGitStatus {
       return 'untracked'
     case 'ignored':
       return 'ignored'
-    case 'conflicted':
-    case 'modified':
     default:
       return 'modified'
   }
@@ -54,7 +51,11 @@ export function FileTreeView({ files, selectedPath, onSelectFile }: Props) {
   // degrades gracefully no matter where it came from.
   const uniqueFiles = useMemo(() => {
     const seen = new Set<string>()
-    return files.filter((f) => (seen.has(f.path) ? false : (seen.add(f.path), true)))
+    return files.filter((f) => {
+      if (seen.has(f.path)) return false
+      seen.add(f.path)
+      return true
+    })
   }, [files])
   const paths = useMemo(() => uniqueFiles.map((f) => f.path), [uniqueFiles])
   const gitStatus = useMemo(

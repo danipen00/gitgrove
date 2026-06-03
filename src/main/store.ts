@@ -1,11 +1,10 @@
 // Tiny JSON-file store for "recently opened" repositories, kept in the app's
 // userData directory so it survives restarts.
 
-import { app } from 'electron'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-
 import type { RecentRepo, RepoInfo } from '@shared/types'
+import { app } from 'electron'
 
 const MAX_RECENT = 12
 
@@ -42,7 +41,10 @@ export function getRecentRepos(): RecentRepo[] {
 
 export function rememberRepo(repo: RepoInfo): RecentRepo[] {
   const existing = read().filter((r) => r.path !== repo.path)
-  const updated: RecentRepo[] = [{ ...repo, lastOpened: Date.now() }, ...existing].slice(0, MAX_RECENT)
+  const updated: RecentRepo[] = [{ ...repo, lastOpened: Date.now() }, ...existing].slice(
+    0,
+    MAX_RECENT
+  )
   write(updated)
   return getRecentRepos()
 }

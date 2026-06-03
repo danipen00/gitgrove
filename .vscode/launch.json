@@ -31,10 +31,7 @@
       "autoAttachChildProcesses": true,
       "sourceMaps": true,
       "outFiles": ["${workspaceFolder}/out/**/*.js"],
-      "resolveSourceMapLocations": [
-        "${workspaceFolder}/**",
-        "!**/node_modules/**"
-      ],
+      "resolveSourceMapLocations": ["${workspaceFolder}/**", "!**/node_modules/**"],
       "presentation": { "order": 2 }
     },
     {
@@ -44,10 +41,7 @@
       "port": 9222,
       "timeout": 60000,
       "webRoot": "${workspaceFolder}/src/renderer",
-      "resolveSourceMapLocations": [
-        "${workspaceFolder}/**",
-        "!**/node_modules/**"
-      ],
+      "resolveSourceMapLocations": ["${workspaceFolder}/**", "!**/node_modules/**"],
       "presentation": { "order": 3 }
     }
   ]

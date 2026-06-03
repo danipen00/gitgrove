@@ -1,7 +1,6 @@
+import type { AppInfo, UpdateStatus } from '@shared/types'
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
-
-import type { AppInfo, UpdateStatus } from '@shared/types'
 import iconUrl from '../assets/icon.svg'
 import { Icon } from '../lib/icons'
 
@@ -14,7 +13,10 @@ interface Props {
 }
 
 /** Human-readable line describing the current update check, shown under the version. */
-function updateLine(info: AppInfo, update: UpdateStatus | null): { text: string; tone: 'muted' | 'accent' | 'error' } {
+function updateLine(
+  info: AppInfo,
+  update: UpdateStatus | null
+): { text: string; tone: 'muted' | 'accent' | 'error' } {
   if (info.dev) return { text: 'Updates are disabled in development builds.', tone: 'muted' }
   if (!update) return { text: `Version ${info.version}`, tone: 'muted' }
   switch (update.state) {
@@ -31,7 +33,10 @@ function updateLine(info: AppInfo, update: UpdateStatus | null): { text: string;
     case 'dev':
       return { text: 'Updates are disabled in development builds.', tone: 'muted' }
     case 'error':
-      return { text: `Couldn't check for updates: ${update.error ?? 'unknown error'}`, tone: 'error' }
+      return {
+        text: `Couldn't check for updates: ${update.error ?? 'unknown error'}`,
+        tone: 'error'
+      }
     default:
       return { text: `Version ${info.version}`, tone: 'muted' }
   }
@@ -54,7 +59,12 @@ export function AboutDialog({ info, update, onClose, onCheckForUpdates, onInstal
 
   return createPortal(
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal about" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="modal about"
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <button className="modal__close" title="Close" onClick={onClose}>
           <Icon.Close size={15} />
         </button>
@@ -84,7 +94,11 @@ export function AboutDialog({ info, update, onClose, onCheckForUpdates, onInstal
               Restart & Install
             </button>
           ) : (
-            <button className="btn-ghost btn-ghost--sm" disabled={checking || info.dev} onClick={onCheckForUpdates}>
+            <button
+              className="btn-ghost btn-ghost--sm"
+              disabled={checking || info.dev}
+              onClick={onCheckForUpdates}
+            >
               <Icon.Refresh size={14} /> Check for Updates
             </button>
           )}

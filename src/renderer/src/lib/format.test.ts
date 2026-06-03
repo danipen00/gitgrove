@@ -1,14 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-
-import {
-  parseRefs,
-  pluralize,
-  prettyPath,
-  splitPath,
-  statusLabel,
-  statusLetter
-} from './format'
 import type { FileStatus } from '@shared/types'
+import { parseRefs, pluralize, prettyPath, splitPath, statusLabel, statusLetter } from './format'
 
 describe('splitPath', () => {
   it('splits a nested path into dir prefix and basename', () => {

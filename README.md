@@ -37,7 +37,23 @@ via `simple-git` and raw `git` for precise patch output.
 bun install        # install dependencies
 bun run dev        # launch the app with hot reload
 bun run typecheck  # type-check the whole project
+bun run lint       # lint + format check (Biome) — same command CI runs
+bun run lint:fix   # auto-fix lint + formatting issues
+bun test           # run the unit/integration test suite
 ```
+
+CI runs these exact commands, so green locally means green in CI. Lint and
+formatting are handled by [Biome](https://biomejs.dev) (config in `biome.json`);
+the ruleset is the standard `recommended` baseline, kept intentionally
+un-fussy. Optionally install the Biome editor extension and enable format-on-save
+to never think about it again.
+
+### Continuous integration
+
+Pull requests run, across macOS (arm64 + x64), Windows (x64 + arm64) and Linux:
+**Lint**, **typecheck + tests + build** per platform, an **E2E smoke** (macOS
+arm64 + Windows x64) that launches the app and asserts it renders, and a
+**CodeQL** security scan on its default query suite. See `.github/workflows/`.
 
 ## Building distributables
 
