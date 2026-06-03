@@ -3,7 +3,12 @@
   "productName": "GitGrove",
   "version": "1.0.0",
   "description": "A polished git repository viewer built on @pierre/trees and @pierre/diffs",
-  "author": "GitGrove",
+  "author": "Daniel Peñalba",
+  "homepage": "https://github.com/danipen/gitgrove",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danipen/gitgrove.git"
+  },
   "license": "MIT",
   "type": "module",
   "private": true,
