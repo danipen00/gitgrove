@@ -49,6 +49,15 @@ const REPO_URL = 'https://github.com/danipen/gitgrove'
 // secrets (recents are plaintext JSON), so opt out of the OS store entirely
 // and let Chromium use its in-memory store instead. Must run before app ready.
 app.commandLine.appendSwitch('password-store', 'basic')
+
+// Opt-in CDP debugging: when GITGROVE_DEBUG_PORT is set (e.g. `bun dev:debug`),
+// expose Chromium's remote-debugging endpoint so tools like the Playwright CLI
+// can attach to the renderer (`playwright-cli attach --cdp http://localhost:PORT`).
+// Never set in normal or packaged runs, so the port stays closed by default.
+if (process.env.GITGROVE_DEBUG_PORT) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.GITGROVE_DEBUG_PORT)
+}
+
 let mainWindow: BrowserWindow | null = null
 
 function appInfo(): AppInfo {
