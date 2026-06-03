@@ -14,7 +14,7 @@ editor or terminal, and gives you a clear, calm window onto what changed.
 Download the latest version for your platform from the
 [**Releases page**](https://github.com/danipen/gitgrove/releases/latest):
 
-- **macOS** — `.dmg` (universal; Intel + Apple Silicon)
+- **macOS** — `.dmg` (Intel / Apple Silicon)
 - **Windows** — `.exe` installer (x64 / arm64)
 - **Linux** — `.AppImage`
 
