@@ -1466,7 +1466,11 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
   font-size: 12.5px;
+  /* Never let an unexpected error message break out of the modal. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .about__update-text.is-muted {
   color: var(--fg-muted);
