@@ -1,47 +1,91 @@
 name: Release
 
-# Cutting a release: bump "version" in package.json, commit, then push a
-# matching tag, e.g.
-#   git tag v1.0.1 && git push origin v1.0.1
-# That tag triggers this workflow, which builds the installers on each OS and
-# uploads them — plus the latest*.yml auto-update feeds electron-updater reads —
-# to a GitHub Release. electron-builder publishes the release as a DRAFT, so you
-# get to write release notes (they show in the in-app update banner) and then
-# click "Publish release" to make the update go live.
+# One-button release. Go to Actions ▸ Release ▸ Run workflow, pick the bump
+# level (patch / minor / major), and this does everything in a single run:
+#
+#   1. bumps the version in package.json, commits it and tags v<version> on main
+#   2. opens a draft GitHub Release with auto-generated notes
+#   3. builds the installers on macOS, Windows and Linux and uploads them — plus
+#      the latest*.yml feeds electron-updater reads — onto that draft
+#
+# You then review the draft and click "Publish release" to make the update go
+# live (the notes show verbatim in the in-app update banner). There is no
+# package.json bump to do by hand — the workflow owns the version. To publish
+# automatically without the review step, see the optional `publish` job at the
+# bottom.
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
 
-# electron-builder uploads artifacts to the Release using the built-in
+# The bump commit/tag push and the release upload both use the built-in
 # GITHUB_TOKEN, which needs write access to repo contents/releases.
 permissions:
   contents: write
 
 jobs:
-  release:
+  # 1) Bump the version, commit + tag on main, and open a draft release.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0 # full history so generated notes can diff against the last tag
+      - name: Bump version, commit, tag, push
+        id: bump
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm version "${{ inputs.bump }}" -m "Release v%s"   # e.g. 1.0.0 -> 1.0.1; commits + tags
+          TAG="v$(node -p "require('./package.json').version")"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          git push origin main --follow-tags
+      - name: Create draft release with generated notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.bump.outputs.tag }}" \
+            --draft \
+            --generate-notes \
+            --title "${{ steps.bump.outputs.tag }}"
+
+  # 2) Build installers on every OS and upload them onto the draft release. Each
+  #    runner checks out the freshly created tag, whose package.json already
+  #    carries the new version, so electron-builder targets the right release.
+  build:
+    needs: prepare
     strategy:
-      # Don't cancel the other OS builds if one fails; a partial release can be
-      # completed by re-running the failed leg.
+      # Don't cancel the other OS builds if one fails; the failed leg can be
+      # re-run on its own afterward.
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest # builds the macOS dmg + zip (arm64 & x64)
-          - os: windows-latest # builds the Windows NSIS installer
-          - os: ubuntu-latest # builds the Linux AppImage
+          - os: macos-latest # macOS universal dmg + zip
+          - os: windows-latest # Windows NSIS installer
+          - os: ubuntu-latest # Linux AppImage
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
       - run: bun install --frozen-lockfile
 
-      # macOS code signing is optional. If the CSC_LINK secret is set we export
-      # the full signing + notarization env so electron-builder produces a
-      # signed, notarized, silently self-updating build. If it isn't, we disable
-      # signing cleanly (passing an *empty* CSC_LINK makes electron-builder try
-      # to read it as a cert path and fail). Add the secrets later to switch on
-      # signing — no edit to this workflow needed.
+      # macOS code signing is optional. With the CSC_LINK secret set we export
+      # the full signing + notarization env for a signed, notarized, silently
+      # self-updating build; without it we disable signing cleanly (an empty
+      # CSC_LINK makes electron-builder try to read it as a cert path and fail).
+      # Add the secrets later to switch signing on — no workflow edit needed.
       - name: Configure macOS code signing
         if: runner.os == 'macOS'
         env:
@@ -67,9 +111,21 @@ jobs:
 
       # `bun run release` = electron-vite build && electron-builder --publish
       # always. With no platform flag electron-builder builds for the host OS,
-      # so each matrix leg produces just its own platform's artifacts.
+      # so each matrix leg uploads just its own platform's artifacts onto the
+      # draft release created above.
       - name: Build and publish
         run: bun run release
         env:
-          # electron-builder's GitHub publisher authenticates with this.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 3) Optional: publish automatically instead of leaving a draft for review.
+  #    Uncomment to make the one button go all the way to a live release.
+  #
+  # publish:
+  #   needs: [prepare, build]
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Publish the release
+  #       env:
+  #         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       run: gh release edit "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --draft=false --latest
