@@ -77,6 +77,10 @@ export function App() {
   // Version the user dismissed the "ready to install" banner for, so it stays
   // hidden until a newer build arrives.
   const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null)
+  // Whether the transient manual-check feedback (checking / up-to-date / error)
+  // has been dismissed — by its close button or the auto-dismiss timer. Reset
+  // each time a fresh manual check starts.
+  const [updateFeedbackDismissed, setUpdateFeedbackDismissed] = useState(false)
 
   const [tab, setTab] = useState<Tab>('changes')
 
@@ -475,6 +479,10 @@ export function App() {
     () =>
       window.gitgrove.onUpdateStatus((status) => {
         setUpdate(status)
+        // Any push from a user-initiated check revives the transient feedback —
+        // covers the production "checking → result" flow and the dev/error paths
+        // that report a result without a preceding "checking" event.
+        if (status.manual) setUpdateFeedbackDismissed(false)
         // A freshly downloaded build clears any earlier "Later" dismissal.
         if (
           (status.state === 'downloaded' || status.state === 'manual-install') &&
@@ -501,23 +509,53 @@ export function App() {
     return () => clearTimeout(t)
   }, [error])
 
-  // Surface update progress unless the user dismissed the ready-to-install card.
+  // Auto-dismiss the transient manual-check feedback ("up to date" / error / dev)
+  // so it doesn't linger after the user has seen the result.
+  useEffect(() => {
+    if (!update?.manual || updateFeedbackDismissed) return
+    if (!['not-available', 'error', 'dev'].includes(update.state)) return
+    const t = setTimeout(() => setUpdateFeedbackDismissed(true), 5000)
+    return () => clearTimeout(t)
+  }, [update, updateFeedbackDismissed])
+
+  // Bottom-right banner content. Two independently-dismissable cases:
+  //  • progress / ready — shown for any check, hidden once the user defers a
+  //    ready-to-install build (keyed by version).
+  //  • transient manual feedback — checking / up-to-date / error / dev, shown
+  //    only for a user-initiated check and auto-dismissed after a few seconds.
+  const deferredReady =
+    (update?.state === 'downloaded' || update?.state === 'manual-install') &&
+    update.newVersion === dismissedUpdate
+  const isProgress =
+    update?.state === 'downloading' ||
+    update?.state === 'available' ||
+    update?.state === 'downloaded' ||
+    update?.state === 'manual-install'
+  const isManualFeedback =
+    !!update?.manual &&
+    (update.state === 'checking' ||
+      update.state === 'not-available' ||
+      update.state === 'error' ||
+      update.state === 'dev')
+  // The About dialog shows the full lifecycle itself, so the transient feedback
+  // banner is redundant while it's open (the menu check, however, has no dialog).
   const bannerUpdate =
     update &&
-    (update.state === 'downloading' ||
-      update.state === 'available' ||
-      ((update.state === 'downloaded' || update.state === 'manual-install') &&
-        update.newVersion !== dismissedUpdate))
+    ((isProgress && !deferredReady) || (isManualFeedback && !updateFeedbackDismissed && !aboutOpen))
       ? update
       : null
 
+  const dismissBanner = () => {
+    if (update?.state === 'downloaded' || update?.state === 'manual-install') {
+      setDismissedUpdate(update.newVersion ?? null)
+    } else {
+      setUpdateFeedbackDismissed(true)
+    }
+  }
+
   const overlays = (
     <>
-      <UpdateBanner
-        update={bannerUpdate}
-        onInstall={installUpdate}
-        onDismiss={() => setDismissedUpdate(update?.newVersion ?? null)}
-      />
+      <UpdateBanner update={bannerUpdate} onInstall={installUpdate} onDismiss={dismissBanner} />
       {trustPath && (
         <TrustDialog
           path={trustPath}
