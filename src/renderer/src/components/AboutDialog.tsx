@@ -62,7 +62,17 @@ export function AboutDialog({ info, update, onClose, onCheckForUpdates, onInstal
         <img className="about__logo" src={iconUrl} width={84} height={84} alt="GitGrove" />
         <h2 className="about__name">{info.name}</h2>
         <div className="about__version">Version {info.version}</div>
-        <p className="about__tagline">A polished git repository viewer built on @pierre/trees & @pierre/diffs.</p>
+        <p className="about__tagline">
+          A polished git repository viewer built on{' '}
+          <a href="https://trees.software/" target="_blank" rel="noreferrer">
+            @pierre/trees
+          </a>{' '}
+          &{' '}
+          <a href="https://diffs.com/" target="_blank" rel="noreferrer">
+            @pierre/diffs
+          </a>
+          .
+        </p>
 
         <div className="about__update">
           <span className={`about__update-text is-${line.tone}`}>

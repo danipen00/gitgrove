@@ -1443,6 +1443,13 @@ button {
   line-height: 1.55;
   color: var(--fg-muted);
 }
+.about__tagline a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.about__tagline a:hover {
+  text-decoration: underline;
+}
 
 .about__update {
   display: flex;
