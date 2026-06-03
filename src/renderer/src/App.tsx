@@ -5,6 +5,7 @@ import type {
   Commit,
   DiffPayload,
   GitAvailability,
+  RepoOpenResult,
   RepoSummary,
   UpdateStatus
 } from '@shared/types'
@@ -18,6 +19,7 @@ import { HistoryView } from './components/HistoryView'
 import { Resizer } from './components/Resizer'
 import { Toolbar } from './components/Toolbar'
 import { TooltipLayer } from './components/TooltipLayer'
+import { TrustDialog } from './components/TrustDialog'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Welcome } from './components/Welcome'
 import { Icon } from './lib/icons'
@@ -62,6 +64,11 @@ export function App() {
   // when git is missing (see the render gate below).
   const [git, setGit] = useState<GitAvailability | null>(null)
   const [gitChecking, setGitChecking] = useState(false)
+
+  // Path of a folder git flagged as untrusted ("dubious ownership"); set to show
+  // the trust prompt, with `trusting` true while persisting the exception.
+  const [trustPath, setTrustPath] = useState<string | null>(null)
+  const [trusting, setTrusting] = useState(false)
 
   // App/about + auto-update state.
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
@@ -317,26 +324,51 @@ export function App() {
     [loadStatus, loadBranches, selectChangeFile, fail]
   )
 
+  // Route an open outcome: success applies the repo, an untrusted folder opens
+  // the trust prompt, and a non-repo surfaces the familiar error.
+  const handleOpen = useCallback(
+    (res: RepoOpenResult) => {
+      if (res.ok) applyRepo(res.summary)
+      else if (res.reason === 'untrusted') setTrustPath(res.path)
+      else setError('The selected folder is not a git repository.')
+    },
+    [applyRepo]
+  )
+
   const pickRepo = useCallback(async () => {
     try {
-      const summary = await window.gitgrove.pickRepo()
-      if (summary) applyRepo(summary)
+      const res = await window.gitgrove.pickRepo()
+      if (res) handleOpen(res)
     } catch (e) {
       fail(e)
     }
-  }, [applyRepo, fail])
+  }, [handleOpen, fail])
 
   const openRepoByPath = useCallback(
     async (path: string) => {
       try {
-        const summary = await window.gitgrove.openRepo(path)
-        applyRepo(summary)
+        handleOpen(await window.gitgrove.openRepo(path))
       } catch (e) {
         fail(e)
       }
     },
-    [applyRepo, fail]
+    [handleOpen, fail]
   )
+
+  const confirmTrust = useCallback(async () => {
+    if (!trustPath) return
+    setTrusting(true)
+    try {
+      const res = await window.gitgrove.trustRepo(trustPath)
+      setTrustPath(null)
+      handleOpen(res)
+    } catch (e) {
+      setTrustPath(null)
+      fail(e)
+    } finally {
+      setTrusting(false)
+    }
+  }, [trustPath, handleOpen, fail])
 
   const checkout = useCallback(
     async (name: string) => {
@@ -486,6 +518,14 @@ export function App() {
         onInstall={installUpdate}
         onDismiss={() => setDismissedUpdate(update?.newVersion ?? null)}
       />
+      {trustPath && (
+        <TrustDialog
+          path={trustPath}
+          busy={trusting}
+          onTrust={confirmTrust}
+          onCancel={() => setTrustPath(null)}
+        />
+      )}
       {aboutOpen && (
         <AboutDialog
           info={appInfo}

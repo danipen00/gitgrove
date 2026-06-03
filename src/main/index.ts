@@ -21,9 +21,17 @@ const moduleDir = dirname(fileURLToPath(import.meta.url))
 const devIconPath = join(moduleDir, '../../build/icon.png')
 
 import { IPC } from '@shared/ipc'
-import type { AppInfo, ChangedFile, GitAvailability, LogOptions } from '@shared/types'
+import type {
+  AppInfo,
+  ChangedFile,
+  GitAvailability,
+  LogOptions,
+  RepoOpenResult
+} from '@shared/types'
 import {
+  addSafeDirectory,
   checkout,
+  DubiousOwnershipError,
   getBranches,
   getCommitDiff,
   getCommitFiles,
@@ -200,20 +208,43 @@ function buildMenu(): void {
  * Returns a cheap summary (current branch only) so the renderer can switch
  * instantly; branches and status are fetched separately by the renderer.
  */
-async function openRepoAtPath(rawPath: string) {
-  // Surface a precise "git is missing" error rather than the misleading "not a
-  // git repository" that a failed git spawn would otherwise produce. The setup
-  // screen normally prevents reaching here without git, but recents / drag-drop
-  // can still try, so keep the honest error as a backstop.
+async function openRepoAtPath(rawPath: string): Promise<RepoOpenResult> {
+  // The setup screen normally prevents reaching here without git; locateGit is a
+  // backstop that throws a clear GitNotFoundError if git really is missing.
   await locateGit()
-  const root = await resolveRepoRoot(rawPath)
-  if (!root) {
-    throw new Error('The selected folder is not a git repository.')
+  let root: string | null
+  try {
+    root = await resolveRepoRoot(rawPath)
+  } catch (e) {
+    // git won't open the repo until its ownership is trusted — let the renderer
+    // prompt the user instead of failing as if it weren't a repo.
+    if (e instanceof DubiousOwnershipError) return { ok: false, reason: 'untrusted', path: rawPath }
+    throw e
   }
+  if (!root) return { ok: false, reason: 'not-git', path: rawPath }
   const summary = await getQuickSummary(root)
   rememberRepo({ path: summary.path, name: summary.name })
   watcher.watch(root)
-  return summary
+  return { ok: true, summary }
+}
+
+/**
+ * Trust a folder git flagged as untrusted, then open it. Re-probes to recover
+ * git's exact recommended `safe.directory` value, persists it globally (so the
+ * trust sticks across sessions and tools), and opens. If the folder is already
+ * trusted by the time we get here, this just opens it.
+ */
+async function trustRepo(rawPath: string): Promise<RepoOpenResult> {
+  try {
+    await resolveRepoRoot(rawPath)
+  } catch (e) {
+    if (e instanceof DubiousOwnershipError) {
+      await addSafeDirectory(e.safeValue)
+    } else {
+      throw e
+    }
+  }
+  return openRepoAtPath(rawPath)
 }
 
 /**
@@ -245,6 +276,7 @@ function registerIpc(): void {
   })
 
   ipcMain.handle(IPC.openRepo, (_e, path: string) => openRepoAtPath(path))
+  ipcMain.handle(IPC.trustRepo, (_e, path: string) => trustRepo(path))
 
   ipcMain.handle(IPC.recentRepos, () => getRecentRepos())
   ipcMain.handle(IPC.removeRecent, (_e, path: string) => removeRecentRepo(path))

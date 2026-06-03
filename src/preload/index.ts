@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 const api: GitGroveApi = {
   pickRepo: () => ipcRenderer.invoke(IPC.pickRepo),
   openRepo: (path) => ipcRenderer.invoke(IPC.openRepo, path),
+  trustRepo: (path) => ipcRenderer.invoke(IPC.trustRepo, path),
   recentRepos: () => ipcRenderer.invoke(IPC.recentRepos),
   removeRecent: (path) => ipcRenderer.invoke(IPC.removeRecent, path),
   status: (repoPath) => ipcRenderer.invoke(IPC.status, repoPath),

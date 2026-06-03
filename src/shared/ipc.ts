@@ -11,13 +11,14 @@ import type {
   GitAvailability,
   LogOptions,
   RecentRepo,
-  RepoSummary,
+  RepoOpenResult,
   UpdateStatus
 } from './types'
 
 export const IPC = {
   pickRepo: 'repo:pick',
   openRepo: 'repo:open',
+  trustRepo: 'repo:trust',
   recentRepos: 'repo:recent',
   removeRecent: 'repo:recent:remove',
   status: 'repo:status',
@@ -40,10 +41,12 @@ export const IPC = {
 } as const
 
 export interface GitGroveApi {
-  /** Open the native folder picker; resolves null if cancelled or not a repo. */
-  pickRepo(): Promise<RepoSummary | null>
+  /** Open the native folder picker; resolves null if cancelled, else the outcome. */
+  pickRepo(): Promise<RepoOpenResult | null>
   /** Open a known path as a repository. */
-  openRepo(path: string): Promise<RepoSummary>
+  openRepo(path: string): Promise<RepoOpenResult>
+  /** Trust a folder git flagged as untrusted (persist a safe.directory exception), then open it. */
+  trustRepo(path: string): Promise<RepoOpenResult>
   recentRepos(): Promise<RecentRepo[]>
   removeRecent(path: string): Promise<RecentRepo[]>
   status(repoPath: string): Promise<ChangedFile[]>
