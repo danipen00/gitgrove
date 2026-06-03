@@ -28,6 +28,11 @@ function updateLine(
       return { text: `Downloading update… ${update.percent ?? 0}%`, tone: 'accent' }
     case 'downloaded':
       return { text: `Version ${update.newVersion} is ready to install.`, tone: 'accent' }
+    case 'manual-install':
+      return {
+        text: `Version ${update.newVersion} downloaded — open the installer to finish.`,
+        tone: 'accent'
+      }
     case 'not-available':
       return { text: "You're on the latest version.", tone: 'muted' }
     case 'dev':
@@ -56,6 +61,7 @@ export function AboutDialog({ info, update, onClose, onCheckForUpdates, onInstal
   const line = updateLine(info, update)
   const checking = update?.state === 'checking'
   const downloaded = update?.state === 'downloaded'
+  const manualInstall = update?.state === 'manual-install'
 
   return createPortal(
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -89,9 +95,9 @@ export function AboutDialog({ info, update, onClose, onCheckForUpdates, onInstal
             {checking && <span className="about__spinner" aria-hidden />}
             {line.text}
           </span>
-          {downloaded ? (
+          {downloaded || manualInstall ? (
             <button className="btn-primary btn-primary--sm" onClick={onInstall}>
-              Restart & Install
+              {manualInstall ? 'Open Installer' : 'Restart & Install'}
             </button>
           ) : (
             <button

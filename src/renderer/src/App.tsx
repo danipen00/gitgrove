@@ -420,7 +420,10 @@ export function App() {
       window.gitgrove.onUpdateStatus((status) => {
         setUpdate(status)
         // A freshly downloaded build clears any earlier "Later" dismissal.
-        if (status.state === 'downloaded' && status.newVersion !== dismissedUpdate) {
+        if (
+          (status.state === 'downloaded' || status.state === 'manual-install') &&
+          status.newVersion !== dismissedUpdate
+        ) {
           setDismissedUpdate(null)
         }
       }),
@@ -447,7 +450,8 @@ export function App() {
     update &&
     (update.state === 'downloading' ||
       update.state === 'available' ||
-      (update.state === 'downloaded' && update.newVersion !== dismissedUpdate))
+      ((update.state === 'downloaded' || update.state === 'manual-install') &&
+        update.newVersion !== dismissedUpdate))
       ? update
       : null
 

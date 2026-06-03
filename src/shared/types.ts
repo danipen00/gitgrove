@@ -126,6 +126,12 @@ export type UpdateState =
   | 'not-available'
   | 'downloading'
   | 'downloaded'
+  /**
+   * The update finished downloading but can't be auto-installed: an unsigned
+   * macOS build, which Squirrel.Mac refuses to validate. The user finishes by
+   * opening the downloaded installer (.dmg) themselves — see `downloadedFile`.
+   */
+  | 'manual-install'
   | 'error'
   /** Reported for manual checks while running an unpackaged dev build. */
   | 'dev'
@@ -141,6 +147,8 @@ export interface UpdateStatus {
   /** Download progress 0–100 (downloading state). */
   percent?: number
   bytesPerSecond?: number
+  /** Absolute path to the downloaded installer (manual-install state). */
+  downloadedFile?: string
   error?: string
   /**
    * True when the user explicitly asked to check (menu / About button). Lets the

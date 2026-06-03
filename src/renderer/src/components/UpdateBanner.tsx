@@ -34,20 +34,28 @@ export function UpdateBanner({ update, onInstall, onDismiss }: Props) {
     )
   }
 
-  if (update.state === 'downloaded') {
+  if (update.state === 'downloaded' || update.state === 'manual-install') {
+    // An unsigned macOS build can't be auto-installed; the user opens the
+    // downloaded installer and drags it to Applications instead.
+    const manual = update.state === 'manual-install'
     return (
       <div className="update-banner update-banner--ready" role="alert">
         <div className="update-banner__row">
           <span className="update-banner__title">
-            GitGrove {update.newVersion} is ready to install.
+            GitGrove {update.newVersion} {manual ? 'has been downloaded.' : 'is ready to install.'}
           </span>
           <button className="update-banner__close" title="Later" onClick={onDismiss}>
             <Icon.Close size={13} />
           </button>
         </div>
+        {manual && (
+          <p className="update-banner__hint">
+            Open the installer and drag GitGrove to your Applications folder to finish.
+          </p>
+        )}
         <div className="update-banner__actions">
           <button className="btn-primary btn-primary--sm" onClick={onInstall}>
-            Restart & Install
+            {manual ? 'Open Installer' : 'Restart & Install'}
           </button>
           <button className="btn-ghost btn-ghost--sm" onClick={onDismiss}>
             Later
