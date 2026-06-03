@@ -70,10 +70,19 @@ jobs:
           - { name: macOS arm64, os: macos-latest }
           - { name: Windows x64, os: windows-latest }
     steps:
+      # Full history so the History tab has commits to render and diff.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
       - run: bun run build
+      # The smoke opens this repo and asserts the working-tree file tree renders,
+      # so it needs at least one change. A fresh checkout is clean, so drop an
+      # untracked scratch file to make the Changes view deterministic.
+      - name: Seed a working-tree change
+        run: echo "e2e smoke marker" > e2e-smoke-scratch.txt
+        shell: bash
       - run: bun run e2e
