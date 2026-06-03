@@ -1770,6 +1770,16 @@ button {
   opacity: 1;
   color: var(--fg);
 }
+.update-banner__icon {
+  display: flex;
+  flex: none;
+}
+.update-banner__icon--ok {
+  color: var(--st-added);
+}
+.update-banner__icon--warn {
+  color: var(--st-deleted);
+}
 .update-banner__track {
   margin-top: 10px;
   height: 5px;
