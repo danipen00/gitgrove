@@ -35,7 +35,7 @@ jobs:
     outputs:
       tag: ${{ steps.bump.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0 # full history so generated notes can diff against the last tag
@@ -73,7 +73,7 @@ jobs:
           - os: ubuntu-latest # Linux AppImage
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.prepare.outputs.tag }}
       - uses: oven-sh/setup-bun@v2
