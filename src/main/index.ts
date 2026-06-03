@@ -39,6 +39,16 @@ import { RepoWatcher } from './watcher'
 
 const isDev = !app.isPackaged
 const REPO_URL = 'https://github.com/danipen/gitgrove'
+
+// Chromium's OSCrypt encrypts its own on-disk data (cookies, storage) with a
+// key it keeps in the OS secret store — the macOS keychain entry "GitGrove
+// Safe Storage". Reaching that entry pops a "GitGrove wants to use your
+// confidential information" password dialog on every launch, because our
+// ad-hoc-signed builds get a fresh code signature each version, so the
+// keychain ACL never matches and the grant can't persist. GitGrove keeps no
+// secrets (recents are plaintext JSON), so opt out of the OS store entirely
+// and let Chromium use its in-memory store instead. Must run before app ready.
+app.commandLine.appendSwitch('password-store', 'basic')
 let mainWindow: BrowserWindow | null = null
 
 function appInfo(): AppInfo {
