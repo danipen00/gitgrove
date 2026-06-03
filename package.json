@@ -1,5 +1,6 @@
 {
   "name": "gitgrove",
+  "productName": "GitGrove",
   "version": "1.0.0",
   "description": "A polished git repository viewer built on @pierre/trees and @pierre/diffs",
   "author": "GitGrove",
