@@ -235,6 +235,8 @@ export async function quitAndInstall(): Promise<void> {
     app.quit()
     return
   }
-  // isSilent=false (show the installer on Windows), isForceRunAfter=true (relaunch).
-  autoUpdater.quitAndInstall(false, true)
+  // isSilent=true (run the NSIS installer silently — no UI; per-user install, so
+  // no UAC prompt), isForceRunAfter=true (relaunch). Gives a near-instant
+  // restart-to-update on Windows; macOS (Squirrel.Mac) is unaffected.
+  autoUpdater.quitAndInstall(true, true)
 }
