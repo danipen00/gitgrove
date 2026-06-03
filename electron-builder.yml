@@ -19,18 +19,24 @@ publish:
   owner: danipen
   repo: gitgrove
 
-artifactName: ${productName}-${version}-${arch}.${ext}
+# Human-readable, platform-labelled asset names (set per platform so each file
+# announces its OS in the GitHub Release, e.g. GitGrove-1.0.0-macOS-universal.dmg).
+# The latest*.yml update manifests electron-updater reads are regenerated to
+# match these names, so renaming here is safe for auto-update.
 
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.png
   hardenedRuntime: true
   gatekeeperAssess: false
+  artifactName: ${productName}-${version}-macOS-${arch}.${ext}
+  # One universal binary runs on both Intel and Apple Silicon, so we ship a
+  # single dmg/zip per release instead of one per architecture.
   target:
     - target: dmg
-      arch: [arm64, x64]
+      arch: [universal]
     - target: zip # zip target is required by electron-updater on macOS
-      arch: [arm64, x64]
+      arch: [universal]
 dmg:
   contents:
     - x: 130
@@ -42,6 +48,7 @@ dmg:
 
 win:
   icon: build/icon.png
+  artifactName: ${productName}-${version}-Windows-${arch}.${ext}
   target:
     - target: nsis
       arch: [x64]
@@ -55,5 +62,6 @@ nsis:
 linux:
   icon: build/icon.png
   category: Development
+  artifactName: ${productName}-${version}-Linux-${arch}.${ext}
   target:
     - AppImage
