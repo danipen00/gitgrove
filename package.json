@@ -1,7 +1,7 @@
 {
   "name": "gitgrove",
   "productName": "GitGrove",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "A polished git repository viewer built on @pierre/trees and @pierre/diffs",
   "author": "Daniel Peñalba",
   "homepage": "https://github.com/danipen/gitgrove",
