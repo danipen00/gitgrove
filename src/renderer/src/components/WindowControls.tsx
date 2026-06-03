@@ -18,13 +18,19 @@ function Maximize({ maximized }: { maximized: boolean }) {
   return (
     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
       {maximized ? (
-        // Restore: a back square peeking out behind the front one.
+        // Restore: two equal squares offset diagonally, matching the native
+        // Windows glyph. The back square is drawn as an L (top + right edges)
+        // with a rounded top-right corner since the front square covers the rest.
         <>
-          <path d="M2.5 2.5h5v5h-5z" stroke="currentColor" strokeWidth="1" />
-          <path d="M2.5 2.5v-2h7v7h-2" stroke="currentColor" strokeWidth="1" />
+          <rect x="1.5" y="2.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1" />
+          <path
+            d="M3.5 2.5V1.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-1"
+            stroke="currentColor"
+            strokeWidth="1"
+          />
         </>
       ) : (
-        <rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" strokeWidth="1" />
+        <rect x="1.5" y="1.5" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1" />
       )}
     </svg>
   )
