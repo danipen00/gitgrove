@@ -34,6 +34,18 @@ await win.waitForTimeout(400)
 await win.screenshot({ path: join(shots, '1-welcome.png') })
 console.log('captured welcome')
 
+// Git-availability gate: if git couldn't be located the app shows the setup
+// screen (.git-setup) instead of the recents list, and the run below can't
+// proceed. Fail loudly with a clear reason rather than timing out on a click.
+const onGitSetup = await win.evaluate(() => !!document.querySelector('.git-setup'))
+if (onGitSetup) {
+  await win.screenshot({ path: join(shots, '0-git-setup.png') })
+  console.error('Git was not detected — app is on the setup screen. Aborting.')
+  await app.close()
+  process.exit(1)
+}
+console.log('git detected — setup screen not shown')
+
 // Open the repo via the recent row (no native dialog needed).
 await win.waitForSelector('.recent-row', { timeout: 8000 })
 await win.click('.recent-row')

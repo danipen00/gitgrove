@@ -21,7 +21,7 @@ const moduleDir = dirname(fileURLToPath(import.meta.url))
 const devIconPath = join(moduleDir, '../../build/icon.png')
 
 import { IPC } from '@shared/ipc'
-import type { AppInfo, ChangedFile, LogOptions } from '@shared/types'
+import type { AppInfo, ChangedFile, GitAvailability, LogOptions } from '@shared/types'
 import {
   checkout,
   getBranches,
@@ -33,6 +33,7 @@ import {
   getWorkingDiff,
   resolveRepoRoot
 } from './git'
+import { gitVersion, locateGit, resetGitLocation } from './git-bin'
 import { getRecentRepos, rememberRepo, removeRecentRepo } from './store'
 import { checkForUpdates, initAutoUpdater, quitAndInstall } from './updater'
 import { RepoWatcher } from './watcher'
@@ -200,6 +201,11 @@ function buildMenu(): void {
  * instantly; branches and status are fetched separately by the renderer.
  */
 async function openRepoAtPath(rawPath: string) {
+  // Surface a precise "git is missing" error rather than the misleading "not a
+  // git repository" that a failed git spawn would otherwise produce. The setup
+  // screen normally prevents reaching here without git, but recents / drag-drop
+  // can still try, so keep the honest error as a backstop.
+  await locateGit()
   const root = await resolveRepoRoot(rawPath)
   if (!root) {
     throw new Error('The selected folder is not a git repository.')
@@ -208,6 +214,22 @@ async function openRepoAtPath(rawPath: string) {
   rememberRepo({ path: summary.path, name: summary.name })
   watcher.watch(root)
   return summary
+}
+
+/**
+ * Report whether a usable git is available. `force` re-probes (used by the
+ * setup screen's "Re-check" after the user installs git) instead of reusing the
+ * cached lookup.
+ */
+async function checkGit(force: boolean): Promise<GitAvailability> {
+  if (force) resetGitLocation()
+  try {
+    const path = await locateGit()
+    const version = await gitVersion()
+    return { available: true, path, version, platform: process.platform }
+  } catch {
+    return { available: false, platform: process.platform }
+  }
 }
 
 function registerIpc(): void {
@@ -240,6 +262,8 @@ function registerIpc(): void {
   ipcMain.handle(IPC.commitDiff, (_e, repoPath: string, hash: string, file: ChangedFile) =>
     getCommitDiff(repoPath, hash, file)
   )
+
+  ipcMain.handle(IPC.checkGit, (_e, force?: boolean) => checkGit(!!force))
 
   ipcMain.handle(IPC.appInfo, () => appInfo())
   ipcMain.handle(IPC.checkForUpdates, (_e, manual: boolean) =>

@@ -15,6 +15,7 @@ const api: GitGroveApi = {
   workingDiff: (repoPath, file: ChangedFile) => ipcRenderer.invoke(IPC.workingDiff, repoPath, file),
   commitDiff: (repoPath, hash, file: ChangedFile) =>
     ipcRenderer.invoke(IPC.commitDiff, repoPath, hash, file),
+  checkGit: (force) => ipcRenderer.invoke(IPC.checkGit, force),
   appInfo: () => ipcRenderer.invoke(IPC.appInfo),
   checkForUpdates: (manual) => ipcRenderer.invoke(IPC.checkForUpdates, manual),
   installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),

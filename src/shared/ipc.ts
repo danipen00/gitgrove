@@ -8,6 +8,7 @@ import type {
   ChangedFile,
   Commit,
   DiffPayload,
+  GitAvailability,
   LogOptions,
   RecentRepo,
   RepoSummary,
@@ -26,7 +27,8 @@ export const IPC = {
   commitFiles: 'repo:commit:files',
   workingDiff: 'repo:diff:working',
   commitDiff: 'repo:diff:commit',
-  // app / updates
+  // environment / app / updates
+  checkGit: 'git:check',
   appInfo: 'app:info',
   checkForUpdates: 'update:check',
   installUpdate: 'update:install',
@@ -51,6 +53,11 @@ export interface GitGroveApi {
   commitFiles(repoPath: string, hash: string): Promise<ChangedFile[]>
   workingDiff(repoPath: string, file: ChangedFile): Promise<DiffPayload>
   commitDiff(repoPath: string, hash: string, file: ChangedFile): Promise<DiffPayload>
+  /**
+   * Check whether git is available. Pass `force` to re-probe after the user has
+   * (e.g.) installed git, bypassing the cached result.
+   */
+  checkGit(force?: boolean): Promise<GitAvailability>
   /** Build/runtime info for the About dialog. */
   appInfo(): Promise<AppInfo>
   /** Ask the main process to check the update feed. `manual` drives "up to date" UI. */

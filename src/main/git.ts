@@ -16,6 +16,7 @@ import type {
   RepoSummary
 } from '@shared/types'
 import simpleGit, { type SimpleGit } from 'simple-git'
+import { locateGit } from './git-bin'
 
 const execFileAsync = promisify(execFile)
 
@@ -32,12 +33,30 @@ const MAX_PATCH_BYTES = 3 * 1024 * 1024
  */
 const MAX_CONTENTS_BYTES = 3 * 1024 * 1024
 
+// Git refuses to operate on a repo whose directory ownership it can't verify
+// ("detected dubious ownership"), which fires as a false positive on Parallels
+// shared folders, network drives, and other filesystems that don't record
+// ownership (e.g. //Mac/Home/...). The user explicitly points GitGrove at a
+// repo to view it, so we tell git to trust it for our own invocations only —
+// `-c safe.directory=*`, scoped to this process and never written to the user's
+// config. (Other git GUIs relax the same check for read access.)
+const SAFE_DIR_ARGS = ['-c', 'safe.directory=*']
+const SAFE_DIR_CONFIG = ['safe.directory=*']
+
 const gitCache = new Map<string, SimpleGit>()
 
-function getGit(repoPath: string): SimpleGit {
+async function getGit(repoPath: string): Promise<SimpleGit> {
   let git = gitCache.get(repoPath)
   if (!git) {
-    git = simpleGit({ baseDir: repoPath, maxConcurrentProcesses: 6 })
+    // Pin the binary so simple-git uses the same git we resolved for execFile —
+    // important when git lives off PATH (e.g. bundled in GitHub Desktop).
+    const binary = await locateGit()
+    git = simpleGit({
+      baseDir: repoPath,
+      binary,
+      maxConcurrentProcesses: 6,
+      config: SAFE_DIR_CONFIG
+    })
     gitCache.set(repoPath, git)
   }
   return git
@@ -53,8 +72,9 @@ async function runGit(
   args: string[],
   tolerateExitCodes: number[] = []
 ): Promise<string> {
+  const bin = await locateGit()
   try {
-    const { stdout } = await execFileAsync('git', args, {
+    const { stdout } = await execFileAsync(bin, [...SAFE_DIR_ARGS, ...args], {
       cwd: repoPath,
       maxBuffer: 256 * 1024 * 1024,
       windowsHide: true
@@ -71,7 +91,8 @@ async function runGit(
 
 export async function isGitRepo(repoPath: string): Promise<boolean> {
   try {
-    return await getGit(repoPath).checkIsRepo()
+    const git = await getGit(repoPath)
+    return await git.checkIsRepo()
   } catch {
     return false
   }
@@ -107,7 +128,7 @@ function mapStatusCode(index: string, working: string): FileStatus {
 }
 
 export async function getBranches(repoPath: string): Promise<BranchInfo> {
-  const git = getGit(repoPath)
+  const git = await getGit(repoPath)
   // Enumerating local and remote branches are independent git invocations;
   // run them together so a repo with many remote refs (e.g. unity) isn't
   // billed for both serially.
@@ -162,7 +183,7 @@ export async function getQuickSummary(repoPath: string): Promise<RepoSummary> {
 }
 
 export async function getStatus(repoPath: string): Promise<ChangedFile[]> {
-  const git = getGit(repoPath)
+  const git = await getGit(repoPath)
   const status = await git.status()
 
   // Map "to" path -> "from" path for renames so the tree can show both.
@@ -186,7 +207,7 @@ export async function getStatus(repoPath: string): Promise<ChangedFile[]> {
 }
 
 export async function getSummary(repoPath: string): Promise<RepoSummary> {
-  const git = getGit(repoPath)
+  const git = await getGit(repoPath)
   const [branch, status] = await Promise.all([getBranches(repoPath), git.status()])
   return {
     path: repoPath,
@@ -199,7 +220,8 @@ export async function getSummary(repoPath: string): Promise<RepoSummary> {
 }
 
 export async function checkout(repoPath: string, branch: string): Promise<BranchInfo> {
-  await getGit(repoPath).checkout(branch)
+  const git = await getGit(repoPath)
+  await git.checkout(branch)
   gitCache.delete(repoPath)
   return getBranches(repoPath)
 }
