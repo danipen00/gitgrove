@@ -30,6 +30,9 @@ Updates…**
 
 - **Open any repository** from the folder picker, and jump back into recent ones from
   the welcome screen.
+- **Right‑click a repository** — the toolbar switcher or any recent — to copy its name
+  or path, reveal it in Finder/Explorer, open a terminal there, or jump to its remote
+  on GitHub. The same actions live in the **Repository** menu for the open repo.
 - **Switch branches** — local or remote — straight from the toolbar; GitGrove checks
   them out in place.
 - **Browse your changes** in the **Changes** tab: a status‑colored file tree (added,

@@ -21,6 +21,9 @@ export const IPC = {
   trustRepo: 'repo:trust',
   recentRepos: 'repo:recent',
   removeRecent: 'repo:recent:remove',
+  remoteUrl: 'repo:remote-url',
+  revealRepo: 'repo:reveal',
+  openTerminal: 'repo:terminal',
   status: 'repo:status',
   branches: 'repo:branches',
   checkout: 'repo:checkout',
@@ -30,6 +33,8 @@ export const IPC = {
   commitDiff: 'repo:diff:commit',
   // environment / app / updates
   checkGit: 'git:check',
+  openExternal: 'app:open-external',
+  clipboardWrite: 'app:clipboard-write',
   appInfo: 'app:info',
   checkForUpdates: 'update:check',
   installUpdate: 'update:install',
@@ -60,6 +65,12 @@ export interface GitGroveApi {
   trustRepo(path: string): Promise<RepoOpenResult>
   recentRepos(): Promise<RecentRepo[]>
   removeRecent(path: string): Promise<RecentRepo[]>
+  /** Resolve the repo's remote to a browsable web URL, or null if it has none. */
+  remoteUrl(repoPath: string): Promise<string | null>
+  /** Open the repo folder in the OS file manager (Finder/Explorer/…). */
+  revealRepo(repoPath: string): Promise<boolean>
+  /** Open a terminal rooted at the repo. Resolves false if none could launch. */
+  openTerminal(repoPath: string): Promise<boolean>
   status(repoPath: string): Promise<ChangedFile[]>
   branches(repoPath: string): Promise<BranchInfo>
   checkout(repoPath: string, branch: string): Promise<BranchInfo>
@@ -72,6 +83,10 @@ export interface GitGroveApi {
    * (e.g.) installed git, bypassing the cached result.
    */
   checkGit(force?: boolean): Promise<GitAvailability>
+  /** Open a URL in the user's default browser. */
+  openExternal(url: string): Promise<void>
+  /** Write text to the system clipboard. */
+  clipboardWrite(text: string): Promise<void>
   /** Build/runtime info for the About dialog. */
   appInfo(): Promise<AppInfo>
   /** Ask the main process to check the update feed. `manual` drives "up to date" UI. */
