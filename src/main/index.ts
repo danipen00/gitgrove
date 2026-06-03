@@ -52,12 +52,24 @@ const REPO_URL = 'https://github.com/danipen/gitgrove'
 // Chromium's OSCrypt encrypts its own on-disk data (cookies, storage) with a
 // key it keeps in the OS secret store — the macOS keychain entry "GitGrove
 // Safe Storage". Reaching that entry pops a "GitGrove wants to use your
-// confidential information" password dialog on every launch, because our
-// ad-hoc-signed builds get a fresh code signature each version, so the
-// keychain ACL never matches and the grant can't persist. GitGrove keeps no
-// secrets (recents are plaintext JSON), so opt out of the OS store entirely
-// and let Chromium use its in-memory store instead. Must run before app ready.
+// confidential information" password dialog, because our ad-hoc-signed builds
+// get a fresh code signature each version, so the keychain ACL never matches
+// the new signature and the grant can't persist. GitGrove keeps no secrets
+// (recents are plaintext JSON), so opt out of the OS store entirely and let
+// Chromium use an in-memory key instead. Must run before app ready.
+//
+// Two flags are needed because they cover different platforms:
+//   - `password-store=basic` selects Chromium's basic (in-memory) store on
+//     *Linux* (libsecret/kwallet otherwise). It is a NO-OP on macOS — OSCrypt
+//     there always uses the Keychain regardless of this switch, which is why
+//     the dialog kept appearing despite it.
+//   - `use-mock-keychain` is the macOS lever: it makes OSCrypt use a mock,
+//     in-process keychain and never touch the real one (verified: with it set,
+//     the "GitGrove Safe Storage" entry is no longer created or read).
 app.commandLine.appendSwitch('password-store', 'basic')
+if (process.platform === 'darwin') {
+  app.commandLine.appendSwitch('use-mock-keychain')
+}
 
 // Opt-in CDP debugging: when GITGROVE_DEBUG_PORT is set (e.g. `bun dev:debug`),
 // expose Chromium's remote-debugging endpoint so tools like the Playwright CLI
