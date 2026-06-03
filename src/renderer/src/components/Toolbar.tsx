@@ -1,4 +1,5 @@
 import type { BranchInfo, RepoSummary } from '@shared/types'
+import { useState } from 'react'
 import { Icon } from '../lib/icons'
 import { isMac } from '../lib/platform'
 import type { ResolvedTheme, ThemePref } from '../lib/theme'
@@ -24,6 +25,17 @@ interface Props {
   onAbout: () => void
 }
 
+// Persist whether the (Windows/Linux) menu bar is expanded, mirroring how the
+// theme preference is stored. Defaults to collapsed so the title bar stays tidy.
+const MENU_KEY = 'gg.menuExpanded'
+function readMenuExpanded(): boolean {
+  try {
+    return localStorage.getItem(MENU_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export function Toolbar({
   repo,
   branch,
@@ -39,19 +51,41 @@ export function Toolbar({
   onThemeChange,
   onAbout
 }: Props) {
+  const [menuExpanded, setMenuExpanded] = useState(readMenuExpanded)
+
+  const toggleMenu = () => {
+    setMenuExpanded((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem(MENU_KEY, next ? '1' : '0')
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }
+
   return (
     <header className="toolbar">
       {/* leaves room for the macOS traffic lights in the draggable region */}
       {isMac && <div className="toolbar__drag-pad" />}
       {/* Windows/Linux: the native menu bar is hidden behind the custom title
-          bar, so surface it here at the far left, always visible. macOS keeps
-          its system menu. */}
-      {!isMac && <MenuBar />}
-      {!isMac && <div className="toolbar__sep" />}
-      <button className="toolbar__brand" title="About GitGrove" onClick={onAbout}>
+          bar, so the brand doubles as its toggle — clicking it expands/collapses
+          the menu (collapsed by default so the title bar isn't always crowded),
+          with the chevron folded into the button as a single hover block. About
+          lives in the Help menu there. macOS keeps its system menu, so the
+          brand opens About instead and shows no chevron. */}
+      <button
+        className={`toolbar__brand${!isMac && menuExpanded ? ' is-expanded' : ''}`}
+        title={isMac ? 'About GitGrove' : menuExpanded ? 'Hide menu' : 'Show menu'}
+        aria-expanded={isMac ? undefined : menuExpanded}
+        onClick={isMac ? onAbout : toggleMenu}
+      >
         <Icon.Tree size={18} />
         GitGrove
+        {!isMac && <Icon.Chevron size={16} className="toolbar__brand-chevron" />}
       </button>
+      {!isMac && <MenuBar expanded={menuExpanded} />}
       <div className="toolbar__sep" />
       <RepoSwitcher repo={repo} onOpenRepo={onOpenRepo} onPickRepo={onPickRepo} />
       {repo && (

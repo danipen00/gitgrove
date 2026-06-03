@@ -1,11 +1,15 @@
-// Always-visible application menu bar for the Windows/Linux custom title bar.
+// Collapsible application menu bar for the Windows/Linux custom title bar.
 // The native menu bar is hidden there (the toolbar stands in for the title bar),
 // so we render the top-level labels here and pop the real native submenu on
 // click — keeping every existing menu action/role without reimplementing it.
+//
+// `expanded` is owned by the Toolbar (toggled via the chevron next to the
+// brand). We stay mounted while collapsed and just render null, so the labels
+// fetched on mount survive across toggles without a refetch flicker.
 
 import { useEffect, useState } from 'react'
 
-export function MenuBar() {
+export function MenuBar({ expanded }: { expanded: boolean }) {
   const [labels, setLabels] = useState<string[]>([])
   const [openLabel, setOpenLabel] = useState<string | null>(null)
 
@@ -16,7 +20,7 @@ export function MenuBar() {
       .catch(() => {})
   }, [])
 
-  if (labels.length === 0) return null
+  if (!expanded || labels.length === 0) return null
 
   const open = (label: string, el: HTMLElement) => {
     const r = el.getBoundingClientRect()

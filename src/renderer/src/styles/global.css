@@ -303,7 +303,7 @@ button {
   background: none;
   border: none;
   border-radius: var(--radius-sm);
-  padding: 4px 8px 4px 4px;
+  padding: 4px 6px;
 }
 .toolbar__brand:hover {
   background: var(--bg-hover);
@@ -313,7 +313,21 @@ button {
   color: var(--st-added);
 }
 
-/* ── Custom menu bar (always visible; Windows/Linux title bar) ────────────── */
+/* The menu-toggle chevron lives inside the brand button (Windows/Linux) so the
+   whole brand is one hover/click block. It's muted (not the brand's accent
+   green) and sits snug to the label; points right when collapsed, rotating to
+   point left when expanded. */
+.toolbar__brand .toolbar__brand-chevron {
+  color: var(--fg-muted);
+  margin-left: -2px;
+  transform: rotate(-90deg);
+  transition: transform 0.18s ease;
+}
+.toolbar__brand.is-expanded .toolbar__brand-chevron {
+  transform: rotate(90deg);
+}
+
+/* ── Custom menu bar (collapsible; Windows/Linux title bar) ───────────────── */
 .menubar {
   display: flex;
   align-items: center;
