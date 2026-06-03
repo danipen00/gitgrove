@@ -1,0 +1,36 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly re-scan of main so newly published CodeQL queries catch issues in
+    # code that hasn't changed since it last ran. Monday 06:00 UTC.
+    - cron: '0 6 * * 1'
+
+jobs:
+  analyze:
+    name: CodeQL-Build
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # No `queries:` override → CodeQL runs its DEFAULT suite. That's the
+          # standard security baseline, not the stricter security-and-quality
+          # set, to keep signal high and noise (and developer friction) low.
+          build-mode: none
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'
