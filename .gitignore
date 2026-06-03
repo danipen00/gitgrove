@@ -143,3 +143,7 @@ release/
 
 # macOS Finder metadata
 .DS_Store
+
+# Playwright CLI runtime artifacts (snapshots, screenshots, console logs, config)
+.playwright/
+.playwright-cli/

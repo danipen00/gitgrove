@@ -248,6 +248,51 @@ button {
   -webkit-app-region: no-drag;
 }
 
+/* Windows/Linux: the toolbar doubles as the title bar (no native frame). Pad the
+   left edge where the macOS traffic-light drag-pad would sit, and let the caption
+   buttons run flush to the right edge. */
+:root[data-platform='win32'] .toolbar,
+:root[data-platform='linux'] .toolbar {
+  padding-left: 10px;
+  padding-right: 0;
+}
+
+/* ── Window controls (custom caption buttons; Windows/Linux) ──────────────── */
+.winctl {
+  display: flex;
+  /* Fill the full title-bar height so the buttons (and their hover fill) reach
+     the top/right edges like native caption buttons, rather than floating. */
+  align-self: stretch;
+  margin-left: 8px;
+}
+.winctl__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Native width; height comes from the stretched bar so the hover fill spans
+     edge-to-edge while the 10px glyph stays vertically centered. */
+  width: 46px;
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  transition: background 0.12s, color 0.12s;
+}
+.winctl__btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.winctl__btn:active {
+  background: var(--bg-active);
+}
+.winctl__btn--close:hover {
+  background: #e81123;
+  color: #fff;
+}
+.winctl__btn--close:active {
+  background: #c50f1f;
+  color: #fff;
+}
+
 .toolbar__brand {
   display: flex;
   align-items: center;
@@ -266,6 +311,29 @@ button {
 
 .toolbar__brand svg {
   color: var(--st-added);
+}
+
+/* ── Custom menu bar (always visible; Windows/Linux title bar) ────────────── */
+.menubar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  -webkit-app-region: no-drag;
+}
+.menubar__item {
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.menubar__item:hover,
+.menubar__item.is-open {
+  background: var(--bg-hover);
+  color: var(--fg);
 }
 
 .toolbar__sep {

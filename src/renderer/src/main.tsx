@@ -2,10 +2,12 @@ import { preloadHighlighter } from '@pierre/diffs'
 import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
+import { applyPlatform } from './lib/platform'
 import { applyInitialTheme } from './lib/theme'
 import './styles/global.css'
 
 applyInitialTheme()
+applyPlatform()
 
 // Warm pierre's shared Shiki highlighter before any diff mounts, so the very first
 // diff paints synchronously instead of after an async highlighter load.
