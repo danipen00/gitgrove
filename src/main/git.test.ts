@@ -4,7 +4,16 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { getBranches, getCommitFiles, getLog, getStatus, isGitRepo, resolveRepoRoot } from './git'
+import {
+  getBranches,
+  getCommitFiles,
+  getLog,
+  getRemoteWebUrl,
+  getStatus,
+  isGitRepo,
+  resolveRepoRoot,
+  toWebUrl
+} from './git'
 
 // Integration tests: drive the real `git` binary against a throwaway repo so we
 // exercise the same code path the app uses. CI runners ship git; if it's ever
@@ -128,6 +137,52 @@ describe('getStatus', () => {
 
   it('is empty for a clean tree', async () => {
     expect(await getStatus(repo)).toEqual([])
+  })
+})
+
+describe('toWebUrl', () => {
+  it('converts scp-like SSH remotes to https', () => {
+    expect(toWebUrl('git@github.com:danipen/gitgrove.git')).toBe(
+      'https://github.com/danipen/gitgrove'
+    )
+  })
+
+  it('converts ssh:// remotes, dropping creds and port', () => {
+    expect(toWebUrl('ssh://git@github.com:22/danipen/gitgrove.git')).toBe(
+      'https://github.com/danipen/gitgrove'
+    )
+  })
+
+  it('upgrades git:// and http:// to https and strips .git', () => {
+    expect(toWebUrl('git://gitlab.com/group/proj.git')).toBe('https://gitlab.com/group/proj')
+    expect(toWebUrl('http://example.com/a/b.git')).toBe('https://example.com/a/b')
+  })
+
+  it('passes through a clean https remote', () => {
+    expect(toWebUrl('https://github.com/danipen/gitgrove.git')).toBe(
+      'https://github.com/danipen/gitgrove'
+    )
+  })
+
+  it('returns null for non-browsable or empty remotes', () => {
+    expect(toWebUrl('/srv/git/repo.git')).toBeNull()
+    expect(toWebUrl('')).toBeNull()
+    expect(toWebUrl('https://github.com')).toBeNull()
+  })
+})
+
+describe('getRemoteWebUrl', () => {
+  it('resolves the origin remote to a web URL', async () => {
+    git(['remote', 'add', 'origin', 'git@github.com:danipen/gitgrove.git'])
+    try {
+      expect(await getRemoteWebUrl(repo)).toBe('https://github.com/danipen/gitgrove')
+    } finally {
+      git(['remote', 'remove', 'origin'])
+    }
+  })
+
+  it('returns null when the repo has no remote', async () => {
+    expect(await getRemoteWebUrl(repo)).toBeNull()
   })
 })
 

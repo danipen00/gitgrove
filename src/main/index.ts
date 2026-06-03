@@ -1,8 +1,11 @@
-import { dirname, join } from 'node:path'
+import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -37,6 +40,7 @@ import {
   getCommitFiles,
   getLog,
   getQuickSummary,
+  getRemoteWebUrl,
   getStatus,
   getWorkingDiff,
   resolveRepoRoot
@@ -80,6 +84,12 @@ if (process.env.GITGROVE_DEBUG_PORT) {
 }
 
 let mainWindow: BrowserWindow | null = null
+
+// Path of the repo currently open in the renderer, mirrored here so the
+// application menu's repo actions (Reveal in Finder, Open in Terminal, …) know
+// what to act on. Null until the first repo opens; the Repository menu items
+// are disabled while it is.
+let currentRepoPath: string | null = null
 
 function appInfo(): AppInfo {
   return {
@@ -140,6 +150,18 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // A renderer reload (Ctrl/Cmd+R) drops back to the welcome screen with no repo
+  // open, but our mirrored currentRepoPath survives here in the main process.
+  // Clear it on every page load so the Repository menu's actions don't keep
+  // targeting the previously opened repo; openRepoAtPath re-sets it when the
+  // user opens one again.
+  mainWindow.webContents.on('did-start-loading', () => {
+    if (currentRepoPath !== null) {
+      currentRepoPath = null
+      buildMenu()
+    }
+  })
+
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
@@ -187,6 +209,43 @@ function buildMenu(): void {
         },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    {
+      // Mirrors the repo switcher's right-click actions for the repo currently
+      // open in the renderer; disabled until one is. Also surfaces these in the
+      // Windows/Linux custom menu bar, which reads this same application menu.
+      label: 'Repository',
+      submenu: [
+        {
+          label: isMac
+            ? 'Reveal in Finder'
+            : process.platform === 'win32'
+              ? 'Show in Explorer'
+              : 'Open Folder',
+          enabled: !!currentRepoPath,
+          click: () => currentRepoPath && shell.openPath(currentRepoPath)
+        },
+        {
+          label: 'Open in Terminal',
+          enabled: !!currentRepoPath,
+          click: () => currentRepoPath && openTerminal(currentRepoPath)
+        },
+        { type: 'separator' },
+        {
+          label: 'Copy Repository Path',
+          enabled: !!currentRepoPath,
+          click: () => currentRepoPath && clipboard.writeText(currentRepoPath)
+        },
+        {
+          label: 'View on Remote',
+          enabled: !!currentRepoPath,
+          click: async () => {
+            if (!currentRepoPath) return
+            const url = await getRemoteWebUrl(currentRepoPath)
+            if (url) shell.openExternal(url)
+          }
+        }
       ]
     },
     { role: 'editMenu' },
@@ -258,6 +317,10 @@ async function openRepoAtPath(rawPath: string): Promise<RepoOpenResult> {
   const summary = await getQuickSummary(root)
   rememberRepo({ path: summary.path, name: summary.name })
   watcher.watch(root)
+  // Point the application menu's repo actions at the now-open repo (and enable
+  // them if this is the first one).
+  currentRepoPath = summary.path
+  buildMenu()
   return { ok: true, summary }
 }
 
@@ -296,6 +359,36 @@ async function checkGit(force: boolean): Promise<GitAvailability> {
   }
 }
 
+/**
+ * Open a terminal rooted at `cwd`. There's no cross-platform Electron API for
+ * this, so launch the platform's stock terminal: Terminal.app on macOS, a new
+ * `cmd` window on Windows, and the freedesktop-preferred emulator (falling back
+ * through common ones) on Linux. Detaches the child so it outlives GitGrove and
+ * returns whether a terminal was launched.
+ */
+function openTerminal(cwd: string): boolean {
+  const launch = (cmd: string, args: string[]): boolean => {
+    try {
+      const child = spawn(cmd, args, { cwd, detached: true, stdio: 'ignore' })
+      child.on('error', () => {})
+      child.unref()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  if (process.platform === 'darwin') return launch('open', ['-a', 'Terminal', cwd])
+  if (process.platform === 'win32')
+    return launch('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', `cd /d "${cwd}"`])
+  // Linux: spawn reports a missing binary only asynchronously, so probe PATH
+  // first and launch the user's configured emulator, then well-known ones.
+  const onPath = (cmd: string) =>
+    (process.env.PATH ?? '').split(delimiter).some((dir) => dir && existsSync(join(dir, cmd)))
+  const term = ['x-terminal-emulator', 'gnome-terminal', 'konsole', 'xterm'].find(onPath)
+  return term ? launch(term, []) : false
+}
+
 function registerIpc(): void {
   ipcMain.handle(IPC.pickRepo, async () => {
     if (!mainWindow) return null
@@ -313,6 +406,13 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.recentRepos, () => getRecentRepos())
   ipcMain.handle(IPC.removeRecent, (_e, path: string) => removeRecentRepo(path))
+  ipcMain.handle(IPC.remoteUrl, (_e, repoPath: string) => getRemoteWebUrl(repoPath))
+  ipcMain.handle(IPC.revealRepo, async (_e, repoPath: string) => {
+    // openPath returns '' on success, an error string otherwise.
+    const err = await shell.openPath(repoPath)
+    return err === ''
+  })
+  ipcMain.handle(IPC.openTerminal, (_e, repoPath: string) => openTerminal(repoPath))
 
   ipcMain.handle(IPC.status, (_e, repoPath: string) => getStatus(repoPath))
   ipcMain.handle(IPC.branches, (_e, repoPath: string) => getBranches(repoPath))
@@ -329,6 +429,8 @@ function registerIpc(): void {
   )
 
   ipcMain.handle(IPC.checkGit, (_e, force?: boolean) => checkGit(!!force))
+  ipcMain.handle(IPC.openExternal, (_e, url: string) => shell.openExternal(url))
+  ipcMain.handle(IPC.clipboardWrite, (_e, text: string) => clipboard.writeText(text))
 
   // Window controls for the custom title bar (Windows/Linux; no-ops elsewhere).
   ipcMain.handle(IPC.windowMinimize, () => mainWindow?.minimize())
