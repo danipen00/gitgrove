@@ -50,7 +50,7 @@ to never think about it again.
 
 ### Continuous integration
 
-Pull requests run, across macOS (arm64 + x64), Windows (x64 + arm64) and Linux:
+Pull requests run, across macOS arm64, Windows (x64 + arm64) and Linux x64:
 **Lint**, **typecheck + tests + build** per platform, an **E2E smoke** (macOS
 arm64 + Windows x64) that launches the app and asserts it renders, and a
 **CodeQL** security scan on its default query suite. See `.github/workflows/`.

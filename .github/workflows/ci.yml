@@ -41,7 +41,6 @@ jobs:
       matrix:
         include:
           - { name: macOS arm64, os: macos-latest }
-          - { name: macOS x64, os: macos-13 }
           - { name: Windows x64, os: windows-latest }
           # setup-bun falls back to the x64-baseline build under emulation here,
           # which runs fine; native arm64 kicks in once the action adopts it.
