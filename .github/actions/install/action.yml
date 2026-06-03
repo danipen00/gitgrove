@@ -1,0 +1,41 @@
+name: Install
+description: Set up a pinned Bun, restore its download cache, and install deps with a retry for transient registry blips.
+
+inputs:
+  bun-version:
+    description: Bun version to install (kept identical to the local toolchain).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+
+    # Cache only Bun's global download cache — NOT node_modules, which holds
+    # platform-specific binaries (electron, the Biome native binary). The key is
+    # scoped by os AND arch so the Windows x64 and arm64 legs never share (and
+    # corrupt) each other's cache.
+    - uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          bun-${{ runner.os }}-${{ runner.arch }}-
+
+    # GitHub's package registry occasionally drops connections mid-install
+    # (ConnectionRefused / FailedToOpenSocket). A warm cache helps, but a cold
+    # cache still hits the network, so retry a couple of times before failing.
+    - name: Install dependencies
+      shell: bash
+      run: |
+        for attempt in 1 2 3; do
+          if bun install --frozen-lockfile; then
+            exit 0
+          fi
+          echo "::warning::bun install failed (attempt ${attempt}/3); retrying in $((attempt * 10))s"
+          sleep $((attempt * 10))
+        done
+        echo "::error::bun install failed after 3 attempts"
+        exit 1
