@@ -18,6 +18,7 @@ interface Props {
   onCheckout: (branch: string) => void
   onRefresh: () => void
   onThemeChange: (pref: ThemePref) => void
+  onAbout: () => void
 }
 
 export function Toolbar({
@@ -32,16 +33,17 @@ export function Toolbar({
   onPickRepo,
   onCheckout,
   onRefresh,
-  onThemeChange
+  onThemeChange,
+  onAbout
 }: Props) {
   return (
     <header className="toolbar">
       {/* leaves room for the macOS traffic lights in the draggable region */}
       <div className="toolbar__drag-pad" />
-      <div className="toolbar__brand">
+      <button className="toolbar__brand" title="About GitGrove" onClick={onAbout}>
         <Icon.Tree size={18} />
         GitGrove
-      </div>
+      </button>
       <div className="toolbar__sep" />
       <RepoSwitcher repo={repo} onOpenRepo={onOpenRepo} onPickRepo={onPickRepo} />
       {repo && (

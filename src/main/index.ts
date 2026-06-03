@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const moduleDir = dirname(fileURLToPath(import.meta.url))
 
 import { IPC } from '@shared/ipc'
-import type { ChangedFile, LogOptions } from '@shared/types'
+import type { AppInfo, ChangedFile, LogOptions } from '@shared/types'
 import {
   checkout,
   getBranches,
@@ -21,9 +21,26 @@ import {
 } from './git'
 import { getRecentRepos, rememberRepo, removeRecentRepo } from './store'
 import { RepoWatcher } from './watcher'
+import { checkForUpdates, initAutoUpdater, quitAndInstall } from './updater'
 
 const isDev = !app.isPackaged
+const REPO_URL = 'https://github.com/danipen/gitgrove'
 let mainWindow: BrowserWindow | null = null
+
+function appInfo(): AppInfo {
+  return {
+    name: app.getName(),
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    v8: process.versions.v8,
+    platform: process.platform,
+    arch: process.arch,
+    dev: isDev,
+    repoUrl: REPO_URL
+  }
+}
 
 const watcher = new RepoWatcher((repoPath) => {
   mainWindow?.webContents.send(IPC.repoChanged, repoPath)
@@ -73,7 +90,14 @@ function buildMenu(): void {
           {
             label: app.name,
             submenu: [
-              { role: 'about' as const },
+              {
+                label: `About ${app.name}`,
+                click: () => mainWindow?.webContents.send(IPC.menuShowAbout)
+              },
+              {
+                label: 'Check for Updates…',
+                click: () => checkForUpdates(() => mainWindow, true)
+              },
               { type: 'separator' as const },
               { role: 'hide' as const },
               { role: 'hideOthers' as const },
@@ -111,7 +135,33 @@ function buildMenu(): void {
         { role: 'togglefullscreen' }
       ]
     },
-    { role: 'windowMenu' }
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'GitGrove on GitHub',
+          click: () => shell.openExternal(REPO_URL)
+        },
+        {
+          label: 'Report an Issue…',
+          click: () => shell.openExternal(`${REPO_URL}/issues/new`)
+        },
+        ...(isMac
+          ? []
+          : [
+              { type: 'separator' as const },
+              {
+                label: 'Check for Updates…',
+                click: () => checkForUpdates(() => mainWindow, true)
+              },
+              {
+                label: `About ${app.name}`,
+                click: () => mainWindow?.webContents.send(IPC.menuShowAbout)
+              }
+            ])
+      ]
+    }
   ]
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
@@ -161,12 +211,27 @@ function registerIpc(): void {
   ipcMain.handle(IPC.commitDiff, (_e, repoPath: string, hash: string, file: ChangedFile) =>
     getCommitDiff(repoPath, hash, file)
   )
+
+  ipcMain.handle(IPC.appInfo, () => appInfo())
+  ipcMain.handle(IPC.checkForUpdates, (_e, manual: boolean) =>
+    checkForUpdates(() => mainWindow, manual)
+  )
+  ipcMain.handle(IPC.installUpdate, () => quitAndInstall())
 }
 
 app.whenReady().then(() => {
+  app.setAboutPanelOptions({
+    applicationName: app.getName(),
+    applicationVersion: app.getVersion(),
+    version: `Electron ${process.versions.electron}`,
+    copyright: 'Copyright © 2026 GitGrove',
+    website: REPO_URL
+  })
+
   registerIpc()
   buildMenu()
   createWindow()
+  initAutoUpdater(() => mainWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

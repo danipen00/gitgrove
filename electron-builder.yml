@@ -1,5 +1,7 @@
 appId: software.gitgrove.app
 productName: GitGrove
+copyright: Copyright © 2026 GitGrove
+# build/ holds icon.png (1024×1024); electron-builder derives .icns/.ico from it.
 directories:
   output: release
   buildResources: build
@@ -8,16 +10,49 @@ files:
   - package.json
 asarUnpack:
   - '**/*.node'
+
+# Auto-update feed. `dist:*` builds the artifacts; `release` (see package.json)
+# additionally uploads them here. Requires GH_TOKEN in the environment to publish.
+publish:
+  provider: github
+  owner: danipen
+  repo: gitgrove
+
+artifactName: ${productName}-${version}-${arch}.${ext}
+
 mac:
-  target:
-    - dmg
-    - zip
   category: public.app-category.developer-tools
+  icon: build/icon.png
   hardenedRuntime: true
-win:
+  gatekeeperAssess: false
   target:
-    - nsis
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip # zip target is required by electron-updater on macOS
+      arch: [arm64, x64]
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
 linux:
+  icon: build/icon.png
+  category: Development
   target:
     - AppImage
-  category: Development

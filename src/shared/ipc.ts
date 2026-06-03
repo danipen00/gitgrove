@@ -3,13 +3,15 @@
 // and the renderer client import from here so the contract stays in one place.
 
 import type {
+  AppInfo,
   BranchInfo,
   ChangedFile,
   Commit,
   DiffPayload,
   LogOptions,
   RecentRepo,
-  RepoSummary
+  RepoSummary,
+  UpdateStatus
 } from './types'
 
 export const IPC = {
@@ -24,9 +26,15 @@ export const IPC = {
   commitFiles: 'repo:commit:files',
   workingDiff: 'repo:diff:working',
   commitDiff: 'repo:diff:commit',
+  // app / updates
+  appInfo: 'app:info',
+  checkForUpdates: 'update:check',
+  installUpdate: 'update:install',
   // main -> renderer pushes
   repoChanged: 'repo:changed',
-  menuOpenRepo: 'menu:open-repo'
+  menuOpenRepo: 'menu:open-repo',
+  menuShowAbout: 'menu:about',
+  updateStatus: 'update:status'
 } as const
 
 export interface GitGroveApi {
@@ -43,10 +51,20 @@ export interface GitGroveApi {
   commitFiles(repoPath: string, hash: string): Promise<ChangedFile[]>
   workingDiff(repoPath: string, file: ChangedFile): Promise<DiffPayload>
   commitDiff(repoPath: string, hash: string, file: ChangedFile): Promise<DiffPayload>
+  /** Build/runtime info for the About dialog. */
+  appInfo(): Promise<AppInfo>
+  /** Ask the main process to check the update feed. `manual` drives "up to date" UI. */
+  checkForUpdates(manual: boolean): Promise<void>
+  /** Quit and install a downloaded update. */
+  installUpdate(): Promise<void>
   /** Subscribe to filesystem-driven repo change notifications. Returns an unsubscribe fn. */
   onRepoChanged(handler: (repoPath: string) => void): () => void
   /** Subscribe to the application menu "Open Repository" command. */
   onMenuOpenRepo(handler: () => void): () => void
+  /** Subscribe to the "About GitGrove" menu command. */
+  onShowAbout(handler: () => void): () => void
+  /** Subscribe to auto-update lifecycle pushes. Returns an unsubscribe fn. */
+  onUpdateStatus(handler: (status: UpdateStatus) => void): () => void
 }
 
 declare global {

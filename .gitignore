@@ -134,3 +134,9 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# electron-builder packaged installers (directories.output in electron-builder.yml)
+release/
+
+# macOS Finder metadata
+.DS_Store

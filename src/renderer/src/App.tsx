@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 
-import type { BranchInfo, ChangedFile, Commit, DiffPayload, RepoSummary } from '@shared/types'
+import type {
+  AppInfo,
+  BranchInfo,
+  ChangedFile,
+  Commit,
+  DiffPayload,
+  RepoSummary,
+  UpdateStatus
+} from '@shared/types'
 import { Toolbar } from './components/Toolbar'
 import { Welcome } from './components/Welcome'
 import { ChangesView } from './components/ChangesView'
@@ -9,6 +17,8 @@ import { CommitSummary } from './components/CommitSummary'
 import { TooltipLayer } from './components/TooltipLayer'
 import { DiffViewer, type DiffMode } from './components/DiffViewer'
 import { Resizer } from './components/Resizer'
+import { AboutDialog } from './components/AboutDialog'
+import { UpdateBanner } from './components/UpdateBanner'
 import { Icon } from './lib/icons'
 import { useTheme } from './lib/theme'
 
@@ -46,6 +56,14 @@ export function App() {
   const [busy, setBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // App/about + auto-update state.
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
+  const [aboutOpen, setAboutOpen] = useState(false)
+  const [update, setUpdate] = useState<UpdateStatus | null>(null)
+  // Version the user dismissed the "ready to install" banner for, so it stays
+  // hidden until a newer build arrives.
+  const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null)
 
   const [tab, setTab] = useState<Tab>('changes')
 
@@ -385,12 +403,67 @@ export function App() {
     })
   }, [refresh])
 
+  // ── About dialog + auto-update ─────────────────────────────────────────────
+  useEffect(() => {
+    window.gitgrove.appInfo().then(setAppInfo).catch(() => {})
+  }, [])
+
+  useEffect(() => window.gitgrove.onShowAbout(() => setAboutOpen(true)), [])
+
+  useEffect(
+    () =>
+      window.gitgrove.onUpdateStatus((status) => {
+        setUpdate(status)
+        // A freshly downloaded build clears any earlier "Later" dismissal.
+        if (status.state === 'downloaded' && status.newVersion !== dismissedUpdate) {
+          setDismissedUpdate(null)
+        }
+      }),
+    [dismissedUpdate]
+  )
+
+  const checkForUpdates = useCallback(() => {
+    window.gitgrove.checkForUpdates(true).catch(fail)
+  }, [fail])
+
+  const installUpdate = useCallback(() => {
+    window.gitgrove.installUpdate().catch(fail)
+  }, [fail])
+
   // auto-dismiss errors
   useEffect(() => {
     if (!error) return
     const t = setTimeout(() => setError(null), 6000)
     return () => clearTimeout(t)
   }, [error])
+
+  // Surface update progress unless the user dismissed the ready-to-install card.
+  const bannerUpdate =
+    update &&
+    (update.state === 'downloading' ||
+      update.state === 'available' ||
+      (update.state === 'downloaded' && update.newVersion !== dismissedUpdate))
+      ? update
+      : null
+
+  const overlays = (
+    <>
+      <UpdateBanner
+        update={bannerUpdate}
+        onInstall={installUpdate}
+        onDismiss={() => setDismissedUpdate(update?.newVersion ?? null)}
+      />
+      {aboutOpen && (
+        <AboutDialog
+          info={appInfo}
+          update={update}
+          onClose={() => setAboutOpen(false)}
+          onCheckForUpdates={checkForUpdates}
+          onInstall={installUpdate}
+        />
+      )}
+    </>
+  )
 
   if (!repo) {
     return (
@@ -408,11 +481,13 @@ export function App() {
           onCheckout={checkout}
           onRefresh={refresh}
           onThemeChange={setThemePref}
+          onAbout={() => setAboutOpen(true)}
         />
         <div className="app__body">
           <Welcome onPickRepo={pickRepo} onOpenRepo={openRepoByPath} />
         </div>
         {error && <ErrorToast message={error} onClose={() => setError(null)} />}
+        {overlays}
       </div>
     )
   }
@@ -434,6 +509,7 @@ export function App() {
         onCheckout={checkout}
         onRefresh={refresh}
         onThemeChange={setThemePref}
+        onAbout={() => setAboutOpen(true)}
       />
       <div
         className="app__body"
@@ -512,6 +588,7 @@ export function App() {
       </div>
 
       {error && <ErrorToast message={error} onClose={() => setError(null)} />}
+      {overlays}
       <TooltipLayer />
     </div>
   )

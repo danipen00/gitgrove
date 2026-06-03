@@ -101,3 +101,50 @@ export interface AppError {
   message: string
   detail?: string
 }
+
+/** Static information about the running build, surfaced in the About dialog. */
+export interface AppInfo {
+  name: string
+  version: string
+  /** Electron / Chromium / Node / V8 runtime versions. */
+  electron: string
+  chrome: string
+  node: string
+  v8: string
+  platform: NodeJS.Platform
+  arch: string
+  /** False when running a packaged build, true under `electron-vite dev`. */
+  dev: boolean
+  /** Canonical repository URL for "View on GitHub" links. */
+  repoUrl: string
+}
+
+/** Lifecycle of an auto-update check, pushed from main to the renderer. */
+export type UpdateState =
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+  /** Reported for manual checks while running an unpackaged dev build. */
+  | 'dev'
+
+export interface UpdateStatus {
+  state: UpdateState
+  /** The currently running version. */
+  version: string
+  /** The version offered by the feed (available / downloaded states). */
+  newVersion?: string
+  /** Release notes for the offered version, flattened to plain text. */
+  notes?: string
+  /** Download progress 0–100 (downloading state). */
+  percent?: number
+  bytesPerSecond?: number
+  error?: string
+  /**
+   * True when the user explicitly asked to check (menu / About button). Lets the
+   * renderer stay silent about "up to date" results from background checks.
+   */
+  manual: boolean
+}

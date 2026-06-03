@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 import { IPC, type GitGroveApi } from '@shared/ipc'
-import type { ChangedFile, LogOptions } from '@shared/types'
+import type { ChangedFile, LogOptions, UpdateStatus } from '@shared/types'
 
 const api: GitGroveApi = {
   pickRepo: () => ipcRenderer.invoke(IPC.pickRepo),
@@ -16,6 +16,9 @@ const api: GitGroveApi = {
   workingDiff: (repoPath, file: ChangedFile) => ipcRenderer.invoke(IPC.workingDiff, repoPath, file),
   commitDiff: (repoPath, hash, file: ChangedFile) =>
     ipcRenderer.invoke(IPC.commitDiff, repoPath, hash, file),
+  appInfo: () => ipcRenderer.invoke(IPC.appInfo),
+  checkForUpdates: (manual) => ipcRenderer.invoke(IPC.checkForUpdates, manual),
+  installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),
   onRepoChanged: (handler) => {
     const listener = (_e: unknown, repoPath: string) => handler(repoPath)
     ipcRenderer.on(IPC.repoChanged, listener)
@@ -25,6 +28,16 @@ const api: GitGroveApi = {
     const listener = () => handler()
     ipcRenderer.on(IPC.menuOpenRepo, listener)
     return () => ipcRenderer.removeListener(IPC.menuOpenRepo, listener)
+  },
+  onShowAbout: (handler) => {
+    const listener = () => handler()
+    ipcRenderer.on(IPC.menuShowAbout, listener)
+    return () => ipcRenderer.removeListener(IPC.menuShowAbout, listener)
+  },
+  onUpdateStatus: (handler) => {
+    const listener = (_e: unknown, status: UpdateStatus) => handler(status)
+    ipcRenderer.on(IPC.updateStatus, listener)
+    return () => ipcRenderer.removeListener(IPC.updateStatus, listener)
   }
 }
 

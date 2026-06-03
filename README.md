@@ -77,10 +77,51 @@ node scripts/verify-ui.mjs           # drives the app with Playwright + screensh
 
 ```bash
 bun run build        # bundle main / preload / renderer into out/
+bun run make:icon    # regenerate build/icon.png from build/icon.svg
 bun run dist:mac     # package a .dmg + .zip (also: dist:win, dist:linux)
 ```
 
-Packaging is configured in `electron-builder.yml`.
+Packaging is configured in `electron-builder.yml`. The app icon lives in
+`build/icon.svg`; `make:icon` renders it to `build/icon.png` (1024×1024) with
+Playwright, and electron‑builder derives the platform `.icns` / `.ico` from it.
+
+## Releasing & auto-update
+
+GitGrove ships an in-app updater (**electron-updater**) wired to **GitHub
+Releases** (`danipen/gitgrove`, configured under `publish:` in
+`electron-builder.yml`). On launch it checks quietly in the background; **Help ▸
+Check for Updates…** (and the button in the About dialog) run a manual check.
+Available updates download automatically and a banner offers to restart and
+install.
+
+To cut a release:
+
+```bash
+# 1. bump "version" in package.json, commit, and tag (e.g. v1.1.0)
+# 2. publish signed/notarized artifacts + the update feed to GitHub Releases:
+export GH_TOKEN=<a token with repo scope>
+bun run release            # electron-vite build && electron-builder --publish always
+```
+
+`release` uploads the installers **and** the `latest*.yml` feed files that
+electron-updater reads. Publishing as a *draft* first (electron-builder's
+default) lets you write release notes — they surface verbatim in the in-app
+update banner / About dialog — before making the release public.
+
+### Code signing (required for macOS auto-update)
+
+Unsigned builds run locally but **macOS will not silently self-update** them:
+the updater validates the app signature, and Gatekeeper warns other users. For a
+real release, sign and notarize:
+
+- macOS — set `CSC_LINK` / `CSC_KEY_PASSWORD` (Developer ID Application cert) and
+  notarization creds (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`),
+  then add a `mac.notarize` block to `electron-builder.yml`.
+- Windows — provide a code-signing certificate via `CSC_LINK` / `CSC_KEY_PASSWORD`
+  to avoid SmartScreen warnings.
+
+Cross-compiling is limited: build macOS artifacts on macOS, Windows on Windows
+(or via Wine), Linux on Linux/Docker.
 
 ## Tech stack
 
