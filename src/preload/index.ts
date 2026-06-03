@@ -3,6 +3,7 @@ import type { ChangedFile, LogOptions, UpdateStatus } from '@shared/types'
 import { contextBridge, ipcRenderer } from 'electron'
 
 const api: GitGroveApi = {
+  platform: process.platform,
   pickRepo: () => ipcRenderer.invoke(IPC.pickRepo),
   openRepo: (path) => ipcRenderer.invoke(IPC.openRepo, path),
   recentRepos: () => ipcRenderer.invoke(IPC.recentRepos),
@@ -18,6 +19,17 @@ const api: GitGroveApi = {
   appInfo: () => ipcRenderer.invoke(IPC.appInfo),
   checkForUpdates: (manual) => ipcRenderer.invoke(IPC.checkForUpdates, manual),
   installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),
+  windowMinimize: () => ipcRenderer.invoke(IPC.windowMinimize),
+  windowMaximizeToggle: () => ipcRenderer.invoke(IPC.windowMaximizeToggle),
+  windowClose: () => ipcRenderer.invoke(IPC.windowClose),
+  windowIsMaximized: () => ipcRenderer.invoke(IPC.windowIsMaximized),
+  menuLabels: () => ipcRenderer.invoke(IPC.menuLabels),
+  menuPopup: (label, x, y) => ipcRenderer.invoke(IPC.menuPopup, label, x, y),
+  onWindowMaximized: (handler) => {
+    const listener = (_e: unknown, maximized: boolean) => handler(maximized)
+    ipcRenderer.on(IPC.windowMaximized, listener)
+    return () => ipcRenderer.removeListener(IPC.windowMaximized, listener)
+  },
   onRepoChanged: (handler) => {
     const listener = (_e: unknown, repoPath: string) => handler(repoPath)
     ipcRenderer.on(IPC.repoChanged, listener)

@@ -90,8 +90,13 @@ function createWindow(): void {
     // Window icon is used on Windows/Linux (ignored on macOS); only needed in
     // dev — packaged builds carry the icon in the executable.
     ...(isDev ? { icon: devIconPath } : {}),
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    // macOS keeps its inset traffic lights. On Windows/Linux we hide the native
+    // title bar and menu bar so the app's toolbar acts as the title bar, with
+    // custom window controls (see WindowControls) painted into it — Alt still
+    // reveals the menu bar on demand.
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     trafficLightPosition: { x: 16, y: 18 },
+    autoHideMenuBar: process.platform !== 'darwin',
     webPreferences: {
       preload: join(moduleDir, '../preload/index.js'),
       sandbox: false,
@@ -101,6 +106,13 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
+
+  // Keep the renderer's custom window controls (Windows/Linux) in sync with the
+  // real maximize state so the maximize/restore glyph matches the window.
+  const emitMaximized = () =>
+    mainWindow?.webContents.send(IPC.windowMaximized, mainWindow.isMaximized())
+  mainWindow.on('maximize', emitMaximized)
+  mainWindow.on('unmaximize', emitMaximized)
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
@@ -249,6 +261,30 @@ function registerIpc(): void {
   ipcMain.handle(IPC.commitDiff, (_e, repoPath: string, hash: string, file: ChangedFile) =>
     getCommitDiff(repoPath, hash, file)
   )
+
+  // Window controls for the custom title bar (Windows/Linux; no-ops elsewhere).
+  ipcMain.handle(IPC.windowMinimize, () => mainWindow?.minimize())
+  ipcMain.handle(IPC.windowMaximizeToggle, () => {
+    if (!mainWindow) return
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+  })
+  ipcMain.handle(IPC.windowClose, () => mainWindow?.close())
+  ipcMain.handle(IPC.windowIsMaximized, () => mainWindow?.isMaximized() ?? false)
+
+  // Custom always-visible menu bar (Windows/Linux): the renderer draws the
+  // top-level labels and asks us to pop the corresponding native submenu, so all
+  // the existing menu actions/roles work without being reimplemented in the UI.
+  ipcMain.handle(IPC.menuLabels, () => {
+    const menu = Menu.getApplicationMenu()
+    return menu ? menu.items.filter((i) => i.submenu).map((i) => i.label) : []
+  })
+  ipcMain.handle(IPC.menuPopup, (_e, label: string, x: number, y: number) => {
+    const item = Menu.getApplicationMenu()?.items.find((i) => i.label === label)
+    if (item?.submenu && mainWindow) {
+      item.submenu.popup({ window: mainWindow, x: Math.round(x), y: Math.round(y) })
+    }
+  })
 
   ipcMain.handle(IPC.appInfo, () => appInfo())
   ipcMain.handle(IPC.checkForUpdates, (_e, manual: boolean) =>
