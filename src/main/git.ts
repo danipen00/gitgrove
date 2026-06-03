@@ -3,11 +3,9 @@
 // for diff/log where we need exact control over formatting and exit codes.
 
 import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-import { basename, join } from 'node:path'
 import { readFile } from 'node:fs/promises'
-import simpleGit, { type SimpleGit } from 'simple-git'
-
+import { basename, join } from 'node:path'
+import { promisify } from 'node:util'
 import type {
   BranchInfo,
   ChangedFile,
@@ -17,6 +15,7 @@ import type {
   LogOptions,
   RepoSummary
 } from '@shared/types'
+import simpleGit, { type SimpleGit } from 'simple-git'
 
 const execFileAsync = promisify(execFile)
 
@@ -213,10 +212,10 @@ export async function getLog(repoPath: string, options: LogOptions = {}): Promis
   const { ref, limit = 200, skip = 0, search } = options
   const args = ['log', `--pretty=format:${LOG_FORMAT}`, `--max-count=${limit}`]
   if (skip > 0) args.push(`--skip=${skip}`)
-  if (search && search.trim()) {
+  if (search?.trim()) {
     args.push(`--grep=${search.trim()}`, '-i', '--all-match')
   }
-  args.push(ref && ref.trim() ? ref : 'HEAD')
+  args.push(ref?.trim() ? ref : 'HEAD')
 
   const out = await runGit(repoPath, args)
   return out
@@ -224,8 +223,18 @@ export async function getLog(repoPath: string, options: LogOptions = {}): Promis
     .map((rec) => rec.replace(/^\n/, ''))
     .filter((rec) => rec.trim().length > 0)
     .map((rec) => {
-      const [hash, shortHash, subject, body, authorName, authorEmail, date, relativeDate, refs, parents] =
-        rec.split(SEP)
+      const [
+        hash,
+        shortHash,
+        subject,
+        body,
+        authorName,
+        authorEmail,
+        date,
+        relativeDate,
+        refs,
+        parents
+      ] = rec.split(SEP)
       return {
         hash,
         shortHash,
@@ -325,9 +334,7 @@ export async function getCommitFiles(repoPath: string, hash: string): Promise<Ch
       const [ins, del, ...rest] = line.split('\t')
       const rawPath = rest.join('\t')
       // Normalise rename notation `old => new` / `dir/{a => b}` to the new path.
-      const path = rawPath
-        .replace(/.*\{(?:.*) => (.*)\}/, '$1')
-        .replace(/^.* => /, '')
+      const path = rawPath.replace(/.*\{(?:.*) => (.*)\}/, '$1').replace(/^.* => /, '')
       const binary = ins === '-' && del === '-'
       counts.set(path, {
         insertions: binary ? undefined : Number(ins),
@@ -350,7 +357,9 @@ export async function getCommitFiles(repoPath: string, hash: string): Promise<Ch
   return files.sort((a, b) => a.path.localeCompare(b.path))
 }
 
-function finalizeDiff(payload: Omit<DiffPayload, 'binary' | 'notice'> & { patch: string }): DiffPayload {
+function finalizeDiff(
+  payload: Omit<DiffPayload, 'binary' | 'notice'> & { patch: string }
+): DiffPayload {
   const { patch } = payload
   const binary = /^Binary files |GIT binary patch/m.test(patch)
   if (Buffer.byteLength(patch, 'utf8') > MAX_PATCH_BYTES) {
@@ -408,7 +417,11 @@ export async function getWorkingDiff(repoPath: string, file: ChangedFile): Promi
   if (file.status === 'untracked') {
     // Untracked files have no index entry; diff against /dev/null. git returns
     // exit code 1 when the files differ, which is expected here.
-    patch = await runGit(repoPath, ['diff', '--no-color', '--no-index', '--', '/dev/null', file.path], [1])
+    patch = await runGit(
+      repoPath,
+      ['diff', '--no-color', '--no-index', '--', '/dev/null', file.path],
+      [1]
+    )
   } else {
     // Everything tracked: full working-tree state (staged + unstaged) vs HEAD.
     const args = ['diff', '--no-color', 'HEAD', '--', file.path]

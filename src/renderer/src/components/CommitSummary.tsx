@@ -1,6 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-
 import type { ChangedFile, Commit } from '@shared/types'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type CommitRef, parseRefs, pluralize } from '../lib/format'
 import { Icon } from '../lib/icons'
 import { Avatar } from './Avatar'
@@ -111,7 +110,10 @@ export function CommitSummary({ commit, files, filesLoading }: Props) {
 
       {commit.body && (
         <div className="commit-summary__body-wrap">
-          <div ref={bodyRef} className={`commit-summary__body${bodyExpanded ? ' is-expanded' : ''}`}>
+          <div
+            ref={bodyRef}
+            className={`commit-summary__body${bodyExpanded ? ' is-expanded' : ''}`}
+          >
             {commit.body}
           </div>
           {(bodyOverflows || bodyExpanded) && (

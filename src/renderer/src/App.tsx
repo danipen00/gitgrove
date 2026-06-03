@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-
 import type {
   AppInfo,
   BranchInfo,
@@ -9,16 +7,17 @@ import type {
   RepoSummary,
   UpdateStatus
 } from '@shared/types'
-import { Toolbar } from './components/Toolbar'
-import { Welcome } from './components/Welcome'
-import { ChangesView } from './components/ChangesView'
-import { HistoryView } from './components/HistoryView'
-import { CommitSummary } from './components/CommitSummary'
-import { TooltipLayer } from './components/TooltipLayer'
-import { DiffViewer, type DiffMode } from './components/DiffViewer'
-import { Resizer } from './components/Resizer'
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
 import { AboutDialog } from './components/AboutDialog'
+import { ChangesView } from './components/ChangesView'
+import { CommitSummary } from './components/CommitSummary'
+import { type DiffMode, DiffViewer } from './components/DiffViewer'
+import { HistoryView } from './components/HistoryView'
+import { Resizer } from './components/Resizer'
+import { Toolbar } from './components/Toolbar'
+import { TooltipLayer } from './components/TooltipLayer'
 import { UpdateBanner } from './components/UpdateBanner'
+import { Welcome } from './components/Welcome'
 import { Icon } from './lib/icons'
 import { useTheme } from './lib/theme'
 
@@ -151,20 +150,23 @@ export function App() {
     }
   }, [])
 
-  const loadWorkingDiff = useCallback(async (file: ChangedFile) => {
-    const repoPath = repoRef.current?.path
-    if (!repoPath) return
-    const id = ++diffReq.current
-    setDiffLoading(true)
-    try {
-      const payload = await window.gitgrove.workingDiff(repoPath, file)
-      if (id === diffReq.current) setDiff(payload)
-    } catch (e) {
-      if (id === diffReq.current) fail(e)
-    } finally {
-      if (id === diffReq.current) setDiffLoading(false)
-    }
-  }, [fail])
+  const loadWorkingDiff = useCallback(
+    async (file: ChangedFile) => {
+      const repoPath = repoRef.current?.path
+      if (!repoPath) return
+      const id = ++diffReq.current
+      setDiffLoading(true)
+      try {
+        const payload = await window.gitgrove.workingDiff(repoPath, file)
+        if (id === diffReq.current) setDiff(payload)
+      } catch (e) {
+        if (id === diffReq.current) fail(e)
+      } finally {
+        if (id === diffReq.current) setDiffLoading(false)
+      }
+    },
+    [fail]
+  )
 
   const loadCommitDiff = useCallback(
     async (hash: string, file: ChangedFile) => {
@@ -405,7 +407,10 @@ export function App() {
 
   // ── About dialog + auto-update ─────────────────────────────────────────────
   useEffect(() => {
-    window.gitgrove.appInfo().then(setAppInfo).catch(() => {})
+    window.gitgrove
+      .appInfo()
+      .then(setAppInfo)
+      .catch(() => {})
   }, [])
 
   useEffect(() => window.gitgrove.onShowAbout(() => setAboutOpen(true)), [])
@@ -492,8 +497,6 @@ export function App() {
     )
   }
 
-  const selectedFilePath = tab === 'changes' ? changeSelPath : commitSelPath
-
   return (
     <div className="app">
       <Toolbar
@@ -549,9 +552,7 @@ export function App() {
                 commitFiles={commitFiles}
                 commitFilesLoading={commitFilesLoading}
                 selectedFilePath={commitSelPath}
-                onSelectFile={(p) =>
-                  selectedCommit && selectCommitFile(p, selectedCommit.hash)
-                }
+                onSelectFile={(p) => selectedCommit && selectCommitFile(p, selectedCommit.hash)}
               />
             )}
           </div>

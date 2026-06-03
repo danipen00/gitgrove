@@ -27,9 +27,9 @@ describe('describeUpdateError', () => {
   })
 
   it('reports connection problems by code', () => {
-    expect(describeUpdateError({ code: 'ENOTFOUND', message: 'getaddrinfo ENOTFOUND github.com' })).toBe(
-      "Couldn't reach the update server. Check your connection and try again."
-    )
+    expect(
+      describeUpdateError({ code: 'ENOTFOUND', message: 'getaddrinfo ENOTFOUND github.com' })
+    ).toBe("Couldn't reach the update server. Check your connection and try again.")
   })
 
   it('reports connection problems detected in the message', () => {

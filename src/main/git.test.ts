@@ -1,17 +1,10 @@
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 
-import {
-  getBranches,
-  getCommitFiles,
-  getLog,
-  getStatus,
-  isGitRepo,
-  resolveRepoRoot
-} from './git'
+import { getBranches, getCommitFiles, getLog, getStatus, isGitRepo, resolveRepoRoot } from './git'
 
 // Integration tests: drive the real `git` binary against a throwaway repo so we
 // exercise the same code path the app uses. CI runners ship git; if it's ever

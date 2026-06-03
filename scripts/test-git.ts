@@ -23,13 +23,25 @@ if (!root) throw new Error('not a repo')
 console.log('repo root:', root)
 
 const summary = await getSummary(root)
-console.log('summary:', JSON.stringify({ name: summary.name, branch: summary.branch.current, changes: summary.changeCount, ahead: summary.ahead, behind: summary.behind }))
+console.log(
+  'summary:',
+  JSON.stringify({
+    name: summary.name,
+    branch: summary.branch.current,
+    changes: summary.changeCount,
+    ahead: summary.ahead,
+    behind: summary.behind
+  })
+)
 
 const branches = await getBranches(root)
 console.log('branches:', branches.local, '| remotes:', branches.remote.length)
 
 const status = await getStatus(root)
-console.log('status files:', status.map((f) => `${f.status}:${f.path}${f.staged ? '(staged)' : ''}`))
+console.log(
+  'status files:',
+  status.map((f) => `${f.status}:${f.path}${f.staged ? '(staged)' : ''}`)
+)
 
 if (status.length) {
   const wd = await getWorkingDiff(root, status[0])
@@ -38,13 +50,18 @@ if (status.length) {
 
 const log = await getLog(root, { limit: 5 })
 console.log('\n=== log ===')
-for (const c of log) console.log(`${c.shortHash} ${c.subject} — ${c.authorName} (${c.relativeDate}) parents=${c.parents.length}`)
+for (const c of log)
+  console.log(
+    `${c.shortHash} ${c.subject} — ${c.authorName} (${c.relativeDate}) parents=${c.parents.length}`
+  )
 
 if (log.length) {
   const target = log[log.length - 1] // oldest in window; test root if it is one
   const files = await getCommitFiles(root, target.hash)
   console.log(`\n=== commit files for ${target.shortHash} ===`)
-  console.log(files.map((f) => `${f.status}:${f.path} +${f.insertions ?? '?'} -${f.deletions ?? '?'}`))
+  console.log(
+    files.map((f) => `${f.status}:${f.path} +${f.insertions ?? '?'} -${f.deletions ?? '?'}`)
+  )
   if (files.length) {
     const cd = await getCommitDiff(root, target.hash, files[0])
     head(`commit diff for ${cd.path} (binary=${cd.binary})`, cd.patch)

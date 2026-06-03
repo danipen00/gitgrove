@@ -1,14 +1,12 @@
-import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'bun:test'
+import { createHash } from 'node:crypto'
 
 import { avatarColor, gravatarUrl, initials } from './avatar'
 
 describe('gravatarUrl', () => {
   it('hashes the email with SHA-256 and builds the avatar URL', async () => {
     const email = 'Daniel.Penalba@Unity3D.com'
-    const expectedHash = createHash('sha256')
-      .update(email.trim().toLowerCase())
-      .digest('hex')
+    const expectedHash = createHash('sha256').update(email.trim().toLowerCase()).digest('hex')
 
     const url = await gravatarUrl(email)
     expect(url).toBe(`https://gravatar.com/avatar/${expectedHash}?s=80&d=404`)
@@ -57,7 +55,7 @@ describe('avatarColor', () => {
     const color = avatarColor('some-seed')
     const match = color.match(/^hsl\((\d+) 52% 48%\)$/)
     expect(match).not.toBeNull()
-    const hue = Number(match![1])
+    const hue = Number(match?.[1])
     expect(hue).toBeGreaterThanOrEqual(0)
     expect(hue).toBeLessThan(360)
   })

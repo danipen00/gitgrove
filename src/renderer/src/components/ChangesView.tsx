@@ -1,6 +1,6 @@
 import type { ChangedFile } from '@shared/types'
-import { Icon } from '../lib/icons'
 import { pluralize } from '../lib/format'
+import { Icon } from '../lib/icons'
 import { FileTreeView } from './FileTreeView'
 
 interface Props {

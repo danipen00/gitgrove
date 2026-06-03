@@ -10,11 +10,10 @@
 //  - Updates download automatically; when ready the renderer shows a banner
 //    offering to restart. Quitting also installs a pending update.
 
-import { app, type BrowserWindow } from 'electron'
-import electronUpdater, { type UpdateInfo } from 'electron-updater'
-
 import { IPC } from '@shared/ipc'
 import type { UpdateStatus } from '@shared/types'
+import { app, type BrowserWindow } from 'electron'
+import electronUpdater, { type UpdateInfo } from 'electron-updater'
 
 import { describeUpdateError } from './update-error'
 

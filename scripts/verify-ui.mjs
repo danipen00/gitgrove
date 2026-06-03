@@ -1,9 +1,10 @@
 // Launches the built Electron app with Playwright, seeds this repo as a recent,
 // opens it, and screenshots the Changes (tree + diff) and History views.
-import { _electron as electron } from 'playwright'
-import { writeFileSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { _electron as electron } from 'playwright'
 
 const projectDir = process.cwd()
 // Write screenshots outside the repo so they don't churn the working tree.
@@ -14,9 +15,9 @@ const app = await electron.launch({ args: ['.'], cwd: projectDir })
 const win = await app.firstWindow()
 
 const errors = []
-win.on('pageerror', (e) => errors.push('pageerror: ' + e.message))
+win.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
 win.on('console', (m) => {
-  if (m.type() === 'error') errors.push('console.error: ' + m.text())
+  if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
 })
 
 await win.waitForLoadState('domcontentloaded')
@@ -53,7 +54,9 @@ const diffTag = await win.evaluate(() => {
   const el = document.querySelector('.diff-body')
   return el ? el.innerHTML.slice(0, 120) : null
 })
-const diffText = await win.evaluate(() => document.querySelector('.diff-body')?.textContent?.slice(0, 80))
+const diffText = await win.evaluate(() =>
+  document.querySelector('.diff-body')?.textContent?.slice(0, 80)
+)
 console.log('tree element:', treeTag)
 console.log('diff body head:', diffTag)
 console.log('diff text sample:', JSON.stringify(diffText))

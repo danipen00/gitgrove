@@ -1,7 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron'
-
-import { IPC, type GitGroveApi } from '@shared/ipc'
+import { type GitGroveApi, IPC } from '@shared/ipc'
 import type { ChangedFile, LogOptions, UpdateStatus } from '@shared/types'
+import { contextBridge, ipcRenderer } from 'electron'
 
 const api: GitGroveApi = {
   pickRepo: () => ipcRenderer.invoke(IPC.pickRepo),

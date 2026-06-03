@@ -1,9 +1,10 @@
 // Verifies the light theme + theme selector: opens this repo, screenshots the
 // default (dark) diff, switches to Light via the theme menu, and screenshots again.
-import { _electron as electron } from 'playwright'
-import { writeFileSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { _electron as electron } from 'playwright'
 
 const projectDir = process.cwd()
 const shots = join(tmpdir(), 'gitgrove-shots')
@@ -13,9 +14,9 @@ const app = await electron.launch({ args: ['.'], cwd: projectDir })
 const win = await app.firstWindow()
 
 const errors = []
-win.on('pageerror', (e) => errors.push('pageerror: ' + e.message))
+win.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
 win.on('console', (m) => {
-  if (m.type() === 'error') errors.push('console.error: ' + m.text())
+  if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
 })
 
 await win.waitForLoadState('domcontentloaded')

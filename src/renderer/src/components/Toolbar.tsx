@@ -1,8 +1,8 @@
 import type { BranchInfo, RepoSummary } from '@shared/types'
 import { Icon } from '../lib/icons'
 import type { ResolvedTheme, ThemePref } from '../lib/theme'
-import { RepoSwitcher } from './RepoSwitcher'
 import { BranchSwitcher } from './BranchSwitcher'
+import { RepoSwitcher } from './RepoSwitcher'
 import { ThemeSwitcher } from './ThemeSwitcher'
 
 interface Props {

@@ -5,13 +5,81 @@ on:
     branches: [main]
   pull_request:
 
+# A new push to a PR cancels the previous, still-running CI for that PR so we
+# don't waste runners on stale commits. main builds are never cancelled.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Pin Bun to the version used locally so `bun run lint` / `bun test` behave
+# identically on a laptop and in CI — no "works on my machine" surprises.
+# Dependency install (cache + retry) lives in .github/actions/install.
+env:
+  BUN_VERSION: '1.3.14'
+
 jobs:
-  build:
+  # Same command developers run locally: `bun run lint` === `biome check .`.
+  # Biome formats and lints with one fast binary; run `bun run lint:fix` to fix.
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/install
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun run lint
+
+  # Typecheck + unit tests + production build on every supported OS/arch.
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Surface every platform's failures in one run instead of stopping at the
+      # first — a Windows-only break shouldn't hide a macOS-only one.
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS arm64, os: macos-latest }
+          - { name: Windows x64, os: windows-latest }
+          # setup-bun falls back to the x64-baseline build under emulation here,
+          # which runs fine; native arm64 kicks in once the action adopts it.
+          - { name: Windows arm64, os: windows-11-arm }
+          - { name: Linux x64, os: ubuntu-latest }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
       - run: bun run typecheck
       - run: bun test
       - run: bun run build
+
+  # Launches the built app with Playwright's Electron driver and asserts the
+  # tree + diff actually render. Linux is omitted: headless Electron there needs
+  # an xvfb display, which isn't worth the upkeep for a smoke test.
+  e2e:
+    name: E2E Smoke ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS arm64, os: macos-latest }
+          - { name: Windows x64, os: windows-latest }
+    steps:
+      # Full history so the History tab has commits to render and diff.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/install
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun run build
+      # The smoke opens this repo and asserts the working-tree file tree renders,
+      # so it needs at least one change. A fresh checkout is clean, so drop an
+      # untracked scratch file to make the Changes view deterministic.
+      - name: Seed a working-tree change
+        run: echo "e2e smoke marker" > e2e-smoke-scratch.txt
+        shell: bash
+      - run: bun run e2e

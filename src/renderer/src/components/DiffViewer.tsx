@@ -1,11 +1,10 @@
-import { memo, useMemo } from 'react'
-import { PatchDiff, MultiFileDiff } from '@pierre/diffs/react'
 import type { BaseDiffOptions } from '@pierre/diffs/react'
-
+import { MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
 import type { DiffPayload } from '@shared/types'
+import { memo, useMemo } from 'react'
+import { splitPath, statusLabel, statusLetter } from '../lib/format'
 import { Icon } from '../lib/icons'
 import type { ResolvedTheme } from '../lib/theme'
-import { splitPath, statusLabel, statusLetter } from '../lib/format'
 
 export type DiffMode = 'split' | 'unified'
 
