@@ -1,2 +1,20 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Normalize all text files to LF on commit AND check them out as LF on every
+# platform (eol=lf). Without the explicit eol, a Windows checkout (e.g. the
+# Parallels VM) gets CRLF working-tree files that differ from the macOS host and
+# trip Biome, which formats to LF. Forcing LF keeps both in sync.
+* text=auto eol=lf
+
+# Windows-only scripts must stay CRLF to run correctly.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Common binary types: never normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
