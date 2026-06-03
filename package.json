@@ -24,11 +24,12 @@
     "test": "bun test",
     "e2e": "node scripts/verify-ui.mjs",
     "make:icon": "node scripts/make-icon.mjs",
-    "dist": "electron-vite build && electron-builder",
-    "dist:mac": "electron-vite build && electron-builder --mac",
-    "dist:win": "electron-vite build && electron-builder --win",
-    "dist:linux": "electron-vite build && electron-builder --linux",
-    "release": "electron-vite build && electron-builder --publish always"
+    "licenses": "node scripts/generate-third-party-licenses.mjs",
+    "dist": "electron-vite build && node scripts/generate-third-party-licenses.mjs && electron-builder",
+    "dist:mac": "electron-vite build && node scripts/generate-third-party-licenses.mjs && electron-builder --mac",
+    "dist:win": "electron-vite build && node scripts/generate-third-party-licenses.mjs && electron-builder --win",
+    "dist:linux": "electron-vite build && node scripts/generate-third-party-licenses.mjs && electron-builder --linux",
+    "release": "electron-vite build && node scripts/generate-third-party-licenses.mjs && electron-builder --publish always"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
