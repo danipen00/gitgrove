@@ -440,6 +440,11 @@ button {
   position: fixed;
   inset: 0;
   z-index: 40;
+  /* The toolbar is a `-webkit-app-region: drag` region; without this, clicks
+     landing over it are swallowed by the OS as a window-drag gesture and never
+     reach the backdrop, leaving the popover open. Marking the backdrop no-drag
+     lets it intercept those clicks so clicking the toolbar dismisses the popover. */
+  -webkit-app-region: no-drag;
 }
 
 /* App-wide hover tooltip (see TooltipLayer). */
@@ -660,6 +665,9 @@ button {
   inset: 0;
   /* Above the recents popover (41) so right-clicking a row layers cleanly. */
   z-index: 49;
+  /* See .popover-backdrop: override the toolbar drag region so clicks there
+     dismiss the menu instead of being eaten as a window-drag gesture. */
+  -webkit-app-region: no-drag;
 }
 .ctx-menu {
   position: fixed;
