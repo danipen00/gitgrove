@@ -27,6 +27,9 @@ interface MenuState {
   y: number
   repo: RepoInfo
   isRecent: boolean
+  /** The right-clicked row's key, so that exact row can stay lit while the menu
+   *  is open. Absent when the menu was raised from the trigger pill. */
+  key?: string
   /** Resolved remote web URL, or null when the repo has no browsable remote. */
   remote: string | null
 }
@@ -54,8 +57,8 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
 
   // `recentRepos` returns every known repo, newest first. Once the list is long
   // enough to be awkward to eyeball we offer a filter and a Recent/All split:
-  // the handful of newest on top, then the full set alphabetically so any repo
-  // is a glance (or a few keystrokes) away.
+  // the handful of newest on top, then the rest alphabetically — a repo already
+  // shown under Recent isn't repeated below, so every repo appears exactly once.
   const grouped = recents.length > RECENT_TOP
   const q = query.trim().toLowerCase()
   const matches = useMemo(() => {
@@ -70,8 +73,8 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
   )
 
   // Flat row model (labels + repos) so rendering and keyboard navigation share
-  // one source of truth. A repo can appear in both Recent and All — keys carry
-  // the section so React keys stay unique.
+  // one source of truth. Keys carry the section prefix so they stay unique and
+  // stable as the filter narrows the list.
   const rows = useMemo<Row[]>(() => {
     const label = (text: string): Row => ({ kind: 'label', key: `label-${text}`, text })
     const repoRow = (section: string, r: RecentRepo): Row => ({
@@ -81,11 +84,16 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
     })
     if (matches.length === 0) return []
     if (grouped && !q) {
+      // All lists everything *except* the repos already up under Recent — no
+      // repo is shown twice.
+      const top = recents.slice(0, RECENT_TOP)
+      const topPaths = new Set(top.map((r) => r.path))
+      const rest = allSorted.filter((r) => !topPaths.has(r.path))
       return [
         label('Recent'),
-        ...recents.slice(0, RECENT_TOP).map((r) => repoRow('recent', r)),
+        ...top.map((r) => repoRow('recent', r)),
         label('All'),
-        ...allSorted.map((r) => repoRow('all', r))
+        ...rest.map((r) => repoRow('all', r))
       ]
     }
     return [...(q ? [] : [label('Recent')]), ...matches.map((r) => repoRow('recent', r))]
@@ -137,11 +145,16 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
 
   // Resolve the repo's remote before showing the menu so its items don't reflow
   // mid-open; the cursor point is captured up front since the event is reused.
-  const openMenu = async (e: React.MouseEvent, target: RepoInfo, isRecent: boolean) => {
+  const openMenu = async (
+    e: React.MouseEvent,
+    target: RepoInfo,
+    isRecent: boolean,
+    key?: string
+  ) => {
     e.preventDefault()
     const { clientX, clientY } = e
     const remote = await window.gitgrove.remoteUrl(target.path).catch(() => null)
-    setMenu({ x: clientX, y: clientY, repo: target, isRecent, remote })
+    setMenu({ x: clientX, y: clientY, repo: target, isRecent, key, remote })
   }
 
   const buildItems = (m: MenuState): ContextMenuItem[] => {
@@ -207,12 +220,14 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
   const renderRow = (key: string, r: RecentRepo, kbd: boolean) => (
     <button
       key={key}
-      className={`popover__item${repo?.path === r.path ? ' is-active' : ''}${kbd ? ' is-kbd' : ''}`}
+      className={`popover__item${repo?.path === r.path ? ' is-active' : ''}${kbd ? ' is-kbd' : ''}${
+        menu?.key === key ? ' is-context' : ''
+      }`}
       onClick={() => {
         close()
         onOpenRepo(r.path)
       }}
-      onContextMenu={(e) => openMenu(e, r, true)}
+      onContextMenu={(e) => openMenu(e, r, true, key)}
     >
       <span className="icon-muted">
         <Icon.Repo size={15} />

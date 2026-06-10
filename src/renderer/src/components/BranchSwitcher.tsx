@@ -319,7 +319,7 @@ export function BranchSwitcher({
                     key={row.key}
                     className={`popover__item${row.current ? ' is-active' : ''}${
                       index === kbdRow ? ' is-kbd' : ''
-                    }`}
+                    }${menu?.name === row.name && menu?.local === row.local ? ' is-context' : ''}`}
                     style={rowStyle}
                     data-tip={row.name}
                     data-tip-overflow=""
