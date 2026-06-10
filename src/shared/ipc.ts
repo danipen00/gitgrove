@@ -45,6 +45,7 @@ export const IPC = {
   commitDiff: 'repo:diff:commit',
   // staging & commits
   discardFiles: 'repo:discard',
+  ignorePatterns: 'repo:ignore',
   applyPatch: 'repo:apply-patch',
   commit: 'repo:commit',
   lastCommitMessage: 'repo:last-commit-message',
@@ -168,6 +169,12 @@ export interface GitGroveApi {
    * mis-click is recoverable.
    */
   discardFiles(repoPath: string, files: DiscardItem[], untrackedPaths: string[]): Promise<void>
+  /**
+   * Append gitignore pattern lines to the repo root's `.gitignore` (created if
+   * missing); lines already present are skipped. Patterns are built in the
+   * renderer — see lib/ignore.ts.
+   */
+  ignorePatterns(repoPath: string, patterns: string[]): Promise<void>
   /** Apply a (hunk) patch to the index/working tree — see git-write.applyPatch. */
   applyPatch(
     repoPath: string,

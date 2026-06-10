@@ -558,6 +558,9 @@ function registerIpc(): void {
       await gitWrite.discardFiles(repoPath, resetPaths, checkoutPaths, progress)
     }
   )
+  ipcMain.handle(IPC.ignorePatterns, (_e, repoPath: string, patterns: string[]) =>
+    gitWrite.ignorePatterns(repoPath, patterns)
+  )
   ipcMain.handle(
     IPC.applyPatch,
     (_e, repoPath: string, patch: string, opts: { cached?: boolean; reverse?: boolean }) =>

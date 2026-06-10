@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RebaseTodoItem } from '@shared/types'
 import {
+  appendIgnoreEntries,
   buildEditorQueue,
   buildTodoFile,
   discardFiles,
+  ignorePatterns,
   parseProgressText,
   parseStashList,
   parseSubmodules,
@@ -140,6 +142,67 @@ describe('discardFiles', () => {
     rmSync(join(repo, 'new.txt'))
     await discardFiles(repo, ['new.txt'], [])
     expect(git(['status', '--porcelain'])).toBe('')
+  })
+})
+
+describe('appendIgnoreEntries', () => {
+  test('creates content with a trailing newline when the file was empty', () => {
+    expect(appendIgnoreEntries('', ['*.log', '/dist/'])).toBe('*.log\n/dist/\n')
+  })
+
+  test('appends after existing content, preserving it byte-for-byte', () => {
+    expect(appendIgnoreEntries('node_modules/\n', ['*.log'])).toBe('node_modules/\n*.log\n')
+  })
+
+  test('mends a missing final newline instead of gluing onto the last line', () => {
+    expect(appendIgnoreEntries('node_modules/', ['*.log'])).toBe('node_modules/\n*.log\n')
+  })
+
+  test('skips patterns already present (trailing whitespace ignored)', () => {
+    expect(appendIgnoreEntries('*.log  \n/dist/\n', ['*.log', '/dist/', '/.env'])).toBe(
+      '*.log  \n/dist/\n/.env\n'
+    )
+  })
+
+  test('returns null when every pattern is already covered', () => {
+    expect(appendIgnoreEntries('*.log\n', ['*.log'])).toBeNull()
+  })
+})
+
+// Integration: a pattern appended through ignorePatterns must actually make
+// git stop reporting the file — the whole point of the feature.
+describe('ignorePatterns', () => {
+  let repo: string
+
+  const git = (args: string[]): string =>
+    execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim()
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), 'gitgrove-ignore-'))
+    git(['init', '-q', '-b', 'main'])
+  })
+
+  afterAll(() => {
+    rmSync(repo, { recursive: true, force: true })
+  })
+
+  test('creates .gitignore and hides the untracked file from status', async () => {
+    writeFileSync(join(repo, 'secret.env'), 'KEY=1\n')
+    expect(git(['status', '--porcelain'])).toContain('secret.env')
+    await ignorePatterns(repo, ['/secret.env'])
+    expect(readFileSync(join(repo, '.gitignore'), 'utf8')).toBe('/secret.env\n')
+    expect(git(['status', '--porcelain'])).not.toContain('secret.env')
+  })
+
+  test('appends to the existing .gitignore without duplicating lines', async () => {
+    await ignorePatterns(repo, ['/secret.env', '*.log'])
+    expect(readFileSync(join(repo, '.gitignore'), 'utf8')).toBe('/secret.env\n*.log\n')
+  })
+
+  test('escaped patterns hide files with glob metacharacters in their name', async () => {
+    writeFileSync(join(repo, 'weird [draft].txt'), 'x\n')
+    await ignorePatterns(repo, ['/weird \\[draft\\].txt'])
+    expect(git(['status', '--porcelain'])).not.toContain('weird')
   })
 })
 

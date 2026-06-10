@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { pluralize, statusLetter } from '../lib/format'
 import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
+import { ignoreOptionsFor, ignoreSelectionOption } from '../lib/ignore'
 import { usePersistentState } from '../lib/persist'
 import type { ResolvedTheme } from '../lib/theme'
 import { useListKeyNav } from '../lib/useListKeyNav'
@@ -267,6 +268,25 @@ export function ChangesView({
       all: true
     })
 
+  // Full (unfiltered) untracked list, so the Ignore menu counts reflect the
+  // repo, not the current filter.
+  const untrackedPaths = useMemo(
+    () => changes.filter((f) => f.status === 'untracked').map((f) => f.path),
+    [changes]
+  )
+
+  /** Ignore menu rows: each label names exactly what it hides (file, all
+   *  same-extension files, folder) — no surprises, no dialog. The
+   *  watcher-driven refresh makes the files vanish and `.gitignore` itself
+   *  appear as a change, so the action is self-explaining and trivially
+   *  undoable. */
+  const ignoreItemsFor = (file: ChangedFile): ContextMenuItem[] =>
+    ignoreOptionsFor(file.path, untrackedPaths).map((o) => ({
+      label: o.label,
+      icon: <Icon.EyeOff size={15} />,
+      onClick: () => runOp(() => gg.ignorePatterns(repoPath, o.patterns))
+    }))
+
   /** Menu for the list selection: single file keeps the full menu; a
    *  multi-selection gets bulk include/exclude, discard and copy. */
   const contextMenuFor = (selected: ChangedFile[]): ContextMenuItem[] => {
@@ -300,6 +320,18 @@ export function ChangesView({
             icon: <Icon.Undo size={15} />,
             danger: true,
             onClick: () => setConfirmDiscard({ files: actionable, all: false })
+          },
+          {}
+        )
+      }
+      const untracked = selected.filter((f) => f.status === 'untracked')
+      if (untracked.length > 0) {
+        const option = ignoreSelectionOption(untracked.map((f) => f.path), selected.length)
+        items.push(
+          {
+            label: option.label,
+            icon: <Icon.EyeOff size={15} />,
+            onClick: () => runOp(() => gg.ignorePatterns(repoPath, option.patterns))
           },
           {}
         )
@@ -356,6 +388,7 @@ export function ChangesView({
         onClick: () => setConfirmDiscard({ files: [file], all: false })
       },
       {},
+      ...(file.status === 'untracked' ? [...ignoreItemsFor(file), {}] : []),
       {
         label: 'Open in Editor',
         icon: <Icon.External size={15} />,

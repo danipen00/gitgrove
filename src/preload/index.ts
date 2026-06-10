@@ -30,6 +30,8 @@ const api: GitGroveApi = {
     ipcRenderer.invoke(IPC.commitDiff, repoPath, hash, file),
   discardFiles: (repoPath, files, untrackedPaths) =>
     ipcRenderer.invoke(IPC.discardFiles, repoPath, files, untrackedPaths),
+  ignorePatterns: (repoPath, patterns) =>
+    ipcRenderer.invoke(IPC.ignorePatterns, repoPath, patterns),
   applyPatch: (repoPath, patch, opts) => ipcRenderer.invoke(IPC.applyPatch, repoPath, patch, opts),
   commit: (repoPath, message, selection) =>
     ipcRenderer.invoke(IPC.commit, repoPath, message, selection),
