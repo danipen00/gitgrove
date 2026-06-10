@@ -1,5 +1,6 @@
 import type { BranchInfo } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { type BranchRow, buildBranchRows } from '../lib/branch-rows'
 import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
 import { useListKeyNav } from '../lib/useListKeyNav'
@@ -32,64 +33,6 @@ const PAD_BOTTOM = 8
 /** Rows shown per popover viewport — also the PageUp/PageDown jump. */
 const VIEW_ROWS = 12
 
-type Row =
-  | { kind: 'label'; key: string; text: string }
-  | { kind: 'item'; key: string; name: string; current: boolean; local: boolean }
-
-/**
- * The section model: DEFAULT and RECENT first (the branches you're most
- * likely heading to), then the remaining locals and remotes, each already
- * sorted most-recently-committed first by the main process. A branch in
- * DEFAULT/RECENT never repeats in LOCAL.
- */
-function buildRows(branch: BranchInfo | null, query: string): Row[] {
-  if (!branch) return []
-  const q = query.trim().toLowerCase()
-  const match = (n: string) => n.toLowerCase().includes(q)
-  const item = (prefix: string, name: string, local: boolean): Row => ({
-    kind: 'item',
-    key: `${prefix}:${name}`,
-    name,
-    current: local && name === branch.current,
-    local
-  })
-
-  const elsewhere = new Set(branch.recent)
-  if (branch.defaultBranch) elsewhere.add(branch.defaultBranch)
-
-  const sections: Array<{ text: string; rows: Row[] }> = [
-    {
-      text: 'Default branch',
-      rows:
-        branch.defaultBranch && branch.local.includes(branch.defaultBranch)
-          ? [branch.defaultBranch].filter(match).map((n) => item('d', n, true))
-          : []
-    },
-    {
-      text: 'Recent branches',
-      rows: branch.recent.filter(match).map((n) => item('rec', n, true))
-    },
-    {
-      text: 'Local',
-      rows: branch.local
-        .filter((n) => !elsewhere.has(n) && match(n))
-        .map((n) => item('l', n, true))
-    },
-    {
-      text: 'Remote',
-      rows: branch.remote.filter(match).map((n) => item('r', n, false))
-    }
-  ]
-
-  const out: Row[] = []
-  for (const { text, rows } of sections) {
-    if (rows.length === 0) continue
-    out.push({ kind: 'label', key: `label-${text}`, text })
-    out.push(...rows)
-  }
-  return out
-}
-
 export function BranchSwitcher({
   branch,
   loading = false,
@@ -110,9 +53,7 @@ export function BranchSwitcher({
   // Right-click on the trigger pill: actions for the *current* branch.
   const [headMenu, setHeadMenu] = useState<{ x: number; y: number } | null>(null)
 
-  // Flat row model (group labels interleaved with branch items) so a single
-  // virtualized scroller can window all groups together.
-  const rows = useMemo<Row[]>(() => buildRows(branch, query), [branch, query])
+  const rows = useMemo<BranchRow[]>(() => buildBranchRows(branch, query), [branch, query])
 
   // Indexes of selectable rows (labels excluded) — the keyboard nav space.
   const itemRows = useMemo(

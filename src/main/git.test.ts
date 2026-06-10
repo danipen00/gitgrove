@@ -9,7 +9,6 @@ import {
   getCommitFiles,
   getLog,
   getRemoteWebUrl,
-  isGitRepo,
   parseRecentBranches,
   resolveRepoRoot,
   toWebUrl
@@ -68,21 +67,6 @@ beforeAll(() => {
 
 afterAll(() => {
   rmSync(repo, { recursive: true, force: true })
-})
-
-describe('isGitRepo', () => {
-  it('is true inside a repo', async () => {
-    expect(await isGitRepo(repo)).toBe(true)
-  })
-
-  it('is false for a non-repo directory', async () => {
-    const plain = mkdtempSync(join(tmpdir(), 'gitgrove-plain-'))
-    try {
-      expect(await isGitRepo(plain)).toBe(false)
-    } finally {
-      rmSync(plain, { recursive: true, force: true })
-    }
-  })
 })
 
 describe('resolveRepoRoot', () => {

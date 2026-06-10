@@ -3,6 +3,7 @@ import type { BaseDiffOptions, DiffLineAnnotation } from '@pierre/diffs/react'
 import { FileDiff, MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
 import type { DiffPayload } from '@shared/types'
 import { memo, useMemo, useState } from 'react'
+import type { FileSelection } from '../lib/commit-selection'
 import { splitPath, statusLabel, statusLetter } from '../lib/format'
 import { Icon } from '../lib/icons'
 import { buildBlockPatch, listChangeBlocks } from '../lib/staging'
@@ -11,9 +12,6 @@ import { useSpinDelay } from '../lib/useSpinDelay'
 import { ConfirmDialog } from './Dialog'
 
 export type DiffMode = 'split' | 'unified'
-
-/** Per-file commit selection: 'all', 'none', or the selected change blocks. */
-export type FileSelection = 'all' | 'none' | ReadonlyMap<number, string>
 
 /** Wiring for the change-block selection bars on working diffs. */
 export interface SelectionActions {

@@ -1,174 +1,28 @@
-// Mutating git operations for the main process: staging, commits, sync,
-// branches, stash, merge/rebase machinery, worktrees, submodules and clone.
+// Mutating git operations for the main process: staging, commits, branches,
+// stash, merge/rebase machinery, worktrees and submodules. The shared
+// spawn-based runner and per-repo write queue live in git-exec.ts; network
+// operations in git-sync.ts; the scripted interactive rebase in git-rebase.ts.
 //
-// Everything here shells out to the same `git` binary the read layer uses
-// (locateGit), via a small spawn-based runner that supports stdin (for
-// `git apply` / `git commit -F -`) and per-call environment overrides (for the
-// non-interactive rebase editors). Commands never prompt: GIT_TERMINAL_PROMPT
-// is off, so a missing credential fails fast with a readable error instead of
-// hanging the app. Commit signing (gpg/ssh) is inherited from the user's git
-// config — commits run through the real `git commit`, so `commit.gpgsign`
-// et al. apply exactly as they do in the terminal.
+// Commit signing (gpg/ssh) is inherited from the user's git config — commits
+// run through the real `git commit`, so `commit.gpgsign` et al. apply exactly
+// as they do in the terminal.
 
-import { spawn } from 'node:child_process'
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type {
-  RebaseTodoItem,
+  DiscardItem,
   RepoOpKind,
-  RepoState,
   ResetMode,
   StashEntry,
   SubmoduleInfo,
-  SyncStatus,
   WorktreeInfo
 } from '@shared/types'
-import { locateGit } from './git-bin'
-
-interface RunOptions {
-  /** Text piped to git's stdin (e.g. a patch for `git apply -`). */
-  input?: string
-  /** Extra environment variables layered over the process env. */
-  env?: Record<string, string>
-  /** Exit codes (besides 0) treated as success; stdout is still returned. */
-  tolerateExitCodes?: number[]
-  /**
-   * Receives phase + percent parsed from git's stderr progress stream while
-   * the command runs. The caller must also pass `--progress` — git suppresses
-   * progress when stderr is not a terminal.
-   */
-  onProgress?: ProgressHandler
-}
-
-type ProgressHandler = (phase: string, percent: number) => void
-
-/**
- * Extract progress reports from a chunk of git stderr. git updates a phase in
- * place with \r-separated lines like "Receiving objects:  42% (1234/2934)"
- * (server-side phases prefixed with "remote: "). Pure + exported for tests.
- */
-export function parseProgressText(text: string, onProgress: ProgressHandler): void {
-  for (const line of text.split(/[\r\n]/)) {
-    const m = line.match(/^(?:remote: )?([A-Za-z- ]+):\s+(\d+)%/)
-    if (m) onProgress(m[1], Number(m[2]))
-  }
-}
-
-/**
- * Per-repo write queue. Two mutating git commands on the same repo must never
- * overlap — both would race for .git/index.lock and one dies with "Unable to
- * create index.lock: File exists". The renderer serializes user actions, but
- * watcher-driven work and menu commands can still interleave, so the real
- * guarantee lives here.
- */
-const writeQueues = new Map<string, Promise<unknown>>()
-
-function enqueue<T>(repoPath: string, task: () => Promise<T>): Promise<T> {
-  const tail = writeQueues.get(repoPath) ?? Promise.resolve()
-  // Chain regardless of the predecessor's outcome; failures propagate to their
-  // own caller only.
-  const next = tail.then(task, task)
-  writeQueues.set(repoPath, next.catch(() => {}))
-  return next
-}
-
-/** Lock-contention retry schedule (ms). Covers a terminal/editor briefly holding the lock. */
-const LOCK_RETRY_DELAYS = [150, 400, 900]
+import { enqueue, type ProgressHandler, run, runOnce, runRead } from './git-exec'
 
 /** Files restored per checkout-index spawn during a discard — small enough
  *  that each batch completes quickly (a progress report), large enough to
  *  stay a handful of spawns even on ten-thousand-file discards. */
 const DISCARD_RESTORE_CHUNK = 1000
-
-const isLockError = (message: string) =>
-  /index\.lock|\.lock['"]?: File exists|Another git process/i.test(message)
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
-/**
- * Run a mutating git command: serialized per repo, with a short retry ladder
- * when an *external* process (editor git plugin, terminal) is holding the
- * index lock. Errors carry git's stderr (or stdout — some commands like
- * `merge` report conflicts there) so the renderer toast shows the real reason.
- */
-async function run(repoPath: string, args: string[], opts: RunOptions = {}): Promise<string> {
-  return enqueue(repoPath, async () => {
-    let lastError: Error | null = null
-    for (let attempt = 0; attempt <= LOCK_RETRY_DELAYS.length; attempt++) {
-      try {
-        return await runOnce(repoPath, args, opts)
-      } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e))
-        if (!isLockError(lastError.message) || attempt === LOCK_RETRY_DELAYS.length) throw lastError
-        await sleep(LOCK_RETRY_DELAYS[attempt])
-      }
-    }
-    throw lastError ?? new Error('git command failed')
-  })
-}
-
-/**
- * Run a non-mutating git command from this module (stash list, worktree list,
- * …) WITHOUT the write queue. Reads never take the index lock, and queueing
- * them would make a snapshot refresh wait behind a slow network operation.
- */
-function runRead(repoPath: string, args: string[], opts: RunOptions = {}): Promise<string> {
-  return runOnce(repoPath, args, opts)
-}
-
-/** Dev-only: name any git command that takes noticeable time. */
-const PERF = process.env.NODE_ENV !== 'production' || process.env.GITGROVE_PERF === '1'
-
-async function runOnce(repoPath: string, args: string[], opts: RunOptions = {}): Promise<string> {
-  const bin = await locateGit()
-  const startedAt = PERF ? performance.now() : 0
-  const logSlow = () => {
-    if (!PERF) return
-    const elapsed = performance.now() - startedAt
-    if (elapsed > 300) {
-      console.log(`[git] slow: git ${args.slice(0, 3).join(' ')} ${elapsed.toFixed(0)}ms`)
-    }
-  }
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, {
-      cwd: repoPath,
-      windowsHide: true,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...opts.env }
-    })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (d: Buffer) => {
-      stdout += d.toString('utf8')
-    })
-    child.stderr.on('data', (d: Buffer) => {
-      const text = d.toString('utf8')
-      stderr += text
-      if (opts.onProgress) parseProgressText(text, opts.onProgress)
-    })
-    child.on('error', reject)
-    child.on('close', (code) => {
-      logSlow()
-      if (code === 0 || (code !== null && opts.tolerateExitCodes?.includes(code))) {
-        resolve(stdout)
-      } else {
-        // With --progress the failure reason shares stderr with hundreds of
-        // in-place percent updates; drop those so the toast shows the reason.
-        const reason = opts.onProgress
-          ? stderr
-              .split(/[\r\n]/)
-              .filter((l) => l.trim() && !/\d+%/.test(l))
-              .join('\n')
-          : stderr
-        reject(new Error(reason.trim() || stdout.trim() || `git ${args[0]} failed (${code})`))
-      }
-    })
-    if (opts.input !== undefined) {
-      child.stdin.write(opts.input)
-    }
-    child.stdin.end()
-  })
-}
 
 // ── Staging ─────────────────────────────────────────────────────────────────
 
@@ -207,6 +61,46 @@ export async function unstageAll(repoPath: string): Promise<void> {
     if (!isUnbornHead(e)) throw e
     await run(repoPath, ['rm', '--cached', '-r', '-q', '--', '.'])
   }
+}
+
+/** Where each discarded path goes: trashed, forgotten from the index, restored. */
+export interface DiscardPlan {
+  /** Paths HEAD doesn't have — moved to the OS trash so a mis-click is recoverable. */
+  trashPaths: string[]
+  /** Paths whose index entries are reset to HEAD (⊇ checkoutPaths). */
+  resetPaths: string[]
+  /** Paths restored from HEAD into the working tree. */
+  checkoutPaths: string[]
+}
+
+/**
+ * Sort the files of a discard into the three buckets `discardFiles` needs.
+ * Discard means: every chosen path ends up exactly as in HEAD. Files HEAD
+ * doesn't have — untracked, staged-new, rename targets — are trashed;
+ * everything else is reset (unstaged) and restored from HEAD. A rename's R
+ * entry lives in the index, so without the reset a discarded rename would
+ * survive. Pure + exported for tests.
+ */
+export function planDiscard(files: DiscardItem[], untrackedPaths: string[]): DiscardPlan {
+  const trashPaths = [...untrackedPaths]
+  const resetPaths: string[] = []
+  const checkoutPaths: string[] = []
+  for (const f of files) {
+    if (f.oldPath) {
+      // Rename/copy: forget both sides, restore the old path, trash the new.
+      trashPaths.push(f.path)
+      resetPaths.push(f.path, f.oldPath)
+      checkoutPaths.push(f.oldPath)
+    } else if (f.status === 'added') {
+      // Staged new file: nothing in HEAD to restore.
+      trashPaths.push(f.path)
+      resetPaths.push(f.path)
+    } else {
+      resetPaths.push(f.path)
+      checkoutPaths.push(f.path)
+    }
+  }
+  return { trashPaths, resetPaths, checkoutPaths }
 }
 
 /**
@@ -390,75 +284,6 @@ export async function lastCommitMessage(repoPath: string): Promise<string> {
   }
 }
 
-// ── Sync: fetch / pull / push ───────────────────────────────────────────────
-
-export async function getSyncStatus(repoPath: string): Promise<SyncStatus> {
-  const remotes = (await run(repoPath, ['remote']).catch(() => ''))
-    .split('\n')
-    .map((r) => r.trim())
-    .filter(Boolean)
-
-  let upstream: string | null = null
-  try {
-    upstream =
-      (await run(repoPath, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'])).trim() ||
-      null
-  } catch {
-    upstream = null
-  }
-
-  let ahead = 0
-  let behind = 0
-  if (upstream) {
-    try {
-      const counts = (
-        await run(repoPath, ['rev-list', '--left-right', '--count', '@{u}...HEAD'])
-      ).trim()
-      const [b, a] = counts.split(/\s+/).map((n) => Number(n) || 0)
-      behind = b
-      ahead = a
-    } catch {
-      /* counts stay 0 */
-    }
-  }
-  return { upstream, ahead, behind, remotes }
-}
-
-export async function fetch(
-  repoPath: string,
-  remote?: string,
-  onProgress?: ProgressHandler
-): Promise<void> {
-  // Fetch never touches the index, so it must NOT ride the write queue — a
-  // slow network fetch would otherwise make a one-file stage wait behind it.
-  const args = ['fetch', '--prune', '--progress']
-  if (remote) args.push(remote)
-  await runOnce(repoPath, args, { onProgress })
-}
-
-export async function pull(
-  repoPath: string,
-  opts: { rebase?: boolean } = {},
-  onProgress?: ProgressHandler
-): Promise<void> {
-  const args = ['-c', 'core.editor=true', 'pull', '--progress']
-  if (opts.rebase) args.push('--rebase')
-  await run(repoPath, args, { onProgress })
-}
-
-export async function push(
-  repoPath: string,
-  opts: { setUpstream?: { remote: string; branch: string }; forceWithLease?: boolean } = {},
-  onProgress?: ProgressHandler
-): Promise<void> {
-  // Push reads refs and talks to the network — no index lock; keep it off the
-  // write queue for the same reason as fetch.
-  const args = ['push', '--progress']
-  if (opts.forceWithLease) args.push('--force-with-lease')
-  if (opts.setUpstream) args.push('-u', opts.setUpstream.remote, opts.setUpstream.branch)
-  await runOnce(repoPath, args, { onProgress })
-}
-
 // ── Branches ────────────────────────────────────────────────────────────────
 
 export async function createBranch(
@@ -560,52 +385,6 @@ export async function skipRebaseCommit(repoPath: string): Promise<void> {
   await run(repoPath, ['rebase', '--skip'])
 }
 
-/**
- * Detect an in-progress merge/rebase/cherry-pick/revert by probing the state
- * files inside the git dir. `rev-parse --git-path` resolves them correctly
- * even from a linked worktree.
- */
-export async function getRepoState(repoPath: string): Promise<RepoState> {
-  // `--git-path` resolves state files correctly even from a linked worktree;
-  // it returns a path relative to the cwd (or absolute) — make it absolute.
-  const gitPath = async (rel: string): Promise<string> => {
-    const p = (await run(repoPath, ['rev-parse', '--git-path', rel])).trim()
-    return isAbsolute(p) ? p : join(repoPath, p)
-  }
-  const probe = async (rel: string): Promise<boolean> => {
-    try {
-      await access(await gitPath(rel))
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  let op: RepoOpKind | null = null
-  if ((await probe('rebase-merge')) || (await probe('rebase-apply'))) op = 'rebasing'
-  else if (await probe('MERGE_HEAD')) op = 'merging'
-  else if (await probe('CHERRY_PICK_HEAD')) op = 'cherry-picking'
-  else if (await probe('REVERT_HEAD')) op = 'reverting'
-
-  let conflictedCount = 0
-  if (op) {
-    const out = await run(repoPath, ['diff', '--name-only', '--diff-filter=U']).catch(() => '')
-    conflictedCount = out.split('\n').filter((l) => l.trim()).length
-  }
-
-  let detail: string | undefined
-  if (op === 'merging') {
-    // First line of MERGE_MSG: `Merge branch 'feature'` — good enough to show.
-    try {
-      detail = (await readFile(await gitPath('MERGE_MSG'), 'utf8')).split('\n')[0]
-    } catch {
-      /* optional */
-    }
-  }
-
-  return { op, detail, conflictedCount }
-}
-
 /** Resolve a conflicted path by taking one side wholesale, then stage it. */
 export async function resolveConflict(
   repoPath: string,
@@ -703,104 +482,6 @@ export async function createTag(
 
 export async function deleteTag(repoPath: string, name: string): Promise<void> {
   await run(repoPath, ['tag', '-d', name])
-}
-
-// ── Interactive rebase ──────────────────────────────────────────────────────
-
-/**
- * The message-editor invocations git will make for a todo list, in order:
- * one per `reword`, and one at the end of each squash chain (fixups don't
- * prompt). `null` means "keep git's prepared message". Exported for tests.
- */
-export function buildEditorQueue(items: RebaseTodoItem[]): (string | null)[] {
-  const queue: (string | null)[] = []
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i]
-    if (item.action === 'reword') {
-      queue.push(item.message?.trim() ? item.message : null)
-    } else if (item.action === 'squash') {
-      // Git prompts once per squash *step*. A chain of N squashes prompts N
-      // times; we only override the last prompt (the chain's final message).
-      const isChainEnd = items[i + 1]?.action !== 'squash'
-      queue.push(isChainEnd && item.message?.trim() ? item.message : null)
-    }
-  }
-  return queue
-}
-
-/** Render the todo file. Items arrive oldest-first, matching git's order. */
-export function buildTodoFile(items: RebaseTodoItem[]): string {
-  return `${items
-    .filter((i) => i.action !== 'drop')
-    .map((i) => `${i.action} ${i.hash}`)
-    .join('\n')}\n`
-}
-
-/**
- * Run a fully scripted `git rebase -i`: our todo replaces git's, and a tiny
- * sh editor feeds prepared messages for reword/squash prompts (sh ships with
- * git on every platform, including Git for Windows). On conflict the rebase
- * stops normally and the app's conflict banner takes over (continue/abort).
- */
-export async function rebaseInteractive(
-  repoPath: string,
-  base: string,
-  items: RebaseTodoItem[]
-): Promise<void> {
-  if (items.length === 0 || items.every((i) => i.action === 'drop')) {
-    throw new Error('Nothing to rebase: every commit would be dropped.')
-  }
-  if (items[0].action === 'squash' || items[0].action === 'fixup') {
-    throw new Error('The first commit cannot be squashed — there is nothing above it.')
-  }
-
-  const dir = await mkdtemp(join(tmpdir(), 'gitgrove-rebase-'))
-  try {
-    await writeFile(join(dir, 'todo'), buildTodoFile(items), 'utf8')
-
-    const queue = buildEditorQueue(items)
-    await Promise.all(
-      queue.map((msg, i) =>
-        msg !== null ? writeFile(join(dir, `msg-${i + 1}.txt`), msg, 'utf8') : Promise.resolve()
-      )
-    )
-
-    // Sequence editor: overwrite git's todo with ours. Message editor: pop the
-    // next prepared message if one exists, else keep git's default. Both run
-    // under git's sh, so forward slashes work everywhere.
-    const posixDir = dir.replace(/\\/g, '/')
-    await writeFile(
-      join(dir, 'seq-editor.sh'),
-      `#!/bin/sh\ncat "${posixDir}/todo" > "$1"\n`,
-      'utf8'
-    )
-    await writeFile(
-      join(dir, 'msg-editor.sh'),
-      [
-        '#!/bin/sh',
-        `d="${posixDir}"`,
-        'n=$(cat "$d/count" 2>/dev/null || echo 0)',
-        'n=$((n+1))',
-        'echo "$n" > "$d/count"',
-        'if [ -f "$d/msg-$n.txt" ]; then cat "$d/msg-$n.txt" > "$1"; fi',
-        'exit 0',
-        ''
-      ].join('\n'),
-      'utf8'
-    )
-
-    await run(repoPath, ['-c', 'rebase.autoSquash=false', 'rebase', '-i', base], {
-      env: {
-        GIT_SEQUENCE_EDITOR: `sh "${posixDir}/seq-editor.sh"`,
-        GIT_EDITOR: `sh "${posixDir}/msg-editor.sh"`
-      }
-    })
-  } finally {
-    // A stopped (conflicted) rebase no longer needs the scripts — git only
-    // reads the sequence/message editors while the command itself runs; on
-    // `rebase --continue` we pass core.editor=true instead.
-    await rm(dir, { recursive: true, force: true }).catch(() => {})
-  }
 }
 
 // ── Worktrees ───────────────────────────────────────────────────────────────
@@ -922,43 +603,4 @@ export async function optimizeRepo(repoPath: string): Promise<void> {
   await run(repoPath, ['status', '--porcelain=2', '-z', '--untracked-files=all'], {
     env: { GIT_OPTIONAL_LOCKS: '1' }
   })
-}
-
-// ── Clone ───────────────────────────────────────────────────────────────────
-
-/**
- * Clone with progress. git reports progress on stderr as lines like
- * "Receiving objects:  42% (1234/2934)"; we forward phase + percent to the
- * caller. Resolves with the path of the new repo.
- */
-export async function clone(
-  url: string,
-  parentDir: string,
-  onProgress: (phase: string, percent: number) => void
-): Promise<string> {
-  const name = (url.split('/').pop() ?? 'repository').replace(/\.git$/, '') || 'repository'
-  const dest = join(parentDir, name)
-  const bin = await locateGit()
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(bin, ['clone', '--progress', '--recurse-submodules', url, dest], {
-      windowsHide: true,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
-    })
-    let stderrTail = ''
-    child.stderr.on('data', (d: Buffer) => {
-      const text = d.toString('utf8')
-      stderrTail = (stderrTail + text).slice(-4000)
-      parseProgressText(text, onProgress)
-    })
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code === 0) resolve()
-      else {
-        // The tail of stderr holds the human-readable failure (auth, 404, …).
-        const lines = stderrTail.split('\n').filter((l) => l.trim() && !/\d+%/.test(l))
-        reject(new Error(lines.slice(-3).join('\n') || 'git clone failed'))
-      }
-    })
-  })
-  return dest
 }

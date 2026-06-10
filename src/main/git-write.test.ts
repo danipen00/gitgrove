@@ -3,45 +3,43 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { RebaseTodoItem } from '@shared/types'
 import {
   appendIgnoreEntries,
-  buildEditorQueue,
-  buildTodoFile,
   discardFiles,
   ignorePatterns,
-  parseProgressText,
   parseStashList,
   parseSubmodules,
-  parseWorktrees
+  parseWorktrees,
+  planDiscard
 } from './git-write'
 
-describe('parseProgressText', () => {
-  const collect = (text: string): Array<[string, number]> => {
-    const got: Array<[string, number]> = []
-    parseProgressText(text, (phase, percent) => got.push([phase, percent]))
-    return got
-  }
-
-  test('parses \\r-separated in-place updates and remote-prefixed phases', () => {
-    const text =
-      'remote: Compressing objects:  50% (10/20)\r' +
-      'Receiving objects:  42% (1234/2934)\r' +
-      'Receiving objects: 100% (2934/2934), done.\n'
-    expect(collect(text)).toEqual([
-      ['Compressing objects', 50],
-      ['Receiving objects', 42],
-      ['Receiving objects', 100]
-    ])
+describe('planDiscard', () => {
+  test('plain modified/deleted files are reset and restored, never trashed', () => {
+    const plan = planDiscard([{ path: 'a.txt', status: 'modified' }], [])
+    expect(plan).toEqual({ trashPaths: [], resetPaths: ['a.txt'], checkoutPaths: ['a.txt'] })
   })
 
-  test('parses checkout file updates', () => {
-    expect(collect('Updating files:  37% (370/1000)\r')).toEqual([['Updating files', 37]])
+  test('a staged-new file is trashed and reset, with nothing to restore', () => {
+    const plan = planDiscard([{ path: 'new.txt', status: 'added' }], [])
+    expect(plan).toEqual({ trashPaths: ['new.txt'], resetPaths: ['new.txt'], checkoutPaths: [] })
   })
 
-  test('ignores non-progress chatter', () => {
-    const text = 'remote: Enumerating objects: 123, done.\nTo github.com:o/r.git\n   abc..def\n'
-    expect(collect(text)).toEqual([])
+  test('a rename forgets both sides, restores the old path, trashes the new', () => {
+    const plan = planDiscard([{ path: 'moved.txt', oldPath: 'a.txt', status: 'renamed' }], [])
+    expect(plan).toEqual({
+      trashPaths: ['moved.txt'],
+      resetPaths: ['moved.txt', 'a.txt'],
+      checkoutPaths: ['a.txt']
+    })
+  })
+
+  test('untracked paths only ever go to the trash', () => {
+    const plan = planDiscard([], ['junk.tmp', 'scratch/notes.md'])
+    expect(plan).toEqual({
+      trashPaths: ['junk.tmp', 'scratch/notes.md'],
+      resetPaths: [],
+      checkoutPaths: []
+    })
   })
 })
 
@@ -247,30 +245,5 @@ describe('parseSubmodules', () => {
     expect(mods[1].state).toBe('modified')
     expect(mods[2].state).toBe('uninitialized')
     expect(mods[3].state).toBe('conflict')
-  })
-})
-
-describe('interactive rebase plumbing', () => {
-  const items: RebaseTodoItem[] = [
-    { hash: 'aaa', action: 'pick' },
-    { hash: 'bbb', action: 'reword', message: 'better subject' },
-    { hash: 'ccc', action: 'squash' },
-    { hash: 'ddd', action: 'squash', message: 'combined message' },
-    { hash: 'eee', action: 'fixup' },
-    { hash: 'fff', action: 'drop' }
-  ]
-
-  test('buildTodoFile omits drops and keeps order', () => {
-    expect(buildTodoFile(items)).toBe('pick aaa\nreword bbb\nsquash ccc\nsquash ddd\nfixup eee\n')
-  })
-
-  test('buildEditorQueue matches git editor invocations in order', () => {
-    // reword bbb → 1 prompt; squash ccc (mid-chain) → 1 prompt kept default;
-    // squash ddd (chain end) → 1 prompt with our message; fixup/drop → none.
-    expect(buildEditorQueue(items)).toEqual(['better subject', null, 'combined message'])
-  })
-
-  test('reword without message keeps the default', () => {
-    expect(buildEditorQueue([{ hash: 'x', action: 'reword' }])).toEqual([null])
   })
 })

@@ -26,8 +26,8 @@ import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
 import { isCmdOrCtrl } from '../lib/platform'
 import { useEvent } from '../lib/useEvent'
+import type { FileSelection } from '../lib/commit-selection'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
-import type { FileSelection } from './DiffViewer'
 import { useVirtualScroll, VScrollbar } from './VirtualScroll'
 
 interface Props {

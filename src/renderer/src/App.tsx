@@ -4,85 +4,51 @@ import type {
   BranchInfo,
   ChangedFile,
   Commit,
-  DiffPayload,
   GitAvailability,
   ProgressOpKind,
   RepoOpenResult,
   RepoSnapshot,
   RepoState,
   RepoSummary,
-  ResetMode,
   StashEntry,
-  SyncStatus,
-  UpdateStatus
+  SyncStatus
 } from '@shared/types'
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
 import { AboutDialog } from './components/AboutDialog'
-import { usePersistentState } from './lib/persist'
+import { AppModals, type Modal } from './components/AppModals'
+import type { BranchAction } from './components/BranchSwitcher'
 import { ChangesView } from './components/ChangesView'
 import { CloneDialog } from './components/CloneDialog'
+import { commitMenuItems } from './components/commitMenuItems'
 import { CommitSummary } from './components/CommitSummary'
 import type { ContextMenuItem } from './components/ContextMenu'
-import { ConfirmDialog, PromptDialog, validateRefName } from './components/Dialog'
-import { type DiffMode, DiffViewer, type FileSelection } from './components/DiffViewer'
+import { type DiffMode, DiffViewer } from './components/DiffViewer'
 import { GitSetup } from './components/GitSetup'
 import { HistoryView } from './components/HistoryView'
-import { InteractiveRebaseDialog } from './components/InteractiveRebaseDialog'
 import { Resizer } from './components/Resizer'
-import { SubmodulesDialog } from './components/SubmodulesDialog'
-import type { BranchAction } from './components/BranchSwitcher'
 import type { SyncAction } from './components/SyncButton'
 import { Toolbar } from './components/Toolbar'
 import { TooltipLayer } from './components/TooltipLayer'
 import { TrustDialog } from './components/TrustDialog'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Welcome } from './components/Welcome'
-import { WorktreesDialog } from './components/WorktreesDialog'
+import {
+  buildCommitSelection,
+  buildStashSelection,
+  type FileSelection
+} from './lib/commit-selection'
 import { Icon } from './lib/icons'
+import { usePersistentState } from './lib/persist'
 import { overallPercent } from './lib/progress'
 import { useTheme } from './lib/theme'
+import { useDiffLoader } from './lib/useDiffLoader'
+import { useUpdateBanner } from './lib/useUpdateBanner'
 
 type Tab = 'changes' | 'history'
-
-/**
- * Field-equality for diff payloads. A refresh re-fetches the selected file's
- * diff; when nothing actually changed this lets the loader keep the previous
- * object, so the memoized viewer doesn't re-render (string compares are
- * cheap — native, early-exit on length).
- */
-function samePayload(a: DiffPayload | null, b: DiffPayload): boolean {
-  return (
-    !!a &&
-    a.path === b.path &&
-    a.oldPath === b.oldPath &&
-    a.status === b.status &&
-    a.binary === b.binary &&
-    a.notice === b.notice &&
-    a.language === b.language &&
-    a.patch === b.patch &&
-    a.oldContents === b.oldContents &&
-    a.newContents === b.newContents
-  )
-}
 
 const LOG_LIMIT = 300
 /** Background fetch cadence (ms) — quiet, skipped while an op runs. */
 const AUTO_FETCH_INTERVAL = 10 * 60 * 1000
-
-/** App-level modal dialogs (branch/tag/reset/rebase/clone/worktrees/…). */
-type Modal =
-  | { kind: 'clone' }
-  | { kind: 'new-branch'; from?: string; fromLabel?: string; initialName?: string }
-  | { kind: 'rename-branch'; name: string }
-  | { kind: 'delete-branch'; name: string; force: boolean }
-  | { kind: 'create-tag'; hash: string; shortHash: string }
-  | { kind: 'reset'; hash: string; shortHash: string; mode: ResetMode }
-  | { kind: 'revert'; hash: string; shortHash: string }
-  | { kind: 'checkout-commit'; hash: string; shortHash: string }
-  | { kind: 'irebase'; commits: Commit[]; base: string }
-  | { kind: 'worktrees' }
-  | { kind: 'submodules' }
-  | { kind: 'stash' }
 
 export function App() {
   const [repo, setRepo] = useState<RepoSummary | null>(null)
@@ -102,12 +68,8 @@ export function App() {
   const [trustPath, setTrustPath] = useState<string | null>(null)
   const [trusting, setTrusting] = useState(false)
 
-  // App/about + auto-update state.
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [aboutOpen, setAboutOpen] = useState(false)
-  const [update, setUpdate] = useState<UpdateStatus | null>(null)
-  const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null)
-  const [updateFeedbackDismissed, setUpdateFeedbackDismissed] = useState(false)
 
   const [tab, setTab] = useState<Tab>('changes')
 
@@ -148,10 +110,7 @@ export function App() {
   const [commitSelPath, setCommitSelPath] = useState<string | null>(null)
   const [commitSelCount, setCommitSelCount] = useState(1)
 
-  const [diff, setDiff] = useState<DiffPayload | null>(null)
-  const [diffLoading, setDiffLoading] = useState(false)
-  const diffReq = useRef(0)
-  // Like `diffReq`, but for commit selection: selecting a commit fires an async
+  // Commit-selection request token: selecting a commit fires an async
   // `commitFiles` fetch, and a slow one can resolve after the user has already
   // picked another commit. This token lets a superseded selection bail out.
   const commitReq = useRef(0)
@@ -174,8 +133,6 @@ export function App() {
   changesRef.current = changes
   // Refs for the re-select guards: clicking the already-focused file/commit
   // must be a no-op instead of refetching (and flashing) an identical diff.
-  const diffRef = useRef<DiffPayload | null>(diff)
-  diffRef.current = diff
   const commitSelPathRef = useRef<string | null>(commitSelPath)
   commitSelPathRef.current = commitSelPath
   const selectedCommitRef = useRef<Commit | null>(selectedCommit)
@@ -218,6 +175,14 @@ export function App() {
     const message = e instanceof Error ? e.message : String(e)
     setError(message)
   }, [])
+
+  const updates = useUpdateBanner(aboutOpen, fail)
+
+  const getRepoPath = useCallback(() => repoRef.current?.path, [])
+  const { diff, diffRef, diffLoading, loadWorkingDiff, loadCommitDiff, clearDiff } = useDiffLoader(
+    getRepoPath,
+    fail
+  )
 
   // ── Data loaders ─────────────────────────────────────────────────────────
   // One IPC round-trip refreshes everything the sidebar shows: files, current
@@ -334,50 +299,13 @@ export function App() {
     }
   }, [fail])
 
-  const loadWorkingDiff = useCallback(
-    async (file: ChangedFile) => {
-      const repoPath = repoRef.current?.path
-      if (!repoPath) return
-      const id = ++diffReq.current
-      setDiffLoading(true)
-      try {
-        const payload = await window.gitgrove.workingDiff(repoPath, file)
-        if (id === diffReq.current) setDiff((prev) => (samePayload(prev, payload) ? prev : payload))
-      } catch (e) {
-        if (id === diffReq.current) fail(e)
-      } finally {
-        if (id === diffReq.current) setDiffLoading(false)
-      }
-    },
-    [fail]
-  )
-
-  const loadCommitDiff = useCallback(
-    async (hash: string, file: ChangedFile) => {
-      const repoPath = repoRef.current?.path
-      if (!repoPath) return
-      const id = ++diffReq.current
-      setDiffLoading(true)
-      try {
-        const payload = await window.gitgrove.commitDiff(repoPath, hash, file)
-        if (id === diffReq.current) setDiff((prev) => (samePayload(prev, payload) ? prev : payload))
-      } catch (e) {
-        if (id === diffReq.current) fail(e)
-      } finally {
-        if (id === diffReq.current) setDiffLoading(false)
-      }
-    },
-    [fail]
-  )
-
   // ── Selection handlers ─────────────────────────────────────────────────────
   const selectWorkingFile = useCallback(
     (path: string | null, list?: ChangedFile[], opts?: { force?: boolean }) => {
       // null = the list selection was emptied (Cmd/Ctrl+click on the last row).
       if (path === null) {
         setChangeSel(null)
-        setDiff(null)
-        diffReq.current++
+        clearDiff()
         return
       }
       const file = (list ?? changes).find((f) => f.path === path)
@@ -390,7 +318,7 @@ export function App() {
       setChangeSel(path)
       loadWorkingDiff(file)
     },
-    [changes, loadWorkingDiff]
+    [changes, loadWorkingDiff, clearDiff]
   )
 
   /** Default selection: the first file (the snapshot arrives path-sorted). */
@@ -402,16 +330,13 @@ export function App() {
         // The list went empty (last change committed/discarded) — clear the
         // pane too, but only when it's showing a working diff; in History it
         // holds a commit diff the user may be reading.
-        if (applyDiff) {
-          setDiff(null)
-          diffReq.current++
-        }
+        if (applyDiff) clearDiff()
         return
       }
       if (applyDiff) selectWorkingFile(first.path, files)
       else setChangeSel(first.path)
     },
-    [selectWorkingFile]
+    [selectWorkingFile, clearDiff]
   )
 
   const selectCommitFile = useCallback(
@@ -460,10 +385,7 @@ export function App() {
         // Force: the previous commit may have focused the same path, whose
         // (different) diff must not be kept.
         if (files.length > 0) selectCommitFile(files[0].path, commit.hash, files, { force: true })
-        else {
-          setDiff(null)
-          diffReq.current++
-        }
+        else clearDiff()
       } catch (e) {
         if (id === commitReq.current) {
           commitFilesHashRef.current = null
@@ -473,7 +395,7 @@ export function App() {
         if (id === commitReq.current) setCommitFilesLoading(false)
       }
     },
-    [fail, selectCommitFile]
+    [fail, selectCommitFile, clearDiff]
   )
 
   // ── Tab switching keeps the right pane in sync with the active selection ───
@@ -486,10 +408,7 @@ export function App() {
       if (next === 'changes') {
         setChangeSelCount(1)
         if (changeSel) selectWorkingFile(changeSel, undefined, { force: true })
-        else {
-          setDiff(null)
-          diffReq.current++
-        }
+        else clearDiff()
       } else {
         setCommitSelCount(1)
         // First visit to History: fetch the log on demand.
@@ -497,10 +416,7 @@ export function App() {
         if (repoPath && !logLoaded && !commitsLoading) loadLog(repoPath).catch(fail)
         if (selectedCommit && commitSelPath)
           selectCommitFile(commitSelPath, selectedCommit.hash, undefined, { force: true })
-        else {
-          setDiff(null)
-          diffReq.current++
-        }
+        else clearDiff()
       }
     },
     [
@@ -512,6 +428,7 @@ export function App() {
       loadLog,
       selectWorkingFile,
       selectCommitFile,
+      clearDiff,
       fail
     ]
   )
@@ -604,13 +521,12 @@ export function App() {
       setCommitSelPath(null)
       setChangeSel(null)
       setSelections(new Map())
-      setDiff(null)
+      clearDiff()
       setRepoState(null)
       setSync(null)
       setStashes([])
       setModal(null)
       setTab('changes')
-      diffReq.current++
       // Branch enumeration is the slowest part on big repos; let it fill in the
       // combo on its own so it never gates the first diff appearing.
       loadBranches(summary.path).catch(fail)
@@ -624,7 +540,7 @@ export function App() {
         setChangesLoading(false)
       }
     },
-    [loadSnapshot, loadBranches, autoSelect, fail]
+    [loadSnapshot, loadBranches, autoSelect, clearDiff, fail]
   )
 
   // Route an open outcome: success applies the repo, an untrusted folder opens
@@ -690,8 +606,7 @@ export function App() {
         setCommits([])
         setLogHasMore(false)
         setLogLoaded(false)
-        setDiff(null)
-        diffReq.current++
+        clearDiff()
         // The new branch invalidates the log; reload it now only if History is
         // showing, otherwise leave it for the next time the tab is opened.
         if (tabRef.current === 'history') loadLog(repoPath).catch(fail)
@@ -704,7 +619,7 @@ export function App() {
         setCheckingOut(null)
       }
     },
-    [loadSnapshot, loadLog, autoSelect, fail]
+    [loadSnapshot, loadLog, autoSelect, clearDiff, fail]
   )
 
   // ── Commit, hunks, sync, branch & history actions ──────────────────────────
@@ -712,58 +627,22 @@ export function App() {
     async (message: string, amend: boolean) => {
       const repoPath = repoRef.current?.path
       if (!repoPath) return false
-      // Assemble the checkbox selection into one commit payload: fully
-      // included paths plus standalone patches for partially included files.
-      const paths: string[] = []
-      const patches: string[] = []
-      let all = true
-      for (const f of changesRef.current) {
-        if (f.status === 'conflicted') {
-          all = false
-          continue
-        }
-        const sel = selections.get(f.path) ?? 'all'
-        if (sel === 'all') {
-          paths.push(f.path)
-        } else {
-          all = false
-          if (sel !== 'none') patches.push(...sel.values())
-        }
-      }
-      const ok = await runOp(() =>
-        window.gitgrove.commit(repoPath, message, {
-          amend,
-          all,
-          paths: all ? [] : paths,
-          patches
-        })
-      )
+      const sel = buildCommitSelection(changesRef.current, selections)
+      const ok = await runOp(() => window.gitgrove.commit(repoPath, message, { amend, ...sel }))
       if (ok) setSelections(new Map())
       return ok
     },
     [runOp, selections]
   )
 
-  /**
-   * Stash the checked files (stash granularity is the file — partially
-   * included files are stashed whole). When everything is checked, plain
-   * `git stash push -u` runs with no pathspec; otherwise the checked paths
-   * stream to git over stdin, untracked included.
-   */
+  /** Stash the checked files. When everything is checked, plain `git stash
+   *  push -u` runs with no pathspec; otherwise the checked paths stream to
+   *  git over stdin, untracked included. */
   const doStash = useCallback(
     async (message: string) => {
       const repoPath = repoRef.current?.path
       if (!repoPath) return false
-      const paths: string[] = []
-      let all = true
-      for (const f of changesRef.current) {
-        if (f.status === 'conflicted') {
-          all = false
-          continue
-        }
-        if ((selections.get(f.path) ?? 'all') === 'none') all = false
-        else paths.push(f.path)
-      }
+      const { all, paths } = buildStashSelection(changesRef.current, selections)
       if (paths.length === 0) return false
       const ok = await runOp(() =>
         window.gitgrove.stashSave(repoPath, {
@@ -924,89 +803,18 @@ export function App() {
       const repoPath = repoRef.current?.path
       if (!repoPath) return []
       const gg = window.gitgrove
-      const currentBranch = branchRef.current?.current ?? 'current branch'
-      const idx = commits.findIndex((c) => c.hash === commit.hash)
-      const isRoot = commit.parents.length === 0
-      const isMerge = commit.parents.length > 1
-      return [
-        {
-          label: 'Checkout Commit…',
-          icon: <Icon.Branch size={15} />,
-          onClick: () =>
-            setModal({ kind: 'checkout-commit', hash: commit.hash, shortHash: commit.shortHash })
-        },
-        {
-          label: 'Create Branch Here…',
-          icon: <Icon.Plus size={15} />,
-          onClick: () =>
-            setModal({ kind: 'new-branch', from: commit.hash, fromLabel: commit.shortHash })
-        },
-        {
-          label: 'Create Tag Here…',
-          icon: <Icon.Tag size={15} />,
-          onClick: () =>
-            setModal({ kind: 'create-tag', hash: commit.hash, shortHash: commit.shortHash })
-        },
-        {},
-        {
-          label: `Cherry-pick onto ${currentBranch}`,
-          icon: <Icon.CherryPick size={15} />,
-          onClick: () => runOpRef.current(() => gg.cherryPick(repoPath, commit.hash))
-        },
-        {
-          label: 'Revert Commit…',
-          icon: <Icon.Undo size={15} />,
-          disabled: isMerge,
-          onClick: () =>
-            setModal({ kind: 'revert', hash: commit.hash, shortHash: commit.shortHash })
-        },
-        {
-          label: 'Interactive Rebase from Here…',
-          icon: <Icon.ListTodo size={15} />,
-          // Needs a parent to rebase onto, and the commit must be in the loaded log.
-          disabled: isRoot || idx < 0,
-          onClick: () =>
-            setModal({
-              kind: 'irebase',
-              commits: commits.slice(0, idx + 1),
-              base: `${commit.hash}^`
-            })
-        },
-        {},
-        {
-          label: `Reset ${currentBranch} Here (soft)`,
-          icon: <Icon.Reset size={15} />,
-          onClick: () => runOpRef.current(() => gg.reset(repoPath, commit.hash, 'soft'))
-        },
-        {
-          label: `Reset ${currentBranch} Here (mixed)`,
-          icon: <Icon.Reset size={15} />,
-          onClick: () => runOpRef.current(() => gg.reset(repoPath, commit.hash, 'mixed'))
-        },
-        {
-          label: `Reset ${currentBranch} Here (hard)…`,
-          icon: <Icon.Reset size={15} />,
-          danger: true,
-          onClick: () =>
-            setModal({
-              kind: 'reset',
-              hash: commit.hash,
-              shortHash: commit.shortHash,
-              mode: 'hard'
-            })
-        },
-        {},
-        {
-          label: 'Copy Hash',
-          icon: <Icon.Copy size={15} />,
-          onClick: () => gg.clipboardWrite(commit.hash)
-        },
-        {
-          label: 'Copy Short Hash',
-          icon: <Icon.Copy size={15} />,
-          onClick: () => gg.clipboardWrite(commit.shortHash)
-        }
-      ]
+      return commitMenuItems(commit, commits, branchRef.current?.current ?? 'current branch', {
+        checkoutCommit: (c) =>
+          setModal({ kind: 'checkout-commit', hash: c.hash, shortHash: c.shortHash }),
+        newBranchAt: (c) => setModal({ kind: 'new-branch', from: c.hash, fromLabel: c.shortHash }),
+        createTagAt: (c) => setModal({ kind: 'create-tag', hash: c.hash, shortHash: c.shortHash }),
+        cherryPick: (c) => runOpRef.current(() => gg.cherryPick(repoPath, c.hash)),
+        revert: (c) => setModal({ kind: 'revert', hash: c.hash, shortHash: c.shortHash }),
+        interactiveRebase: (chain, base) => setModal({ kind: 'irebase', commits: chain, base }),
+        reset: (c, mode) => runOpRef.current(() => gg.reset(repoPath, c.hash, mode)),
+        confirmHardReset: (c) =>
+          setModal({ kind: 'reset', hash: c.hash, shortHash: c.shortHash, mode: 'hard' })
+      })
     },
     [commits]
   )
@@ -1022,6 +830,46 @@ export function App() {
       setModal(null)
     }
   }, [])
+
+  const deleteBranch = useCallback(
+    async (name: string, force: boolean) => {
+      const repoPath = repoRef.current?.path
+      if (!repoPath) return
+      setModalBusy(true)
+      try {
+        await window.gitgrove.deleteBranch(repoPath, name, { force })
+        setModal(null)
+        await refreshRef.current()
+      } catch (e) {
+        // `-d` refuses unmerged branches; escalate to an explicit force confirm.
+        if (!force && /not fully merged/i.test(e instanceof Error ? e.message : '')) {
+          setModal({ kind: 'delete-branch', name, force: true })
+        } else {
+          setModal(null)
+          fail(e)
+        }
+      } finally {
+        setModalBusy(false)
+      }
+    },
+    [fail]
+  )
+
+  const checkoutCommit = useCallback(
+    async (hash: string) => {
+      const repoPath = repoRef.current?.path
+      if (!repoPath) return
+      const ok = await runOpRef.current(() => window.gitgrove.checkoutDetached(repoPath, hash))
+      setModal(null)
+      // Detaching HEAD invalidates the log; reload it now only if History is
+      // showing, otherwise leave it for the next time the tab is opened.
+      if (ok) {
+        setLogLoaded(false)
+        if (tabRef.current === 'history') loadLog(repoPath).catch(fail)
+      }
+    },
+    [loadLog, fail]
+  )
 
   // ── Git availability: probe on launch, re-probe on demand ──────────────────
   useEffect(() => {
@@ -1154,70 +1002,11 @@ export function App() {
 
   useEffect(() => window.gitgrove.onShowAbout(() => setAboutOpen(true)), [])
 
-  useEffect(
-    () =>
-      window.gitgrove.onUpdateStatus((status) => {
-        setUpdate(status)
-        if (status.manual) setUpdateFeedbackDismissed(false)
-        if (
-          (status.state === 'downloaded' || status.state === 'manual-install') &&
-          status.newVersion !== dismissedUpdate
-        ) {
-          setDismissedUpdate(null)
-        }
-      }),
-    [dismissedUpdate]
-  )
-
-  const checkForUpdates = useCallback(() => {
-    window.gitgrove.checkForUpdates(true).catch(fail)
-  }, [fail])
-
-  const installUpdate = useCallback(() => {
-    window.gitgrove.installUpdate().catch(fail)
-  }, [fail])
-
-  // auto-dismiss errors
   useEffect(() => {
     if (!error) return
     const t = setTimeout(() => setError(null), 6000)
     return () => clearTimeout(t)
   }, [error])
-
-  useEffect(() => {
-    if (!update?.manual || updateFeedbackDismissed) return
-    if (!['not-available', 'error', 'dev'].includes(update.state)) return
-    const t = setTimeout(() => setUpdateFeedbackDismissed(true), 5000)
-    return () => clearTimeout(t)
-  }, [update, updateFeedbackDismissed])
-
-  const deferredReady =
-    (update?.state === 'downloaded' || update?.state === 'manual-install') &&
-    update.newVersion === dismissedUpdate
-  const isProgress =
-    update?.state === 'downloading' ||
-    update?.state === 'available' ||
-    update?.state === 'downloaded' ||
-    update?.state === 'manual-install'
-  const isManualFeedback =
-    !!update?.manual &&
-    (update.state === 'checking' ||
-      update.state === 'not-available' ||
-      update.state === 'error' ||
-      update.state === 'dev')
-  const bannerUpdate =
-    update &&
-    ((isProgress && !deferredReady) || (isManualFeedback && !updateFeedbackDismissed && !aboutOpen))
-      ? update
-      : null
-
-  const dismissBanner = () => {
-    if (update?.state === 'downloaded' || update?.state === 'manual-install') {
-      setDismissedUpdate(update.newVersion ?? null)
-    } else {
-      setUpdateFeedbackDismissed(true)
-    }
-  }
 
   // What the toolbar shows of the running op: the sync button's fill (only
   // when the progress kind matches the running action) and the branch
@@ -1240,222 +1029,28 @@ export function App() {
 
   // ── App-level modals ───────────────────────────────────────────────────────
   const repoPath = repo?.path
-  const modals = repoPath && modal && (
-    <>
-      {modal.kind === 'new-branch' && (
-        <PromptDialog
-          title={modal.from ? `New branch at ${modal.fromLabel}` : 'New branch'}
-          confirmLabel="Create branch"
-          busy={modalBusy}
-          fields={[
-            {
-              key: 'name',
-              label: 'Branch name',
-              placeholder: 'feature/my-change',
-              initial: modal.initialName,
-              validate: validateRefName
-            },
-            {
-              key: 'checkout',
-              label: 'Check out the new branch',
-              checkbox: true,
-              initialChecked: true
-            }
-          ]}
-          onSubmit={(values, checks) =>
-            runModalOp(() =>
-              window.gitgrove.createBranch(repoPath, values.name.trim(), {
-                from: modal.from,
-                checkout: checks.checkout
-              })
-            )
-          }
-          onCancel={() => setModal(null)}
-        />
-      )}
-      {modal.kind === 'rename-branch' && (
-        <PromptDialog
-          title={`Rename ${modal.name}`}
-          confirmLabel="Rename"
-          busy={modalBusy}
-          fields={[
-            { key: 'name', label: 'New name', initial: modal.name, validate: validateRefName }
-          ]}
-          onSubmit={(values) =>
-            runModalOp(() => window.gitgrove.renameBranch(repoPath, modal.name, values.name.trim()))
-          }
-          onCancel={() => setModal(null)}
-        />
-      )}
-      {modal.kind === 'delete-branch' && (
-        <ConfirmDialog
-          title={`Delete ${modal.name}?`}
-          danger
-          busy={modalBusy}
-          body={
-            modal.force ? (
-              <>
-                <code>{modal.name}</code> has commits that aren't merged anywhere else. Deleting it
-                will lose them (recoverable from the reflog for a while).
-              </>
-            ) : (
-              <>
-                The local branch <code>{modal.name}</code> will be deleted. Its remote
-                counterpart, if any, is untouched.
-              </>
-            )
-          }
-          confirmLabel={modal.force ? 'Force delete' : 'Delete'}
-          onConfirm={async () => {
-            setModalBusy(true)
-            try {
-              await window.gitgrove.deleteBranch(repoPath, modal.name, { force: modal.force })
-              setModal(null)
-              await refreshRef.current()
-            } catch (e) {
-              // `-d` refuses unmerged branches; escalate to an explicit force confirm.
-              if (!modal.force && /not fully merged/i.test(e instanceof Error ? e.message : '')) {
-                setModal({ kind: 'delete-branch', name: modal.name, force: true })
-              } else {
-                setModal(null)
-                fail(e)
-              }
-            } finally {
-              setModalBusy(false)
-            }
-          }}
-          onCancel={() => setModal(null)}
-        />
-      )}
-      {modal.kind === 'create-tag' && (
-        <PromptDialog
-          title={`Tag commit ${modal.shortHash}`}
-          confirmLabel="Create tag"
-          busy={modalBusy}
-          fields={[
-            { key: 'name', label: 'Tag name', placeholder: 'v1.2.0', validate: validateRefName },
-            { key: 'message', label: 'Message (annotated tag, optional)' },
-            { key: 'push', label: 'Push tag to remote', checkbox: true, initialChecked: false }
-          ]}
-          onSubmit={(values, checks) =>
-            runModalOp(() =>
-              window.gitgrove.createTag(repoPath, values.name.trim(), {
-                hash: modal.hash,
-                message: values.message,
-                push: checks.push
-              })
-            )
-          }
-          onCancel={() => setModal(null)}
-        />
-      )}
-      {modal.kind === 'reset' && (
-        <ConfirmDialog
-          title={`Hard reset to ${modal.shortHash}?`}
-          danger
-          busy={modalBusy}
-          body={
-            <>
-              <code>{branch?.current}</code> will point at <code>{modal.shortHash}</code> and{' '}
-              <strong>all uncommitted changes are discarded</strong>. Commits left behind stay in
-              the reflog for a while.
-            </>
-          }
-          confirmLabel="Hard reset"
-          onConfirm={() =>
-            runModalOp(() => window.gitgrove.reset(repoPath, modal.hash, modal.mode))
-          }
-          onCancel={() => setModal(null)}
-        />
-      )}
-      {modal.kind === 'revert' && (
-        <ConfirmDialog
-          title={`Revert ${modal.shortHash}?`}
-          busy={modalBusy}
-          body="A new commit will be created that undoes this commit's changes. Your working tree must be clean enough for the revert to apply."
-          confirmLabel="Revert"
-          onConfirm={() => runModalOp(() => window.gitgrove.revertCommit(repoPath, modal.hash))}
-          onCancel={() => setModal(null)}
-        />
-      )}
-      {modal.kind === 'checkout-commit' && (
-        <ConfirmDialog
-          title={`Checkout ${modal.shortHash}?`}
-          busy={modalBusy}
-          body="This detaches HEAD: you can look around and build, but new commits won't belong to any branch until you create one. Switch back to a branch to return to normal."
-          confirmLabel="Checkout"
-          onConfirm={async () => {
-            const ok = await runOpRef.current(() =>
-              window.gitgrove.checkoutDetached(repoPath, modal.hash)
-            )
-            setModal(null)
-            if (ok) {
-              setLogLoaded(false)
-              if (tabRef.current === 'history') loadLog(repoPath).catch(fail)
-            }
-          }}
-          onCancel={() => setModal(null)}
-        />
-      )}
-      {modal.kind === 'irebase' && (
-        <InteractiveRebaseDialog
-          commits={modal.commits}
-          base={modal.base}
-          busy={modalBusy}
-          onSubmit={(items) =>
-            runModalOp(() => window.gitgrove.rebaseInteractive(repoPath, modal.base, items))
-          }
-          onCancel={() => setModal(null)}
-        />
-      )}
-      {modal.kind === 'worktrees' && (
-        <WorktreesDialog
-          repoPath={repoPath}
-          localBranches={branch?.local ?? []}
-          onOpenRepo={openRepoByPath}
-          onError={fail}
-          onClose={() => setModal(null)}
-        />
-      )}
-      {modal.kind === 'submodules' && (
-        <SubmodulesDialog
-          repoPath={repoPath}
-          onOpenRepo={openRepoByPath}
-          onError={fail}
-          onClose={() => setModal(null)}
-        />
-      )}
-      {modal.kind === 'stash' && (
-        <PromptDialog
-          title="Stash all changes"
-          confirmLabel="Stash"
-          busy={modalBusy}
-          fields={[
-            { key: 'message', label: 'Message (optional)' },
-            {
-              key: 'untracked',
-              label: 'Include untracked files',
-              checkbox: true,
-              initialChecked: true
-            }
-          ]}
-          onSubmit={(values, checks) =>
-            runModalOp(() =>
-              window.gitgrove.stashSave(repoPath, {
-                message: values.message,
-                includeUntracked: checks.untracked
-              })
-            )
-          }
-          onCancel={() => setModal(null)}
-        />
-      )}
-    </>
+  const modals = repoPath && modal && modal.kind !== 'clone' && (
+    <AppModals
+      modal={modal}
+      repoPath={repoPath}
+      branch={branch}
+      busy={modalBusy}
+      runModalOp={runModalOp}
+      onDeleteBranch={deleteBranch}
+      onCheckoutCommit={checkoutCommit}
+      onOpenRepo={openRepoByPath}
+      onError={fail}
+      onClose={() => setModal(null)}
+    />
   )
 
   const overlays = (
     <>
-      <UpdateBanner update={bannerUpdate} onInstall={installUpdate} onDismiss={dismissBanner} />
+      <UpdateBanner
+        update={updates.bannerUpdate}
+        onInstall={updates.install}
+        onDismiss={updates.dismiss}
+      />
       {trustPath && (
         <TrustDialog
           path={trustPath}
@@ -1467,10 +1062,10 @@ export function App() {
       {aboutOpen && (
         <AboutDialog
           info={appInfo}
-          update={update}
+          update={updates.update}
           onClose={() => setAboutOpen(false)}
-          onCheckForUpdates={checkForUpdates}
-          onInstall={installUpdate}
+          onCheckForUpdates={updates.check}
+          onInstall={updates.install}
         />
       )}
       {modal?.kind === 'clone' && (
@@ -1486,10 +1081,11 @@ export function App() {
     </>
   )
 
-  // Gate the app on git: a brief splash while the (fast) check runs, then a
-  // guided setup screen if git is missing — so repo actions that can't possibly
-  // work are never offered.
-  if (git === null || !git.available) {
+  // Gate the app until a repo is usable: a brief splash while the (fast) git
+  // check runs, a guided setup screen if git is missing (so repo actions that
+  // can't possibly work are never offered), then the welcome screen until a
+  // repo is opened.
+  if (git === null || !git.available || !repo) {
     return (
       <div className="app">
         <Toolbar
@@ -1512,40 +1108,15 @@ export function App() {
             <div className="welcome">
               <div className="spinner" />
             </div>
-          ) : (
+          ) : !git.available ? (
             <GitSetup platform={git.platform} checking={gitChecking} onRecheck={recheckGit} />
+          ) : (
+            <Welcome
+              onPickRepo={pickRepo}
+              onOpenRepo={openRepoByPath}
+              onClone={() => setModal({ kind: 'clone' })}
+            />
           )}
-        </div>
-        {error && <ErrorToast message={error} onClose={() => setError(null)} />}
-        {overlays}
-      </div>
-    )
-  }
-
-  if (!repo) {
-    return (
-      <div className="app">
-        <Toolbar
-          repo={null}
-          branch={null}
-          branchesLoading={false}
-          busy={false}
-          refreshing={false}
-          themePref={themePref}
-          resolvedTheme={theme}
-          onOpenRepo={openRepoByPath}
-          onPickRepo={pickRepo}
-          onCheckout={checkout}
-          onRefresh={refresh}
-          onThemeChange={setThemePref}
-          onAbout={() => setAboutOpen(true)}
-        />
-        <div className="app__body">
-          <Welcome
-            onPickRepo={pickRepo}
-            onOpenRepo={openRepoByPath}
-            onClone={() => setModal({ kind: 'clone' })}
-          />
         </div>
         {error && <ErrorToast message={error} onClose={() => setError(null)} />}
         {overlays}

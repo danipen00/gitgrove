@@ -17,6 +17,7 @@ import { isAbsolute, join } from 'node:path'
 import type { ChangedFile, FileStatus, RepoOpKind, RepoSnapshot, RepoState } from '@shared/types'
 import { listStashes } from './git-write'
 import { runGit } from './git'
+import { PERF } from './perf'
 
 /** Parsed `# branch.*` headers from porcelain v2. */
 export interface StatusHeaders {
@@ -187,9 +188,6 @@ async function readRepoState(repoPath: string, conflictedCount: number): Promise
 
 // ── The snapshot ─────────────────────────────────────────────────────────────
 
-/** Dev-only timing logs: shows where snapshot time goes in the dev terminal. */
-const PERF = process.env.NODE_ENV !== 'production' || process.env.GITGROVE_PERF === '1'
-
 export async function getRepoSnapshot(repoPath: string): Promise<RepoSnapshot> {
   const t0 = performance.now()
   // One status spawn carries files + branch + upstream + ahead/behind; the
@@ -235,9 +233,4 @@ export async function getRepoSnapshot(repoPath: string): Promise<RepoSnapshot> {
     stashes,
     statusMs: Math.round(tGit - t0)
   }
-}
-
-/** Drop cached paths when a repo is closed. */
-export function forgetSnapshotCaches(repoPath: string): void {
-  gitDirCache.delete(repoPath)
 }

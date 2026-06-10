@@ -119,14 +119,6 @@ export async function addSafeDirectory(value: string): Promise<void> {
   })
 }
 
-export async function isGitRepo(repoPath: string): Promise<boolean> {
-  try {
-    return (await runGit(repoPath, ['rev-parse', '--is-inside-work-tree'])).trim() === 'true'
-  } catch {
-    return false
-  }
-}
-
 /** Resolve the top-level working directory for any path inside a repo. */
 export async function resolveRepoRoot(somePath: string): Promise<string | null> {
   try {

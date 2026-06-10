@@ -30,6 +30,7 @@ import type { UpdateStatus } from '@shared/types'
 import { app, type BrowserWindow, shell } from 'electron'
 import electronUpdater, { type UpdateInfo } from 'electron-updater'
 
+import { REPO_URL } from './app-info'
 import { describeUpdateError } from './update-error'
 
 // electron-updater is CommonJS; under our ESM main bundle the instance lives on
@@ -37,10 +38,6 @@ import { describeUpdateError } from './update-error'
 const { autoUpdater } = electronUpdater
 
 const execFileAsync = promisify(execFile)
-
-// Canonical repository, mirrors REPO_URL in index.ts. Used to build the .dmg
-// download URL for the manual-install fallback.
-const REPO_URL = 'https://github.com/danipen/gitgrove'
 
 const version = app.getVersion()
 let manualCheck = false
@@ -50,6 +47,18 @@ let initialized = false
 let manualMode = false
 // Absolute path of a .dmg we've downloaded and are waiting for the user to open.
 let pendingInstallFile: string | null = null
+
+/** Push an UpdateStatus to the renderer, stamped with version + manual flag. */
+function pushStatus(
+  getWindow: () => BrowserWindow | null,
+  status: Omit<UpdateStatus, 'version' | 'manual'>
+): void {
+  getWindow()?.webContents.send(IPC.updateStatus, {
+    ...status,
+    version,
+    manual: manualCheck
+  } satisfies UpdateStatus)
+}
 
 /** Flatten electron-updater's string | {note}[] release notes to plain text. */
 function notesToText(notes: UpdateInfo['releaseNotes']): string | undefined {
@@ -116,12 +125,7 @@ async function downloadForManualInstall(
   info: UpdateInfo,
   getWindow: () => BrowserWindow | null
 ): Promise<void> {
-  const push = (status: Omit<UpdateStatus, 'version' | 'manual'>) =>
-    getWindow()?.webContents.send(IPC.updateStatus, {
-      ...status,
-      version,
-      manual: manualCheck
-    } satisfies UpdateStatus)
+  const push = pushStatus.bind(null, getWindow)
 
   try {
     // latest-mac.yml lists every arch's artifacts and the update-available
@@ -169,12 +173,7 @@ export function initAutoUpdater(getWindow: () => BrowserWindow | null): void {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
 
-  const push = (status: Omit<UpdateStatus, 'version' | 'manual'>) =>
-    getWindow()?.webContents.send(IPC.updateStatus, {
-      ...status,
-      version,
-      manual: manualCheck
-    } satisfies UpdateStatus)
+  const push = pushStatus.bind(null, getWindow)
 
   autoUpdater.on('checking-for-update', () => push({ state: 'checking' }))
   autoUpdater.on('update-available', (info) => {
