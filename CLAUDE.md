@@ -6,6 +6,10 @@ two tabs, no ceremony.
 
 ## Principles (the bar every change is held to)
 
+- **Clean code — the most important principle.** Clean for humans *and* for LLMs. Names
+  (files, classes, methods, vars) are precise and reveal intent. Methods are small and
+  readable; files stay small — when something grows, split it into meaningful, cohesive
+  pieces. No clever tricks, no dead code, no duplication. Optimize for the next reader.
 - **Max UX.** Advanced git (interactive rebase, hunk-level staging, worktrees, conflict
   resolution) must feel effortless — never drop the user into a terminal, editor, or git
   jargon they didn't ask for.
