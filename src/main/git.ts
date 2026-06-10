@@ -1,9 +1,8 @@
 // Read-side git access for the main process: one thin execFile wrapper with
-// exact control over arguments, formatting and exit codes — the GitHub Desktop
-// approach (a single `git()` entry point in core.ts) rather than a wrapper
-// library. All output that contains file paths or user text is NUL-delimited
-// (`-z` / `%x00`), because NUL is the only byte git guarantees can never
-// appear inside refnames, paths, or commit messages.
+// exact control over arguments, formatting and exit codes, rather than a
+// wrapper library. All output that contains file paths or user text is
+// NUL-delimited (`-z` / `%x00`), because NUL is the only byte git guarantees
+// can never appear inside refnames, paths, or commit messages.
 
 import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
@@ -60,9 +59,9 @@ export class DubiousOwnershipError extends Error {
 // Reads must never take the index lock: `git status` refreshes the stat cache
 // by default, which creates .git/index.lock and collides with a concurrent
 // stage/commit ("index.lock: File exists"). GIT_OPTIONAL_LOCKS=0 makes status
-// & friends skip that optional write — the same lever GitHub Desktop uses.
-// Set on our own process env so every spawned git inherits it. Mutating
-// writes are unaffected — their index lock is mandatory, not optional.
+// & friends skip that optional write. Set on our own process env so every
+// spawned git inherits it. Mutating writes are unaffected — their index lock
+// is mandatory, not optional.
 process.env.GIT_OPTIONAL_LOCKS = '0'
 
 /**
@@ -110,8 +109,7 @@ export async function runGit(
 
 /**
  * Persist a global `safe.directory` exception so git trusts this repo from now
- * on (in GitGrove, the terminal, and other git tools alike) — the same thing
- * GitHub Desktop's "add an exception for this directory" does. Only call this
+ * on (in GitGrove, the terminal, and other git tools alike). Only call this
  * after the user has explicitly chosen to trust the folder.
  */
 export async function addSafeDirectory(value: string): Promise<void> {
@@ -165,11 +163,11 @@ async function resolveHead(repoPath: string): Promise<{ current: string; detache
 
 export async function getBranches(repoPath: string): Promise<BranchInfo> {
   // One `for-each-ref` enumerates local + remote branches AND marks the
-  // checked-out one (`*`) — the GitHub Desktop approach. `git branch -v`
-  // (what a wrapper library would run) additionally computes ahead/behind
-  // for every tracked branch, a rev walk per branch that costs seconds on
-  // remote-heavy repos. Fields are NUL-separated; refnames cannot contain
-  // NUL or newline, so line-based parsing is exact.
+  // checked-out one (`*`). `git branch -v` (what a wrapper library would
+  // run) additionally computes ahead/behind for every tracked branch, a rev
+  // walk per branch that costs seconds on remote-heavy repos. Fields are
+  // NUL-separated; refnames cannot contain NUL or newline, so line-based
+  // parsing is exact.
   const out = await runGit(repoPath, [
     'for-each-ref',
     '--format=%(HEAD)%00%(refname)%00%(refname:short)%00%(symref)',
@@ -269,9 +267,9 @@ export async function getRemoteWebUrl(repoPath: string): Promise<string | null> 
 }
 
 // Log fields, NUL-joined: subjects/bodies can contain any byte except NUL, so
-// NUL is the only safe field separator (the trick GitHub Desktop's log parser
-// uses). With `-z` git also terminates each commit record with NUL, so the
-// whole output is one flat NUL stream parsed by fixed field count.
+// NUL is the only safe field separator. With `-z` git also terminates each
+// commit record with NUL, so the whole output is one flat NUL stream parsed
+// by fixed field count.
 const LOG_FIELDS = ['%H', '%h', '%s', '%b', '%an', '%ae', '%aI', '%ar', '%D', '%P']
 const LOG_FORMAT = LOG_FIELDS.join('%x00')
 
@@ -383,8 +381,8 @@ export function parseRawNumstat(out: string): ChangedFile[] {
 
 export async function getCommitFiles(repoPath: string, hash: string): Promise<ChangedFile[]> {
   // Diff against the first parent so merge commits report only what the merge
-  // introduced on top of the mainline (like GitHub Desktop) rather than the
-  // union of every parent. `diff-tree -m --first-parent` does NOT do this —
+  // introduced on top of the mainline rather than the union of every parent.
+  // `diff-tree -m --first-parent` does NOT do this —
   // `-m` emits a section per parent and silently ignores `--first-parent`,
   // producing the union — so we name the two trees explicitly. One spawn
   // carries status AND line counts; root commits (no parent) retry against

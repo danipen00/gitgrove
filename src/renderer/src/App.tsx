@@ -198,10 +198,10 @@ export function App() {
   // otherwise stack three status passes on big repos).
   const refreshInFlight = useRef(false)
   const refreshQueued = useRef(false)
-  // The commit selection (GitHub Desktop model): checkboxes are pure renderer
-  // state — every changed file defaults to included; toggling never touches
-  // git. Missing key = 'all'; 'none' = excluded; a Map = selected hunk
-  // indexes with their commit patches.
+  // The commit selection: checkboxes are pure renderer state — every changed
+  // file defaults to included; toggling never touches git. Missing key =
+  // 'all'; 'none' = excluded; a Map = selected hunk indexes with their
+  // commit patches.
   const [selections, setSelections] = useState<Map<string, FileSelection>>(new Map())
 
   const fail = useCallback((e: unknown) => {

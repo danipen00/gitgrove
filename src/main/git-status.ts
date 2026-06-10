@@ -1,6 +1,6 @@
 // The fast repo snapshot: everything the renderer needs after any change, in
-// (almost) a single git invocation — the approach that keeps GitHub Desktop
-// fast on 100k-file repositories.
+// (almost) a single git invocation — the lever that keeps refreshes fast on
+// 100k-file repositories.
 //
 //   git status --untracked-files=all --branch --porcelain=2 -z
 //

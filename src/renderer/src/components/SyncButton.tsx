@@ -1,8 +1,7 @@
 // The toolbar's fetch/pull/push control. One adaptive button shows the most
 // useful action for the branch's state (publish → pull → push → fetch), with
 // ahead/behind badges, and a chevron opens the full menu (fetch, pull,
-// pull --rebase, push, force push). Modeled on GitHub Desktop's sync button,
-// kept to a single compact pill.
+// pull --rebase, push, force push) — all sync in a single compact pill.
 
 import type { SyncStatus } from '@shared/types'
 import { useRef, useState } from 'react'

@@ -13,9 +13,9 @@ interface Props {
 
 /**
  * Shown when git refuses a repo with "dubious ownership" (common on Parallels
- * shares / network drives). Mirrors GitHub Desktop: explain the situation and
- * let the user explicitly trust the folder — which persists a `safe.directory`
- * exception — rather than silently trusting everything.
+ * shares / network drives). Explains the situation and lets the user
+ * explicitly trust the folder — which persists a `safe.directory` exception —
+ * rather than silently trusting everything.
  */
 export function TrustDialog({ path, busy, onTrust, onCancel }: Props) {
   useEffect(() => {

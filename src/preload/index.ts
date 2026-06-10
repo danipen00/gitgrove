@@ -21,8 +21,8 @@ const api: GitGroveApi = {
     ipcRenderer.invoke(IPC.workingDiff, repoPath, file, area),
   commitDiff: (repoPath, hash, file: ChangedFile) =>
     ipcRenderer.invoke(IPC.commitDiff, repoPath, hash, file),
-  discardFiles: (repoPath, paths, untrackedPaths) =>
-    ipcRenderer.invoke(IPC.discardFiles, repoPath, paths, untrackedPaths),
+  discardFiles: (repoPath, files, untrackedPaths) =>
+    ipcRenderer.invoke(IPC.discardFiles, repoPath, files, untrackedPaths),
   applyPatch: (repoPath, patch, opts) => ipcRenderer.invoke(IPC.applyPatch, repoPath, patch, opts),
   commit: (repoPath, message, selection) =>
     ipcRenderer.invoke(IPC.commit, repoPath, message, selection),

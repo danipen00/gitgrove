@@ -1,4 +1,4 @@
-// Selection-to-patch plumbing for the working diff (the GitHub Desktop model).
+// Selection-to-patch plumbing for the working diff.
 //
 // Checkboxes are pure renderer state — "include this in the next commit" —
 // and git is only touched at commit time. Selection granularity is the

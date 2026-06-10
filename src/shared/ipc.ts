@@ -159,10 +159,10 @@ export interface GitGroveApi {
   commitDiff(repoPath: string, hash: string, file: ChangedFile): Promise<DiffPayload>
   // ── Staging & commits ──
   /**
-   * Discard changes so the chosen paths end up as in HEAD (the GitHub Desktop
-   * model): staged state is reset, original files are restored, and files
-   * HEAD doesn't have (untracked, staged-new, rename targets) move to the OS
-   * trash so a mis-click is recoverable.
+   * Discard changes so the chosen paths end up exactly as in HEAD: staged
+   * state is reset, original files are restored, and files HEAD doesn't have
+   * (untracked, staged-new, rename targets) move to the OS trash so a
+   * mis-click is recoverable.
    */
   discardFiles(repoPath: string, files: DiscardItem[], untrackedPaths: string[]): Promise<void>
   /** Apply a (hunk) patch to the index/working tree — see git-write.applyPatch. */

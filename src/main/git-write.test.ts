@@ -1,8 +1,13 @@
-import { describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { RebaseTodoItem } from '@shared/types'
 import {
   buildEditorQueue,
   buildTodoFile,
+  discardFiles,
   parseStashList,
   parseSubmodules,
   parseWorktrees
@@ -36,6 +41,75 @@ describe('parseStashList', () => {
   test('ignores malformed output', () => {
     expect(parseStashList('garbage\n\n')).toHaveLength(0)
     expect(parseStashList('')).toHaveLength(0)
+  })
+})
+
+// Integration: drive the real `git` binary against a throwaway repo, like
+// git.test.ts does, to pin the discard semantics (HEAD state restored).
+describe('discardFiles', () => {
+  let repo: string
+
+  const git = (args: string[]): string =>
+    execFileSync('git', args, {
+      cwd: repo,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'Test',
+        GIT_AUTHOR_EMAIL: 't@example.com',
+        GIT_COMMITTER_NAME: 'Test',
+        GIT_COMMITTER_EMAIL: 't@example.com'
+      }
+    }).trim()
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), 'gitgrove-discard-'))
+    git(['init', '-q', '-b', 'main'])
+    git(['config', 'commit.gpgsign', 'false'])
+    writeFileSync(join(repo, 'a.txt'), 'original a\n')
+    writeFileSync(join(repo, 'b.txt'), 'original b\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'base'])
+  })
+
+  afterAll(() => {
+    rmSync(repo, { recursive: true, force: true })
+  })
+
+  test('discards a staged rename: old path restored, index forgets the new one', async () => {
+    git(['mv', 'a.txt', 'moved.txt'])
+    expect(git(['status', '--porcelain'])).toContain('R ')
+    // The IPC handler trashes the rename target before the git steps; the
+    // tests stand in for the trash with a plain delete.
+    rmSync(join(repo, 'moved.txt'))
+    await discardFiles(repo, ['moved.txt', 'a.txt'], ['a.txt'])
+    expect(git(['status', '--porcelain'])).toBe('')
+    expect(readFileSync(join(repo, 'a.txt'), 'utf8')).toBe('original a\n')
+    expect(existsSync(join(repo, 'moved.txt'))).toBe(false)
+  })
+
+  test('discards staged + unstaged edits back to HEAD content', async () => {
+    writeFileSync(join(repo, 'b.txt'), 'staged change\n')
+    git(['add', 'b.txt'])
+    writeFileSync(join(repo, 'b.txt'), 'unstaged change\n')
+    await discardFiles(repo, ['b.txt'], ['b.txt'])
+    expect(git(['status', '--porcelain'])).toBe('')
+    expect(readFileSync(join(repo, 'b.txt'), 'utf8')).toBe('original b\n')
+  })
+
+  test('discarding a worktree deletion restores the file', async () => {
+    rmSync(join(repo, 'b.txt'))
+    await discardFiles(repo, ['b.txt'], ['b.txt'])
+    expect(readFileSync(join(repo, 'b.txt'), 'utf8')).toBe('original b\n')
+  })
+
+  test('discards a staged-new file (reset only, no checkout)', async () => {
+    writeFileSync(join(repo, 'new.txt'), 'brand new\n')
+    git(['add', 'new.txt'])
+    // Handler trashes the file; the test deletes it, then resets the index.
+    rmSync(join(repo, 'new.txt'))
+    await discardFiles(repo, ['new.txt'], [])
+    expect(git(['status', '--porcelain'])).toBe('')
   })
 })
 

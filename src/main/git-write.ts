@@ -175,13 +175,57 @@ export async function unstageAll(repoPath: string): Promise<void> {
 }
 
 /**
- * Throw away unstaged changes for tracked paths (working tree ← index).
- * Untracked files are *not* handled here — the caller moves those to the OS
- * trash (recoverable) instead of deleting them.
+ * Throw away changes for tracked paths so they end up exactly as in HEAD,
+ * as one atomic step on the write queue:
+ *
+ *   1. `git reset HEAD` the paths, so staged changes (including renames,
+ *      whose R entry lives only in the index) are forgotten. A plain
+ *      `checkout -- <path>` restores the worktree *from the index* and would
+ *      leave staged state — exactly the bug where a discarded rename
+ *      survives;
+ *   2. `git checkout-index` the paths that exist in HEAD, writing the
+ *      original files back to the worktree.
+ *
+ * `resetPaths` ⊇ `checkoutPaths`: rename targets and staged-new files are
+ * reset but NOT checked out (they don't exist in HEAD — the caller moves
+ * them to the OS trash, recoverable, instead). Pathspecs stream over stdin
+ * NUL-separated, so a huge selection is two spawns with no argv limits.
+ * Untracked files are *not* handled here — the caller trashes those too.
  */
-export async function discardFiles(repoPath: string, paths: string[]): Promise<void> {
-  if (paths.length === 0) return
-  await run(repoPath, ['checkout', '--', ...paths])
+export async function discardFiles(
+  repoPath: string,
+  resetPaths: string[],
+  checkoutPaths: string[]
+): Promise<void> {
+  if (resetPaths.length === 0 && checkoutPaths.length === 0) return
+  await enqueue(repoPath, async () => {
+    if (resetPaths.length > 0) {
+      const input = resetPaths.join('\0')
+      try {
+        await runOnce(
+          repoPath,
+          ['reset', '-q', 'HEAD', '--pathspec-from-file=-', '--pathspec-file-nul'],
+          { input }
+        )
+      } catch (e) {
+        // No commits yet: there is no HEAD to reset to — drop the index
+        // entries instead (same unborn-branch handling as unstageFiles).
+        if (!isUnbornHead(e)) throw e
+        await runOnce(
+          repoPath,
+          ['rm', '--cached', '-r', '-q', '--pathspec-from-file=-', '--pathspec-file-nul'],
+          { input }
+        )
+      }
+    }
+    if (checkoutPaths.length > 0) {
+      // -f overwrites modified worktree files, -u refreshes the index's stat
+      // cache so the very next status doesn't re-examine these paths.
+      await runOnce(repoPath, ['checkout-index', '-f', '-u', '--stdin', '-z'], {
+        input: checkoutPaths.join('\0')
+      })
+    }
+  })
 }
 
 /**
@@ -217,7 +261,7 @@ export interface CommitSelectionPayload {
 }
 
 /**
- * The GitHub Desktop commit model: checkboxes never touch git — this one call
+ * The checkbox commit model: checkboxes never touch git — this one call
  * does, at commit time, as a single atomic step on the write queue:
  *
  *   1. reset the index to HEAD (the index is scratch space in this model);

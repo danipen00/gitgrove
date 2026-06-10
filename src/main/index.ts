@@ -30,6 +30,7 @@ import type {
   ChangedFile,
   CommitSelection,
   DiffArea,
+  DiscardItem,
   GitAvailability,
   LogOptions,
   RebaseTodoItem,
@@ -504,13 +505,35 @@ function registerIpc(): void {
   // ── Staging & commits ──
   ipcMain.handle(
     IPC.discardFiles,
-    async (_e, repoPath: string, paths: string[], untrackedPaths: string[]) => {
-      // Tracked paths restore from the index; untracked files go to the OS
-      // trash so a mis-click is recoverable (same behavior as GitHub Desktop).
-      await gitWrite.discardFiles(repoPath, paths)
-      for (const p of untrackedPaths) {
+    async (_e, repoPath: string, files: DiscardItem[], untrackedPaths: string[]) => {
+      // Discard means: every chosen path ends up exactly as in HEAD.
+      // Files HEAD doesn't have — untracked, staged-new, rename targets — move
+      // to the OS trash so a mis-click is recoverable; everything else is
+      // reset (unstaged) and restored from HEAD. A rename's R entry lives in
+      // the index, so without the reset a discarded rename would survive.
+      const trashPaths = [...untrackedPaths]
+      const resetPaths: string[] = []
+      const checkoutPaths: string[] = []
+      for (const f of files) {
+        if (f.oldPath) {
+          // Rename/copy: forget both sides, restore the old path; the new
+          // path is trashed below.
+          trashPaths.push(f.path)
+          resetPaths.push(f.path, f.oldPath)
+          checkoutPaths.push(f.oldPath)
+        } else if (f.status === 'added') {
+          // Staged new file: nothing in HEAD to restore.
+          trashPaths.push(f.path)
+          resetPaths.push(f.path)
+        } else {
+          resetPaths.push(f.path)
+          checkoutPaths.push(f.path)
+        }
+      }
+      for (const p of trashPaths) {
         await shell.trashItem(join(repoPath, p)).catch(() => {})
       }
+      await gitWrite.discardFiles(repoPath, resetPaths, checkoutPaths)
     }
   )
   ipcMain.handle(

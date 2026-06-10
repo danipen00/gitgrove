@@ -1,9 +1,9 @@
 // The Changes sidebar: one list of changed files with commit-selection
 // checkboxes (a master checkbox includes/excludes everything), an operation
 // banner while a merge/rebase/cherry-pick/revert is in flight, stash access,
-// and the commit composer. Checkboxes are pure renderer state (the GitHub
-// Desktop model) — git is only touched at commit time. Destructive actions
-// still go through `runOp` (serialized, auto-refresh, errors → toast).
+// and the commit composer. Checkboxes are pure renderer state — git is only
+// touched at commit time. Destructive actions still go through `runOp`
+// (serialized, auto-refresh, errors → toast).
 
 import type { ChangedFile, RepoState, StashEntry } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -159,7 +159,11 @@ export function ChangesView({
 
   const discard = async () => {
     if (!confirmDiscard) return
-    const tracked = confirmDiscard.files.filter((f) => f.status !== 'untracked').map((f) => f.path)
+    // Tracked files carry oldPath/status so the main process can restore
+    // renames and staged-new files to their HEAD state (see IPC.discardFiles).
+    const tracked = confirmDiscard.files
+      .filter((f) => f.status !== 'untracked')
+      .map((f) => ({ path: f.path, oldPath: f.oldPath, status: f.status }))
     const untracked = confirmDiscard.files
       .filter((f) => f.status === 'untracked')
       .map((f) => f.path)

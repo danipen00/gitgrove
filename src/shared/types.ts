@@ -218,8 +218,8 @@ export interface DiffPayload {
 }
 
 /**
- * What the commit checkboxes selected (GitHub Desktop model): fully included
- * paths plus standalone hunk patches for partially included files.
+ * What the commit checkboxes selected: fully included paths plus standalone
+ * hunk patches for partially included files.
  */
 export interface CommitSelection {
   amend?: boolean
@@ -227,6 +227,17 @@ export interface CommitSelection {
   all: boolean
   paths: string[]
   patches: string[]
+}
+
+/**
+ * A tracked file the user chose to discard. `oldPath`/`status` let the main
+ * process treat renames (reset both sides, restore the old path, trash the
+ * new one) and staged-new files (trash, nothing to restore) correctly.
+ */
+export interface DiscardItem {
+  path: string
+  oldPath?: string
+  status: FileStatus
 }
 
 export interface AppError {
