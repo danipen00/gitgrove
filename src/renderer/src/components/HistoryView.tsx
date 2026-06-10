@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { parseRefs, pluralize } from '../lib/format'
 import { Icon } from '../lib/icons'
 import { usePersistentState } from '../lib/persist'
+import { useSpinDelay } from '../lib/useSpinDelay'
 import { Avatar } from './Avatar'
 import { RefChip } from './CommitSummary'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
@@ -45,6 +46,9 @@ export function HistoryView({
   commitMenuFor
 }: Props) {
   const [filesHeight, setFilesHeight] = usePersistentState('gg.historyFilesHeight', 360)
+  // Commit files usually load in a few ms — render a quiet blank panel during
+  // that window instead of flashing a spinner; the spinner is for slow loads.
+  const filesSpin = useSpinDelay(commitFilesLoading)
   // Right-clicked commit: cursor position + menu items for that commit.
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
   // Name + type filter over the selected commit's files (same UI as Changes;
@@ -153,7 +157,9 @@ export function HistoryView({
           <div className="commit-files" ref={filesRef} style={{ height: filesHeight }}>
             <div className="section-head commit-files__head">
               {commitFilesLoading
-                ? 'Loading…'
+                ? filesSpin
+                  ? 'Loading…'
+                  : ' '
                 : filterActive
                   ? `${visibleFiles.length} of ${commitFiles.length}`
                   : pluralize(commitFiles.length, 'file')}
@@ -161,9 +167,11 @@ export function HistoryView({
             {!commitFilesLoading && commitFiles.length > 0 && filterBar}
             <div className="tree-wrap">
               {commitFilesLoading ? (
-                <div className="center-state">
-                  <div className="spinner" />
-                </div>
+                filesSpin && (
+                  <div className="center-state">
+                    <div className="spinner" />
+                  </div>
+                )
               ) : commitFiles.length === 0 ? (
                 <div className="list-empty">No file changes in this commit.</div>
               ) : visibleFiles.length === 0 ? (

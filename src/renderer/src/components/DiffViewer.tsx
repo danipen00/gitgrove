@@ -7,6 +7,7 @@ import { splitPath, statusLabel, statusLetter } from '../lib/format'
 import { Icon } from '../lib/icons'
 import { buildBlockPatch, listChangeBlocks } from '../lib/staging'
 import type { ResolvedTheme } from '../lib/theme'
+import { useSpinDelay } from '../lib/useSpinDelay'
 import { ConfirmDialog } from './Dialog'
 
 export type DiffMode = 'split' | 'unified'
@@ -82,6 +83,10 @@ function DiffViewerImpl({
 }: Props) {
   const stats = useMemo(() => (diff?.patch ? countChanges(diff.patch) : null), [diff?.patch])
   const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null)
+  // Most loads finish in a few ms — keep the previous diff on screen and swap
+  // it for the new payload when it lands. The spinner only ever appears for
+  // slow loads (huge files), never as a one-frame flash on every click.
+  const spin = useSpinDelay(loading)
 
   const diffOptions = useMemo(
     () =>
@@ -281,12 +286,12 @@ function DiffViewerImpl({
       </div>
 
       <div className="diff-body">
-        {loading && (
+        {spin && (
           <div className="center-state">
             <div className="spinner" />
           </div>
         )}
-        {!loading && diff && diff.notice && (
+        {!spin && diff && diff.notice && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Diff size={22} />
@@ -295,7 +300,7 @@ function DiffViewerImpl({
             <p>{diff.notice}</p>
           </div>
         )}
-        {!loading && diff && !diff.notice && isEmptyFile && (
+        {!spin && diff && !diff.notice && isEmptyFile && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Diff size={22} />
@@ -304,7 +309,7 @@ function DiffViewerImpl({
             <p>This file has no content.</p>
           </div>
         )}
-        {!loading && diff && !diff.notice && !isEmptyFile && diff.patch && selectable && meta && (
+        {!spin && diff && !diff.notice && !isEmptyFile && diff.patch && selectable && meta && (
           <FileDiff<BlockRef>
             key={`${diff.path}:${theme}`}
             fileDiff={meta}
@@ -315,7 +320,7 @@ function DiffViewerImpl({
             style={{ minHeight: '100%' }}
           />
         )}
-        {!loading &&
+        {!spin &&
           diff &&
           !diff.notice &&
           !isEmptyFile &&
@@ -331,7 +336,7 @@ function DiffViewerImpl({
               style={{ minHeight: '100%' }}
             />
           )}
-        {!loading &&
+        {!spin &&
           diff &&
           !diff.notice &&
           !isEmptyFile &&
@@ -346,7 +351,7 @@ function DiffViewerImpl({
               style={{ minHeight: '100%' }}
             />
           )}
-        {!loading && diff && !diff.notice && !isEmptyFile && !diff.patch && (
+        {!spin && diff && !diff.notice && !isEmptyFile && !diff.patch && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Check size={22} />

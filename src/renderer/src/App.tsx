@@ -42,6 +42,27 @@ import { useTheme } from './lib/theme'
 
 type Tab = 'changes' | 'history'
 
+/**
+ * Field-equality for diff payloads. A refresh re-fetches the selected file's
+ * diff; when nothing actually changed this lets the loader keep the previous
+ * object, so the memoized viewer doesn't re-render (string compares are
+ * cheap — native, early-exit on length).
+ */
+function samePayload(a: DiffPayload | null, b: DiffPayload): boolean {
+  return (
+    !!a &&
+    a.path === b.path &&
+    a.oldPath === b.oldPath &&
+    a.status === b.status &&
+    a.binary === b.binary &&
+    a.notice === b.notice &&
+    a.language === b.language &&
+    a.patch === b.patch &&
+    a.oldContents === b.oldContents &&
+    a.newContents === b.newContents
+  )
+}
+
 const LOG_LIMIT = 300
 /** Background fetch cadence (ms) — quiet, skipped while an op runs. */
 const AUTO_FETCH_INTERVAL = 10 * 60 * 1000
@@ -137,6 +158,17 @@ export function App() {
   changeSelRef.current = changeSel
   const changesRef = useRef<ChangedFile[]>(changes)
   changesRef.current = changes
+  // Refs for the re-select guards: clicking the already-focused file/commit
+  // must be a no-op instead of refetching (and flashing) an identical diff.
+  const diffRef = useRef<DiffPayload | null>(diff)
+  diffRef.current = diff
+  const commitSelPathRef = useRef<string | null>(commitSelPath)
+  commitSelPathRef.current = commitSelPath
+  const selectedCommitRef = useRef<Commit | null>(selectedCommit)
+  selectedCommitRef.current = selectedCommit
+  // Hash whose file list is loaded (or loading); null after a failed fetch so
+  // re-clicking the commit retries.
+  const commitFilesHashRef = useRef<string | null>(null)
   const logLoadedRef = useRef(logLoaded)
   logLoadedRef.current = logLoaded
   const branchRef = useRef<BranchInfo | null>(branch)
@@ -233,7 +265,7 @@ export function App() {
       setDiffLoading(true)
       try {
         const payload = await window.gitgrove.workingDiff(repoPath, file)
-        if (id === diffReq.current) setDiff(payload)
+        if (id === diffReq.current) setDiff((prev) => (samePayload(prev, payload) ? prev : payload))
       } catch (e) {
         if (id === diffReq.current) fail(e)
       } finally {
@@ -251,7 +283,7 @@ export function App() {
       setDiffLoading(true)
       try {
         const payload = await window.gitgrove.commitDiff(repoPath, hash, file)
-        if (id === diffReq.current) setDiff(payload)
+        if (id === diffReq.current) setDiff((prev) => (samePayload(prev, payload) ? prev : payload))
       } catch (e) {
         if (id === diffReq.current) fail(e)
       } finally {
@@ -263,7 +295,7 @@ export function App() {
 
   // ── Selection handlers ─────────────────────────────────────────────────────
   const selectWorkingFile = useCallback(
-    (path: string | null, list?: ChangedFile[]) => {
+    (path: string | null, list?: ChangedFile[], opts?: { force?: boolean }) => {
       // null = the list selection was emptied (Cmd/Ctrl+click on the last row).
       if (path === null) {
         setChangeSel(null)
@@ -273,6 +305,11 @@ export function App() {
       }
       const file = (list ?? changes).find((f) => f.path === path)
       if (!file) return
+      // Re-clicking the focused file is a no-op: its working diff is already
+      // showing (refresh keeps it fresh), so reloading only flashes the pane.
+      // `force` bypasses this for tab switches, where the pane may hold a
+      // commit diff for the same path.
+      if (!opts?.force && path === changeSelRef.current && diffRef.current?.path === path) return
       setChangeSel(path)
       loadWorkingDiff(file)
     },
@@ -294,9 +331,16 @@ export function App() {
   )
 
   const selectCommitFile = useCallback(
-    (path: string, hash: string, list?: ChangedFile[]) => {
+    (path: string, hash: string, list?: ChangedFile[], opts?: { force?: boolean }) => {
       const file = (list ?? commitFiles).find((f) => f.path === path)
       if (!file) return
+      // Commit diffs are immutable — re-clicking the focused file would only
+      // reload the identical payload and flash the pane. `force` bypasses this
+      // for tab switches (the pane may hold a working diff for the same path)
+      // and for cross-commit auto-selects of the same path.
+      if (!opts?.force && path === commitSelPathRef.current && diffRef.current?.path === path) {
+        return
+      }
       setCommitSelPath(path)
       loadCommitDiff(hash, file)
     },
@@ -307,7 +351,18 @@ export function App() {
     async (commit: Commit) => {
       const repoPath = repoRef.current?.path
       if (!repoPath) return
+      // Re-selecting the selected commit (click or right-click) is a no-op —
+      // its file list and diff are immutable and already loaded (or loading).
+      // Still adopt the new object: a refreshed log may carry updated refs.
+      if (
+        commit.hash === selectedCommitRef.current?.hash &&
+        commitFilesHashRef.current === commit.hash
+      ) {
+        setSelectedCommit(commit)
+        return
+      }
       const id = ++commitReq.current
+      commitFilesHashRef.current = commit.hash
       setSelectedCommit(commit)
       setCommitSelPath(null)
       setCommitFiles([])
@@ -318,13 +373,18 @@ export function App() {
         // stale result so it can't overwrite the current commit's state.
         if (id !== commitReq.current) return
         setCommitFiles(files)
-        if (files.length > 0) selectCommitFile(files[0].path, commit.hash, files)
+        // Force: the previous commit may have focused the same path, whose
+        // (different) diff must not be kept.
+        if (files.length > 0) selectCommitFile(files[0].path, commit.hash, files, { force: true })
         else {
           setDiff(null)
           diffReq.current++
         }
       } catch (e) {
-        if (id === commitReq.current) fail(e)
+        if (id === commitReq.current) {
+          commitFilesHashRef.current = null
+          fail(e)
+        }
       } finally {
         if (id === commitReq.current) setCommitFilesLoading(false)
       }
@@ -341,7 +401,7 @@ export function App() {
       // "multiple files selected" state before the remount reports back.
       if (next === 'changes') {
         setChangeSelCount(1)
-        if (changeSel) selectWorkingFile(changeSel)
+        if (changeSel) selectWorkingFile(changeSel, undefined, { force: true })
         else {
           setDiff(null)
           diffReq.current++
@@ -351,7 +411,8 @@ export function App() {
         // First visit to History: fetch the log on demand.
         const repoPath = repoRef.current?.path
         if (repoPath && !logLoaded && !commitsLoading) loadLog(repoPath).catch(fail)
-        if (selectedCommit && commitSelPath) selectCommitFile(commitSelPath, selectedCommit.hash)
+        if (selectedCommit && commitSelPath)
+          selectCommitFile(commitSelPath, selectedCommit.hash, undefined, { force: true })
         else {
           setDiff(null)
           diffReq.current++

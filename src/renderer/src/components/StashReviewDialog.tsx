@@ -61,6 +61,9 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
   }, [onClose])
 
   const loadDiff = (file: ChangedFile) => {
+    // Stash diffs are immutable — re-clicking the focused file would only
+    // reload the identical payload and flash the pane.
+    if (file.path === selected && diff?.path === file.path) return
     const id = ++diffReq.current
     setSelected(file.path)
     setDiffLoading(true)
