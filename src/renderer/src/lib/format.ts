@@ -70,6 +70,20 @@ export function parseRefs(refs: string): CommitRef[] {
     })
 }
 
+/** Human-readable byte size: 0 B, 412 B, 3.4 KB, 1.2 MB, 2.0 GB. */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unit = -1
+  do {
+    value /= 1024
+    unit++
+  } while (value >= 1024 && unit < units.length - 1)
+  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`
+}
+
 /** Shorten an absolute path for display, collapsing the home directory. */
 export function prettyPath(path: string): string {
   return path.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~')

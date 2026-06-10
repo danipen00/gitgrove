@@ -1,11 +1,15 @@
 # 🌳 GitGrove
 
-A fast, beautiful desktop app for reading your git repositories. Open any repo to
-browse your working changes and full commit history, and read syntax‑highlighted
-diffs — split or unified, light or dark.
+[![CI](https://github.com/danipen/gitgrove/actions/workflows/ci.yml/badge.svg)](https://github.com/danipen/gitgrove/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/danipen/gitgrove)](https://github.com/danipen/gitgrove/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-GitGrove is a **viewer**: it stays out of your way while you write commits in your
-editor or terminal, and gives you a clear, calm window onto what changed.
+A fast, beautiful desktop git client. Open any repo to stage hunk by hunk, commit,
+branch, sync, stash, rebase interactively — and read syntax‑highlighted diffs that
+are a pleasure to look at, split or unified, light or dark.
+
+GitGrove keeps a viewer's calm: one window, two tabs, no ceremony. The full power
+of git is there when you reach for it, and invisible when you don't.
 
 ![GitGrove history view in light and dark themes](docs/screenshot.png)
 
@@ -26,35 +30,28 @@ Updates…**
 > command line. If it isn't found, the app walks you through installing it (and will
 > happily use the copy bundled with GitHub Desktop).
 
-## What you can do
+## Architecture
 
-- **Open any repository** from the folder picker, and jump back into recent ones from
-  the welcome screen.
-- **Right‑click a repository** — the toolbar switcher or any recent — to copy its name
-  or path, reveal it in Finder/Explorer, open a terminal there, or jump to its remote
-  on GitHub. The same actions live in the **Repository** menu for the open repo.
-- **Switch branches** — local or remote — straight from the toolbar; GitGrove checks
-  them out in place.
-- **Browse your changes** in the **Changes** tab: a status‑colored file tree (added,
-  modified, deleted, renamed, untracked) with a diff for every file.
-- **Explore history** in the **History** tab: the commit log with refs and tags. Pick
-  a commit to see exactly what it changed, then click a file for its diff.
-- **Read diffs that are a pleasure to read** — word‑level intra‑line highlighting,
-  Split or Unified layout, line‑wrap toggle, and expandable context.
-- **Stay in sync automatically** — GitGrove watches the repo and refreshes as you
-  commit, checkout, or edit, without disrupting the diff you're reading.
+GitGrove is an [Electron](https://www.electronjs.org) + [React 19](https://react.dev)
+app written in strict TypeScript, in three isolated layers:
 
-It never writes to your repository beyond checking out branches — no staging, no
-commits, no surprises.
+```
+src/main/      Node + Electron. All git work, by shelling out to the raw `git` binary.
+src/preload/   Typed, sandboxed bridge (contextIsolation on, nodeIntegration off).
+src/renderer/  React UI. Talks to the main process only through window.gitgrove.
+src/shared/    Types + the IPC contract, imported by all three.
+```
 
-## Contributing
+The renderer never touches git or Node directly. All git work happens in the main
+process by shelling out to raw `git` with NUL‑delimited (`-z`/`%x00`) machine
+output — no wrapper library, so every argument and exit code is under exact
+control. Reads never take the index lock (`GIT_OPTIONAL_LOCKS=0`); writes are
+serialized per repo behind a queue with a lock‑retry ladder, never prompt, and
+inherit signing from your git config. The interactive rebase is fully scripted
+through `GIT_SEQUENCE_EDITOR`/`GIT_EDITOR` shims, so no terminal editor ever
+opens. Diffs are rendered with [`@pierre/diffs`](https://diffs.com).
 
-GitGrove is an [Electron](https://www.electronjs.org) + [React](https://react.dev)
-app. The renderer never touches git directly: it talks to the main process through a
-typed, sandboxed bridge (`contextIsolation` on, `nodeIntegration` off), and all git
-work happens in the main process via [`simple-git`](https://github.com/steveukx/git-js)
-and raw `git` for precise patch output. The file tree and diffs are rendered with
-[`@pierre/trees`](https://trees.software) and [`@pierre/diffs`](https://diffs.com).
+## Development
 
 You'll need [Bun](https://bun.sh) and `git` on your PATH.
 
@@ -65,11 +62,18 @@ bun run typecheck  # type-check the whole project
 bun test           # run the test suite
 bun run lint       # lint + format check (Biome) — same command CI runs
 bun run lint:fix   # auto-fix lint + formatting
+bun run e2e        # Playwright end-to-end smoke test (builds first)
 ```
 
-CI runs lint, typecheck, tests and a per‑platform build on every PR (macOS, Windows,
-Linux), plus an end‑to‑end smoke test and a CodeQL scan — so green locally means green
-in CI.
+Design principles, layer conventions and the bar every change is held to are
+documented in [CLAUDE.md](CLAUDE.md). In short: clean, intent-revealing code;
+small files; comments that explain *why*; and every new behaviour ships with
+reliable, colocated unit tests (`*.test.ts`). Git tests are integration tests
+that drive the real `git` binary against a throwaway repo — no mocks.
+
+CI runs lint, typecheck, tests and a per‑platform build on every PR (macOS,
+Windows, Linux), plus an end‑to‑end smoke test and a CodeQL scan — so green
+locally means green in CI.
 
 ### Cutting a release
 
@@ -78,8 +82,15 @@ workflow bumps the version, tags it, builds installers on every OS, and opens a 
 GitHub Release with generated notes. Review the notes (they show verbatim in the in‑app
 update banner) and click **Publish**.
 
+## Contributing
+
+Bug reports and pull requests are welcome on the
+[issue tracker](https://github.com/danipen/gitgrove/issues). Before opening a PR,
+run `bun run lint`, `bun run typecheck` and `bun test`, and keep changes aligned
+with the principles in [CLAUDE.md](CLAUDE.md) — fewer, sharper features over more
+knobs, and a UI that stays silly‑simple while the engine does the real git work.
+
 ## License
 
 GitGrove's own source is [MIT](LICENSE). It bundles open‑source dependencies under
 their own permissive licenses; their notices ship inside every distributable.
-</content>

@@ -2,7 +2,7 @@
   "name": "gitgrove",
   "productName": "GitGrove",
   "version": "1.0.8",
-  "description": "A polished git repository viewer built on @pierre/trees and @pierre/diffs",
+  "description": "A fast, beautiful git client built on @pierre/trees and @pierre/diffs",
   "author": "Daniel Peñalba",
   "homepage": "https://github.com/danipen/gitgrove",
   "repository": {
@@ -48,11 +48,9 @@
   },
   "dependencies": {
     "@pierre/diffs": "^1.2.7",
-    "@pierre/trees": "^1.0.0-beta.4",
     "electron-updater": "^6.8.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "shiki": "^4.1.0",
-    "simple-git": "^3.36.0"
+    "shiki": "^4.1.0"
   }
 }

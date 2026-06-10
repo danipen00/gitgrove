@@ -1,18 +1,6 @@
-import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { delimiter, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  app,
-  BrowserWindow,
-  clipboard,
-  dialog,
-  ipcMain,
-  Menu,
-  type MenuItemConstructorOptions,
-  nativeImage,
-  shell
-} from 'electron'
+import { app, BrowserWindow, nativeImage, shell } from 'electron'
 
 // The main bundle is emitted as ESM (package.json "type": "module"), where
 // __dirname is not defined — reconstruct it from the module URL.
@@ -24,34 +12,22 @@ const moduleDir = dirname(fileURLToPath(import.meta.url))
 const devIconPath = join(moduleDir, '../../build/icon.png')
 
 import { IPC } from '@shared/ipc'
-import type {
-  AppInfo,
-  ChangedFile,
-  GitAvailability,
-  LogOptions,
-  RepoOpenResult
-} from '@shared/types'
+import type { GitAvailability, RepoOpenResult } from '@shared/types'
+import { REPO_URL } from './app-info'
+import { gitVersion, locateGit, resetGitLocation } from './git/bin'
 import {
   addSafeDirectory,
-  checkout,
   DubiousOwnershipError,
-  getBranches,
-  getCommitDiff,
-  getCommitFiles,
-  getLog,
   getQuickSummary,
-  getRemoteWebUrl,
-  getStatus,
-  getWorkingDiff,
   resolveRepoRoot
-} from './git'
-import { gitVersion, locateGit, resetGitLocation } from './git-bin'
-import { getRecentRepos, rememberRepo, removeRecentRepo } from './store'
-import { checkForUpdates, initAutoUpdater, quitAndInstall } from './updater'
+} from './git/read'
+import { registerIpc } from './ipc'
+import { buildMenu, type MenuContext } from './menu'
+import { rememberRepo } from './store'
+import { initAutoUpdater } from './updater'
 import { RepoWatcher } from './watcher'
 
 const isDev = !app.isPackaged
-const REPO_URL = 'https://github.com/danipen/gitgrove'
 
 // Chromium's OSCrypt encrypts its own on-disk data (cookies, storage) with a
 // key it keeps in the OS secret store — the macOS keychain entry "GitGrove
@@ -91,19 +67,9 @@ let mainWindow: BrowserWindow | null = null
 // are disabled while it is.
 let currentRepoPath: string | null = null
 
-function appInfo(): AppInfo {
-  return {
-    name: app.getName(),
-    version: app.getVersion(),
-    electron: process.versions.electron,
-    chrome: process.versions.chrome,
-    node: process.versions.node,
-    v8: process.versions.v8,
-    platform: process.platform,
-    arch: process.arch,
-    dev: isDev,
-    repoUrl: REPO_URL
-  }
+const menuContext: MenuContext = {
+  getWindow: () => mainWindow,
+  getRepoPath: () => currentRepoPath
 }
 
 const watcher = new RepoWatcher((repoPath) => {
@@ -158,7 +124,7 @@ function createWindow(): void {
   mainWindow.webContents.on('did-start-loading', () => {
     if (currentRepoPath !== null) {
       currentRepoPath = null
-      buildMenu()
+      buildMenu(menuContext)
     }
   })
 
@@ -171,128 +137,6 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
-}
-
-function buildMenu(): void {
-  const isMac = process.platform === 'darwin'
-  const template: MenuItemConstructorOptions[] = [
-    ...(isMac
-      ? [
-          {
-            label: app.name,
-            submenu: [
-              {
-                label: `About ${app.name}`,
-                click: () => mainWindow?.webContents.send(IPC.menuShowAbout)
-              },
-              {
-                label: 'Check for Updates…',
-                click: () => checkForUpdates(() => mainWindow, true)
-              },
-              { type: 'separator' as const },
-              { role: 'hide' as const },
-              { role: 'hideOthers' as const },
-              { role: 'unhide' as const },
-              { type: 'separator' as const },
-              { role: 'quit' as const }
-            ]
-          }
-        ]
-      : []),
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'Open Repository…',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => mainWindow?.webContents.send(IPC.menuOpenRepo)
-        },
-        { type: 'separator' },
-        isMac ? { role: 'close' } : { role: 'quit' }
-      ]
-    },
-    {
-      // Mirrors the repo switcher's right-click actions for the repo currently
-      // open in the renderer; disabled until one is. Also surfaces these in the
-      // Windows/Linux custom menu bar, which reads this same application menu.
-      label: 'Repository',
-      submenu: [
-        {
-          label: isMac
-            ? 'Reveal in Finder'
-            : process.platform === 'win32'
-              ? 'Show in Explorer'
-              : 'Open Folder',
-          enabled: !!currentRepoPath,
-          click: () => currentRepoPath && shell.openPath(currentRepoPath)
-        },
-        {
-          label: 'Open in Terminal',
-          enabled: !!currentRepoPath,
-          click: () => currentRepoPath && openTerminal(currentRepoPath)
-        },
-        { type: 'separator' },
-        {
-          label: 'Copy Repository Path',
-          enabled: !!currentRepoPath,
-          click: () => currentRepoPath && clipboard.writeText(currentRepoPath)
-        },
-        {
-          label: 'View on Remote',
-          enabled: !!currentRepoPath,
-          click: async () => {
-            if (!currentRepoPath) return
-            const url = await getRemoteWebUrl(currentRepoPath)
-            if (url) shell.openExternal(url)
-          }
-        }
-      ]
-    },
-    { role: 'editMenu' },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' }
-      ]
-    },
-    { role: 'windowMenu' },
-    {
-      role: 'help',
-      submenu: [
-        {
-          label: 'GitGrove on GitHub',
-          click: () => shell.openExternal(REPO_URL)
-        },
-        {
-          label: 'Report an Issue…',
-          click: () => shell.openExternal(`${REPO_URL}/issues/new`)
-        },
-        ...(isMac
-          ? []
-          : [
-              { type: 'separator' as const },
-              {
-                label: 'Check for Updates…',
-                click: () => checkForUpdates(() => mainWindow, true)
-              },
-              {
-                label: `About ${app.name}`,
-                click: () => mainWindow?.webContents.send(IPC.menuShowAbout)
-              }
-            ])
-      ]
-    }
-  ]
-
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 /**
@@ -320,7 +164,7 @@ async function openRepoAtPath(rawPath: string): Promise<RepoOpenResult> {
   // Point the application menu's repo actions at the now-open repo (and enable
   // them if this is the first one).
   currentRepoPath = summary.path
-  buildMenu()
+  buildMenu(menuContext)
   return { ok: true, summary }
 }
 
@@ -359,110 +203,6 @@ async function checkGit(force: boolean): Promise<GitAvailability> {
   }
 }
 
-/**
- * Open a terminal rooted at `cwd`. There's no cross-platform Electron API for
- * this, so launch the platform's stock terminal: Terminal.app on macOS, a new
- * `cmd` window on Windows, and the freedesktop-preferred emulator (falling back
- * through common ones) on Linux. Detaches the child so it outlives GitGrove and
- * returns whether a terminal was launched.
- */
-function openTerminal(cwd: string): boolean {
-  const launch = (cmd: string, args: string[]): boolean => {
-    try {
-      const child = spawn(cmd, args, { cwd, detached: true, stdio: 'ignore' })
-      child.on('error', () => {})
-      child.unref()
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  if (process.platform === 'darwin') return launch('open', ['-a', 'Terminal', cwd])
-  if (process.platform === 'win32')
-    return launch('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', `cd /d "${cwd}"`])
-  // Linux: spawn reports a missing binary only asynchronously, so probe PATH
-  // first and launch the user's configured emulator, then well-known ones.
-  const onPath = (cmd: string) =>
-    (process.env.PATH ?? '').split(delimiter).some((dir) => dir && existsSync(join(dir, cmd)))
-  const term = ['x-terminal-emulator', 'gnome-terminal', 'konsole', 'xterm'].find(onPath)
-  return term ? launch(term, []) : false
-}
-
-function registerIpc(): void {
-  ipcMain.handle(IPC.pickRepo, async () => {
-    if (!mainWindow) return null
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Open Git Repository',
-      properties: ['openDirectory', 'createDirectory'],
-      buttonLabel: 'Open'
-    })
-    if (result.canceled || result.filePaths.length === 0) return null
-    return openRepoAtPath(result.filePaths[0])
-  })
-
-  ipcMain.handle(IPC.openRepo, (_e, path: string) => openRepoAtPath(path))
-  ipcMain.handle(IPC.trustRepo, (_e, path: string) => trustRepo(path))
-
-  ipcMain.handle(IPC.recentRepos, () => getRecentRepos())
-  ipcMain.handle(IPC.removeRecent, (_e, path: string) => removeRecentRepo(path))
-  ipcMain.handle(IPC.remoteUrl, (_e, repoPath: string) => getRemoteWebUrl(repoPath))
-  ipcMain.handle(IPC.revealRepo, async (_e, repoPath: string) => {
-    // openPath returns '' on success, an error string otherwise.
-    const err = await shell.openPath(repoPath)
-    return err === ''
-  })
-  ipcMain.handle(IPC.openTerminal, (_e, repoPath: string) => openTerminal(repoPath))
-
-  ipcMain.handle(IPC.status, (_e, repoPath: string) => getStatus(repoPath))
-  ipcMain.handle(IPC.branches, (_e, repoPath: string) => getBranches(repoPath))
-  ipcMain.handle(IPC.checkout, (_e, repoPath: string, branch: string) => checkout(repoPath, branch))
-  ipcMain.handle(IPC.log, (_e, repoPath: string, options?: LogOptions) => getLog(repoPath, options))
-  ipcMain.handle(IPC.commitFiles, (_e, repoPath: string, hash: string) =>
-    getCommitFiles(repoPath, hash)
-  )
-  ipcMain.handle(IPC.workingDiff, (_e, repoPath: string, file: ChangedFile) =>
-    getWorkingDiff(repoPath, file)
-  )
-  ipcMain.handle(IPC.commitDiff, (_e, repoPath: string, hash: string, file: ChangedFile) =>
-    getCommitDiff(repoPath, hash, file)
-  )
-
-  ipcMain.handle(IPC.checkGit, (_e, force?: boolean) => checkGit(!!force))
-  ipcMain.handle(IPC.openExternal, (_e, url: string) => shell.openExternal(url))
-  ipcMain.handle(IPC.clipboardWrite, (_e, text: string) => clipboard.writeText(text))
-
-  // Window controls for the custom title bar (Windows/Linux; no-ops elsewhere).
-  ipcMain.handle(IPC.windowMinimize, () => mainWindow?.minimize())
-  ipcMain.handle(IPC.windowMaximizeToggle, () => {
-    if (!mainWindow) return
-    if (mainWindow.isMaximized()) mainWindow.unmaximize()
-    else mainWindow.maximize()
-  })
-  ipcMain.handle(IPC.windowClose, () => mainWindow?.close())
-  ipcMain.handle(IPC.windowIsMaximized, () => mainWindow?.isMaximized() ?? false)
-
-  // Custom always-visible menu bar (Windows/Linux): the renderer draws the
-  // top-level labels and asks us to pop the corresponding native submenu, so all
-  // the existing menu actions/roles work without being reimplemented in the UI.
-  ipcMain.handle(IPC.menuLabels, () => {
-    const menu = Menu.getApplicationMenu()
-    return menu ? menu.items.filter((i) => i.submenu).map((i) => i.label) : []
-  })
-  ipcMain.handle(IPC.menuPopup, (_e, label: string, x: number, y: number) => {
-    const item = Menu.getApplicationMenu()?.items.find((i) => i.label === label)
-    if (item?.submenu && mainWindow) {
-      item.submenu.popup({ window: mainWindow, x: Math.round(x), y: Math.round(y) })
-    }
-  })
-
-  ipcMain.handle(IPC.appInfo, () => appInfo())
-  ipcMain.handle(IPC.checkForUpdates, (_e, manual: boolean) =>
-    checkForUpdates(() => mainWindow, manual)
-  )
-  ipcMain.handle(IPC.installUpdate, () => quitAndInstall())
-}
-
 app.whenReady().then(() => {
   app.setAboutPanelOptions({
     applicationName: app.getName(),
@@ -479,8 +219,8 @@ app.whenReady().then(() => {
     if (!img.isEmpty()) app.dock.setIcon(img)
   }
 
-  registerIpc()
-  buildMenu()
+  registerIpc({ getWindow: () => mainWindow, openRepoAtPath, trustRepo, checkGit })
+  buildMenu(menuContext)
   createWindow()
   initAutoUpdater(() => mainWindow)
 

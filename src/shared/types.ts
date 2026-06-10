@@ -2,7 +2,7 @@
 // React renderer. Keep this file free of any runtime dependencies so it can be
 // imported from every bundle.
 
-/** Git status as understood by @pierre/trees' gitStatus API. */
+/** Git status of a changed file, as shown across the app. */
 export type FileStatus =
   | 'added'
   | 'modified'
@@ -22,10 +22,138 @@ export interface ChangedFile {
   staged: boolean
   /** True when the file has both staged and unstaged portions. */
   partiallyStaged?: boolean
+  /** Status of the staged (index) side, when staged. */
+  indexStatus?: FileStatus
+  /** Status of the unstaged (working-tree) side, when unstaged changes exist. */
+  workingStatus?: FileStatus
   insertions?: number
   deletions?: number
   /** True when git considers the blob binary. */
   binary?: boolean
+}
+
+/**
+ * Which side of the index a working diff (or a stage/discard action) targets.
+ * `all` is the legacy combined view (HEAD → working tree).
+ */
+export type DiffArea = 'staged' | 'unstaged' | 'all'
+
+/** An in-progress multi-step operation that owns the working tree. */
+export type RepoOpKind = 'merging' | 'rebasing' | 'cherry-picking' | 'reverting'
+
+/**
+ * What state the repository is in beyond "normal": merge/rebase/cherry-pick/
+ * revert in progress, plus how many paths are still conflicted. The renderer
+ * shows a banner with continue/abort while `op` is set.
+ */
+export interface RepoState {
+  op: RepoOpKind | null
+  /** Human description of the operation's source, e.g. the branch being merged. */
+  detail?: string
+  conflictedCount: number
+}
+
+/**
+ * Everything the renderer needs after any repository change, gathered in
+ * (almost) one git invocation — see main/git/status.ts. Replaces separate
+ * status / branch-current / sync / repo-state / stash fetches.
+ */
+export interface RepoSnapshot {
+  files: ChangedFile[]
+  /** Current branch name, or the short HEAD sha when detached. */
+  branch: string
+  detached: boolean
+  upstream: string | null
+  ahead: number
+  behind: number
+  remotes: string[]
+  state: RepoState
+  stashes: StashEntry[]
+  /**
+   * How long the underlying `git status` took (ms). Persistently high values
+   * mean git's large-repo features (fsmonitor, untracked cache, index v4) are
+   * off — the renderer offers to enable them.
+   */
+  statusMs: number
+}
+
+/** Upstream-tracking summary that drives the toolbar sync button. */
+export interface SyncStatus {
+  /** `origin/main`-style upstream ref, or null when the branch has none. */
+  upstream: string | null
+  ahead: number
+  behind: number
+  /** Configured remote names; empty means nothing to sync with. */
+  remotes: string[]
+}
+
+export interface StashEntry {
+  /** Position in the stash list (`stash@{N}`). */
+  index: number
+  /**
+   * The stash commit's sha. A stash is a real commit whose diff against its
+   * first parent is exactly the stashed change — so reviewing a stash reuses
+   * the commit-diff machinery.
+   */
+  sha: string
+  message: string
+  relativeDate: string
+}
+
+export interface WorktreeInfo {
+  path: string
+  /** Checked-out branch, or null when detached. */
+  branch: string | null
+  headShort: string
+  /** True for the main working tree (the repo itself). */
+  isMain: boolean
+  /** True when this worktree is the repo currently open in the app. */
+  isCurrent: boolean
+}
+
+export interface SubmoduleInfo {
+  path: string
+  shaShort: string
+  state: 'clean' | 'modified' | 'uninitialized' | 'conflict'
+}
+
+/** Per-commit instruction for an interactive rebase. */
+export type RebaseAction = 'pick' | 'reword' | 'squash' | 'fixup' | 'drop'
+
+export interface RebaseTodoItem {
+  hash: string
+  action: RebaseAction
+  /** Replacement message for `reword` (and optionally `squash`). */
+  message?: string
+}
+
+export type ResetMode = 'soft' | 'mixed' | 'hard'
+
+/** Long-running git operations that report determinate progress. */
+export type ProgressOpKind = 'checkout' | 'fetch' | 'pull' | 'push' | 'discard'
+
+/**
+ * Progress of a long-running operation (checkout / fetch / pull / push /
+ * discard), pushed from main while it runs so the UI can fill determinately
+ * instead of spinning blind.
+ */
+export interface OpProgress {
+  repoPath: string
+  kind: ProgressOpKind
+  /** Phase reported by git, e.g. "Receiving objects". */
+  phase: string
+  /** 0–100 within the current phase. */
+  percent: number
+}
+
+/** Progress of a `git clone`, pushed from main while a clone runs. */
+export interface CloneProgress {
+  /** Phase reported by git, e.g. "Receiving objects". */
+  phase: string
+  /** 0–100 within the current phase. */
+  percent: number
+  done: boolean
+  error?: string
 }
 
 export interface Commit {
@@ -45,8 +173,20 @@ export interface Commit {
 export interface BranchInfo {
   current: string
   detached: boolean
+  /** Local branch names, most recently committed first. */
   local: string[]
+  /** Remote branch names, most recently committed first. */
   remote: string[]
+  /**
+   * The repository's default branch (origin/HEAD, falling back to main/master),
+   * or null when it can't be determined. Drives the switcher's DEFAULT section.
+   */
+  defaultBranch: string | null
+  /**
+   * Recently checked-out local branches (from the reflog), most recent first;
+   * excludes the current and default branch. Drives the RECENT section.
+   */
+  recent: string[]
 }
 
 export interface RepoInfo {
@@ -104,6 +244,29 @@ export interface DiffPayload {
    */
   oldContents?: string
   newContents?: string
+}
+
+/**
+ * What the commit checkboxes selected: fully included paths plus standalone
+ * hunk patches for partially included files.
+ */
+export interface CommitSelection {
+  amend?: boolean
+  /** Every (non-conflicted) changed file is fully included. */
+  all: boolean
+  paths: string[]
+  patches: string[]
+}
+
+/**
+ * A tracked file the user chose to discard. `oldPath`/`status` let the main
+ * process treat renames (reset both sides, restore the old path, trash the
+ * new one) and staged-new files (trash, nothing to restore) correctly.
+ */
+export interface DiscardItem {
+  path: string
+  oldPath?: string
+  status: FileStatus
 }
 
 export interface AppError {
