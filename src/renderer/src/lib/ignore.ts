@@ -2,7 +2,7 @@
 // .gitignore lines each choice would add, and how many of the currently
 // untracked files it would hide — so the menu can say what it really does
 // before the user commits to it. All pure; the chosen pattern lines are
-// appended to .gitignore by the main process (git-write.ignorePatterns).
+// appended to .gitignore by the main process (git/write.ts, ignorePatterns).
 
 import { splitPath } from './format'
 

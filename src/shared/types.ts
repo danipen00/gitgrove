@@ -55,7 +55,7 @@ export interface RepoState {
 
 /**
  * Everything the renderer needs after any repository change, gathered in
- * (almost) one git invocation — see main/git-status.ts. Replaces separate
+ * (almost) one git invocation — see main/git/status.ts. Replaces separate
  * status / branch-current / sync / repo-state / stash fetches.
  */
 export interface RepoSnapshot {

@@ -175,13 +175,13 @@ export interface GitGroveApi {
    * renderer — see lib/ignore.ts.
    */
   ignorePatterns(repoPath: string, patterns: string[]): Promise<void>
-  /** Apply a (hunk) patch to the index/working tree — see git-write.applyPatch. */
+  /** Apply a (hunk) patch to the index/working tree — see git/write.ts applyPatch. */
   applyPatch(
     repoPath: string,
     patch: string,
     opts: { cached?: boolean; reverse?: boolean }
   ): Promise<void>
-  /** Commit the checkbox selection — see git-write.commitSelection. */
+  /** Commit the checkbox selection — see git/write.ts commitSelection. */
   commit(repoPath: string, message: string, selection: CommitSelection): Promise<void>
   lastCommitMessage(repoPath: string): Promise<string>
   // ── Sync ──
