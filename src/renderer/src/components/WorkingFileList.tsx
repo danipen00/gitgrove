@@ -13,17 +13,22 @@
 //
 // Windowed rendering: only the visible rows (plus a small overscan) exist in
 // the DOM, so the list stays at a few dozen nodes whether the repo has ten
-// changed files or ten thousand. Rows are fixed-height and memoized.
+// changed files or ten thousand. Rows are fixed-height and memoized, and the
+// scroll is driven on the main thread by the shared scroller (see
+// VirtualScroll.tsx) so fast flings can never outrun the row window and flash
+// blank. Row handlers go through useEvent so scrolling re-renders only the
+// rows entering the window — every row already on screen bails out of memo.
 
 import type { ChangedFile } from '@shared/types'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
 import { splitPath, statusLabel, statusLetter } from '../lib/format'
 import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
 import { isCmdOrCtrl } from '../lib/platform'
+import { useEvent } from '../lib/useEvent'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import type { FileSelection } from './DiffViewer'
+import { useVirtualScroll, VScrollbar } from './VirtualScroll'
 
 interface Props {
   files: ChangedFile[]
@@ -48,10 +53,9 @@ interface Props {
 
 /** Fixed row height (px) — must match .wfl__row in global.css. */
 const ROW_H = 28
-// Generous overscan: native scrolling runs on the compositor thread and can
-// outrun React's windowed re-render during fast flings; the extra rows keep
-// painted content under the viewport until the window catches up.
-const OVERSCAN = 30
+/** Breathing room above the first row / below the last one (px). */
+const PAD_TOP = 4
+const PAD_BOTTOM = 8
 
 const EMPTY_SET: ReadonlySet<string> = new Set()
 
@@ -141,9 +145,12 @@ export function WorkingFileList({
   contextMenuFor
 }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
-  const viewportRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  const [viewportH, setViewportH] = useState(400)
+  const vs = useVirtualScroll({
+    count: files.length,
+    rowHeight: ROW_H,
+    padTop: PAD_TOP,
+    padBottom: PAD_BOTTOM
+  })
 
   // Multi-selection. `multi` is only honoured while it contains the focused
   // path — when the parent moves focus externally (refresh pruning a deleted
@@ -171,19 +178,6 @@ export function WorkingFileList({
     onSelectionChange?.(selected.size)
   }, [selected, onSelectionChange])
 
-  useEffect(() => {
-    const el = viewportRef.current
-    if (!el) return
-    const measure = () => setViewportH(el.clientHeight)
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  const start = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN)
-  const end = Math.min(files.length, Math.ceil((scrollTop + viewportH) / ROW_H) + OVERSCAN)
-
   /** Inclusive range of paths between two indexes, in list order. */
   const rangeSet = (a: number, b: number): Set<string> => {
     const next = new Set<string>()
@@ -209,21 +203,11 @@ export function WorkingFileList({
     (selectedPath !== null ? indexOf.get(selectedPath) : undefined) ??
     idx
 
-  // Keyboard scrolling must keep the focused row on screen; the windowed
-  // viewport only knows pixel offsets, so nudge scrollTop just enough.
-  const ensureVisible = (idx: number) => {
-    const el = viewportRef.current
-    if (!el) return
-    const top = idx * ROW_H
-    if (top < el.scrollTop) el.scrollTop = top
-    else if (top + ROW_H > el.scrollTop + el.clientHeight)
-      el.scrollTop = top + ROW_H - el.clientHeight
-  }
-
   // Clicks pull focus to the listbox so keyboard navigation lands here
-  // instead of scrolling the viewport.
-  const handleRowClick = (path: string, e: React.MouseEvent) => {
-    viewportRef.current?.focus()
+  // instead of scrolling the viewport. useEvent keeps the handler's identity
+  // stable so memoized rows skip re-rendering during scroll.
+  const handleRowClick = useEvent((path: string, e: React.MouseEvent) => {
+    vs.viewportEl?.focus()
     const idx = indexOf.get(path)
     if (idx === undefined) return
     if (e.shiftKey) {
@@ -249,9 +233,10 @@ export function WorkingFileList({
       setMulti(new Set([path]))
       onSelect(path)
     }
-  }
+  })
 
-  /** Move focus to `to` (clamped); Shift extends the range from the anchor. */
+  /** Move focus to `to` (clamped); Shift extends the range from the anchor.
+   *  ensureVisible nudges the scroll just enough to keep the row on screen. */
   const moveFocus = (to: number, extend: boolean) => {
     const idx = Math.max(0, Math.min(files.length - 1, to))
     const path = files[idx].path
@@ -262,7 +247,7 @@ export function WorkingFileList({
       setMulti(new Set([path]))
     }
     if (path !== selectedPath) onSelect(path)
-    ensureVisible(idx)
+    vs.ensureVisible(idx)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -295,7 +280,7 @@ export function WorkingFileList({
     }
 
     const cur = selectedPath !== null ? (indexOf.get(selectedPath) ?? -1) : -1
-    const page = Math.max(1, Math.floor(viewportH / ROW_H) - 1)
+    const page = Math.max(1, Math.floor(vs.viewportH / ROW_H) - 1)
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
@@ -324,8 +309,8 @@ export function WorkingFileList({
     }
   }
 
-  const openMenu = (file: ChangedFile, x: number, y: number) => {
-    viewportRef.current?.focus()
+  const openMenu = useEvent((file: ChangedFile, x: number, y: number) => {
+    vs.viewportEl?.focus()
     // Right-click outside the selection re-selects that row first (the
     // platform convention); inside it, the menu targets the whole selection.
     let sel = selected
@@ -336,32 +321,26 @@ export function WorkingFileList({
       onSelect(file.path)
     }
     setMenu({ x, y, items: contextMenuFor(files.filter((f) => sel.has(f.path))) })
-  }
+  })
 
   return (
     <div
-      ref={viewportRef}
+      ref={vs.viewportRef}
       className="wfl"
       role="listbox"
       aria-label="Changed files"
       aria-multiselectable="true"
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      onScroll={(e) => {
-        // flushSync commits the new window synchronously within the scroll
-        // event, so freshly exposed rows paint in the same frame instead of
-        // flashing blank during fast scrolls.
-        const top = e.currentTarget.scrollTop
-        flushSync(() => setScrollTop(top))
-      }}
     >
-      <div style={{ position: 'relative', height: files.length * ROW_H }}>
-        {files.slice(start, end).map((file, i) => (
+      <div className="vlist__sizer" style={{ height: vs.totalHeight }} aria-hidden="true" />
+      <div className="vlist__content" style={{ transform: `translateY(${-vs.top}px)` }}>
+        {files.slice(vs.start, vs.end).map((file, i) => (
           <Row
             key={file.path}
             file={file}
             check={selections ? checkState(selections.get(file.path)) : null}
-            top={(start + i) * ROW_H}
+            top={vs.rowTop(vs.start + i)}
             selected={selected.has(file.path)}
             highlight={highlight}
             onSelect={handleRowClick}
@@ -370,6 +349,7 @@ export function WorkingFileList({
           />
         ))}
       </div>
+      <VScrollbar vs={vs} />
 
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />

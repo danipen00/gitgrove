@@ -529,9 +529,14 @@ button {
 .vlist__content {
   position: absolute;
   top: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+/* Popover lists inset their rows so the hover pill clears the rounded edge. */
+.popover__list .vlist__content {
   left: 6px;
   right: 6px;
-  will-change: transform;
 }
 .vlist__bar {
   position: absolute;
@@ -550,6 +555,7 @@ button {
   transition: opacity 0.15s ease;
 }
 .popover__list:hover .vlist__thumb,
+.wfl:hover .vlist__thumb,
 .vlist__thumb:active {
   opacity: 0.7;
 }
@@ -2397,10 +2403,12 @@ button {
 
 /* ── Working file list (tri-state staging checkboxes) ────────────────────── */
 .wfl {
+  /* Main-thread scrolled viewport (see VirtualScroll.tsx): the hook owns the
+     scroll, so no native overflow — the old padding lives in padTop/padBottom. */
+  position: relative;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  padding: 4px 0 8px;
+  overflow: hidden;
 }
 .wfl:focus {
   outline: none;
