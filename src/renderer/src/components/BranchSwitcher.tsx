@@ -2,7 +2,11 @@ import type { BranchInfo } from '@shared/types'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Icon } from '../lib/icons'
+import { ContextMenu } from './ContextMenu'
 import { Popover } from './Popover'
+
+/** Branch operations surfaced from the switcher (beyond plain checkout). */
+export type BranchAction = 'new' | 'merge' | 'rebase' | 'rename' | 'delete'
 
 interface Props {
   branch: BranchInfo | null
@@ -10,6 +14,10 @@ interface Props {
   loading?: boolean
   busy: boolean
   onCheckout: (branch: string) => void
+  /** When provided, enables the "New branch" footer and per-row context menu. */
+  onBranchAction?: (action: BranchAction, branch: string) => void
+  /** Called when the popover opens — the branch list is (re)loaded lazily. */
+  onOpen?: () => void
 }
 
 /** Fixed row height used by the virtualizer (must match the inline row height below). */
@@ -23,14 +31,23 @@ const PAD_BOTTOM = 8
 
 type Row =
   | { kind: 'label'; key: string; text: string }
-  | { kind: 'item'; key: string; name: string; current: boolean }
+  | { kind: 'item'; key: string; name: string; current: boolean; local: boolean }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, hi))
 
-export function BranchSwitcher({ branch, loading = false, busy, onCheckout }: Props) {
+export function BranchSwitcher({
+  branch,
+  loading = false,
+  busy,
+  onCheckout,
+  onBranchAction,
+  onOpen
+}: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const anchor = useRef<HTMLButtonElement>(null)
+  // Right-clicked local branch row: cursor position + branch name.
+  const [menu, setMenu] = useState<{ x: number; y: number; name: string } | null>(null)
 
   // Flat row model (group labels interleaved with branch items) so a single
   // virtualized scroller can window both groups together.
@@ -43,11 +60,18 @@ export function BranchSwitcher({ branch, loading = false, busy, onCheckout }: Pr
     if (locals.length > 0) {
       out.push({ kind: 'label', key: 'label-local', text: 'Local' })
       for (const name of locals)
-        out.push({ kind: 'item', key: `l:${name}`, name, current: name === branch?.current })
+        out.push({
+          kind: 'item',
+          key: `l:${name}`,
+          name,
+          current: name === branch?.current,
+          local: true
+        })
     }
     if (remotes.length > 0) {
       out.push({ kind: 'label', key: 'label-remote', text: 'Remote' })
-      for (const name of remotes) out.push({ kind: 'item', key: `r:${name}`, name, current: false })
+      for (const name of remotes)
+        out.push({ kind: 'item', key: `r:${name}`, name, current: false, local: false })
     }
     return out
   }, [branch, query])
@@ -142,7 +166,12 @@ export function BranchSwitcher({ branch, loading = false, busy, onCheckout }: Pr
         className="pill"
         disabled={!branch || busy || loading}
         title={loading ? 'Loading branches…' : undefined}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => {
+            if (!v) onOpen?.()
+            return !v
+          })
+        }}
       >
         <span className="pill__icon">
           <Icon.Branch size={16} />
@@ -193,6 +222,14 @@ export function BranchSwitcher({ branch, loading = false, busy, onCheckout }: Pr
                     data-tip={row.name}
                     data-tip-overflow=""
                     onClick={() => select(row.name)}
+                    onContextMenu={
+                      onBranchAction && row.local
+                        ? (e) => {
+                            e.preventDefault()
+                            setMenu({ x: e.clientX, y: e.clientY, name: row.name })
+                          }
+                        : undefined
+                    }
                   >
                     <span className="icon-muted branch-glyph" aria-hidden="true" />
                     <span className="popover__item-main">
@@ -214,7 +251,85 @@ export function BranchSwitcher({ branch, loading = false, busy, onCheckout }: Pr
             )}
           </div>
         )}
+        {onBranchAction && (
+          <div className="popover__footer">
+            <button
+              className="popover__item popover__item--footer"
+              onClick={() => {
+                setOpen(false)
+                setQuery('')
+                onBranchAction('new', query.trim())
+              }}
+            >
+              <span className="icon-muted" style={{ display: 'flex' }}>
+                <Icon.Plus size={15} />
+              </span>
+              <span className="popover__item-main">
+                <span className="popover__item-title">
+                  {query.trim() ? `New branch “${query.trim()}”…` : 'New branch…'}
+                </span>
+              </span>
+            </button>
+          </div>
+        )}
       </Popover>
+
+      {menu && onBranchAction && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: 'Checkout',
+              icon: <Icon.Check size={15} />,
+              disabled: menu.name === branch?.current,
+              onClick: () => {
+                setOpen(false)
+                select(menu.name)
+              }
+            },
+            {},
+            {
+              label: `Merge into ${branch?.current ?? 'current'}…`,
+              icon: <Icon.Merge size={15} />,
+              disabled: menu.name === branch?.current,
+              onClick: () => {
+                setOpen(false)
+                onBranchAction('merge', menu.name)
+              }
+            },
+            {
+              label: `Rebase ${branch?.current ?? 'current'} onto this…`,
+              icon: <Icon.Branch size={15} />,
+              disabled: menu.name === branch?.current,
+              onClick: () => {
+                setOpen(false)
+                onBranchAction('rebase', menu.name)
+              }
+            },
+            {},
+            {
+              label: 'Rename…',
+              icon: <Icon.Pencil size={15} />,
+              onClick: () => {
+                setOpen(false)
+                onBranchAction('rename', menu.name)
+              }
+            },
+            {
+              label: 'Delete…',
+              icon: <Icon.Trash size={15} />,
+              danger: true,
+              disabled: menu.name === branch?.current,
+              onClick: () => {
+                setOpen(false)
+                onBranchAction('delete', menu.name)
+              }
+            }
+          ]}
+        />
+      )}
     </>
   )
 }

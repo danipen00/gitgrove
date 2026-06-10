@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'bun:test'
 import type { FileStatus } from '@shared/types'
-import { parseRefs, pluralize, prettyPath, splitPath, statusLabel, statusLetter } from './format'
+import {
+  formatBytes,
+  parseRefs,
+  pluralize,
+  prettyPath,
+  splitPath,
+  statusLabel,
+  statusLetter
+} from './format'
 
 describe('splitPath', () => {
   it('splits a nested path into dir prefix and basename', () => {
@@ -77,5 +85,21 @@ describe('prettyPath', () => {
 
   it('leaves other absolute paths unchanged', () => {
     expect(prettyPath('/opt/tools/bin')).toBe('/opt/tools/bin')
+  })
+})
+
+describe('formatBytes', () => {
+  it('formats sizes with sensible units', () => {
+    expect(formatBytes(0)).toBe('0 B')
+    expect(formatBytes(412)).toBe('412 B')
+    expect(formatBytes(3481)).toBe('3.4 KB')
+    expect(formatBytes(1258291)).toBe('1.2 MB')
+    expect(formatBytes(2147483648)).toBe('2.0 GB')
+    expect(formatBytes(150 * 1024)).toBe('150 KB')
+  })
+
+  it('rejects invalid input', () => {
+    expect(formatBytes(-1)).toBe('')
+    expect(formatBytes(Number.NaN)).toBe('')
   })
 })

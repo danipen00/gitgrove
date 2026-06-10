@@ -79,11 +79,7 @@ export function AboutDialog({ info, update, onClose, onCheckForUpdates, onInstal
         <h2 className="about__name">{info.name}</h2>
         <div className="about__version">Version {info.version}</div>
         <p className="about__tagline">
-          A polished git repository viewer built on{' '}
-          <a href="https://trees.software/" target="_blank" rel="noreferrer">
-            @pierre/trees
-          </a>{' '}
-          &{' '}
+          A fast, beautiful git client with diffs rendered by{' '}
           <a href="https://diffs.com/" target="_blank" rel="noreferrer">
             @pierre/diffs
           </a>

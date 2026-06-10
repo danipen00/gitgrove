@@ -1,11 +1,12 @@
-import type { BranchInfo, RepoSummary } from '@shared/types'
+import type { BranchInfo, RepoSummary, SyncStatus } from '@shared/types'
 import { useState } from 'react'
 import { Icon } from '../lib/icons'
 import { isMac } from '../lib/platform'
 import type { ResolvedTheme, ThemePref } from '../lib/theme'
-import { BranchSwitcher } from './BranchSwitcher'
+import { type BranchAction, BranchSwitcher } from './BranchSwitcher'
 import { MenuBar } from './MenuBar'
 import { RepoSwitcher } from './RepoSwitcher'
+import { type SyncAction, SyncButton } from './SyncButton'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { WindowControls } from './WindowControls'
 
@@ -17,6 +18,12 @@ interface Props {
   refreshing: boolean
   themePref: ThemePref
   resolvedTheme: ResolvedTheme
+  sync?: SyncStatus | null
+  syncRunning?: SyncAction | null
+  onSyncAction?: (action: SyncAction) => void
+  onBranchAction?: (action: BranchAction, branch: string) => void
+  /** Lazy branch-list loader, called when the branch switcher opens. */
+  onBranchesOpen?: () => void
   onOpenRepo: (path: string) => void
   onPickRepo: () => void
   onCheckout: (branch: string) => void
@@ -44,6 +51,11 @@ export function Toolbar({
   refreshing,
   themePref,
   resolvedTheme,
+  sync,
+  syncRunning,
+  onSyncAction,
+  onBranchAction,
+  onBranchesOpen,
   onOpenRepo,
   onPickRepo,
   onCheckout,
@@ -94,6 +106,18 @@ export function Toolbar({
           loading={branchesLoading}
           busy={busy}
           onCheckout={onCheckout}
+          onBranchAction={onBranchAction}
+          onOpen={onBranchesOpen}
+        />
+      )}
+      {repo && onSyncAction && (
+        <SyncButton
+          sync={sync ?? null}
+          branch={branch?.current ?? ''}
+          detached={branch?.detached ?? false}
+          busy={busy}
+          running={syncRunning ?? null}
+          onAction={onSyncAction}
         />
       )}
       <div className="toolbar__spacer" />

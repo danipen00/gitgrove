@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -23,13 +24,18 @@ const moduleDir = dirname(fileURLToPath(import.meta.url))
 // window icon at build/icon.png (sits two levels up from out/main) ourselves.
 const devIconPath = join(moduleDir, '../../build/icon.png')
 
-import { IPC } from '@shared/ipc'
+import { IPC, type MenuCommand } from '@shared/ipc'
 import type {
   AppInfo,
   ChangedFile,
+  CommitSelection,
+  DiffArea,
   GitAvailability,
   LogOptions,
-  RepoOpenResult
+  RebaseTodoItem,
+  RepoOpenResult,
+  RepoOpKind,
+  ResetMode
 } from '@shared/types'
 import {
   addSafeDirectory,
@@ -45,6 +51,8 @@ import {
   getWorkingDiff,
   resolveRepoRoot
 } from './git'
+import { getRepoSnapshot } from './git-status'
+import * as gitWrite from './git-write'
 import { gitVersion, locateGit, resetGitLocation } from './git-bin'
 import { getRecentRepos, rememberRepo, removeRecentRepo } from './store'
 import { checkForUpdates, initAutoUpdater, quitAndInstall } from './updater'
@@ -173,6 +181,10 @@ function createWindow(): void {
   })
 }
 
+function sendMenuCommand(command: MenuCommand): void {
+  mainWindow?.webContents.send(IPC.menuCommand, command)
+}
+
 function buildMenu(): void {
   const isMac = process.platform === 'darwin'
   const template: MenuItemConstructorOptions[] = [
@@ -207,6 +219,11 @@ function buildMenu(): void {
           accelerator: 'CmdOrCtrl+O',
           click: () => mainWindow?.webContents.send(IPC.menuOpenRepo)
         },
+        {
+          label: 'Clone Repository…',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: () => sendMenuCommand('clone')
+        },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' }
       ]
@@ -217,6 +234,54 @@ function buildMenu(): void {
       // Windows/Linux custom menu bar, which reads this same application menu.
       label: 'Repository',
       submenu: [
+        {
+          label: 'Fetch',
+          accelerator: 'CmdOrCtrl+Shift+F',
+          enabled: !!currentRepoPath,
+          click: () => sendMenuCommand('fetch')
+        },
+        {
+          label: 'Pull',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          enabled: !!currentRepoPath,
+          click: () => sendMenuCommand('pull')
+        },
+        {
+          label: 'Push',
+          accelerator: 'CmdOrCtrl+P',
+          enabled: !!currentRepoPath,
+          click: () => sendMenuCommand('push')
+        },
+        { type: 'separator' },
+        {
+          label: 'New Branch…',
+          accelerator: 'CmdOrCtrl+Shift+N',
+          enabled: !!currentRepoPath,
+          click: () => sendMenuCommand('new-branch')
+        },
+        {
+          label: 'Stash All Changes…',
+          enabled: !!currentRepoPath,
+          click: () => sendMenuCommand('stash')
+        },
+        { type: 'separator' },
+        {
+          label: 'Speed Up Large Repository',
+          enabled: !!currentRepoPath,
+          click: () => sendMenuCommand('optimize')
+        },
+        { type: 'separator' },
+        {
+          label: 'Worktrees…',
+          enabled: !!currentRepoPath,
+          click: () => sendMenuCommand('worktrees')
+        },
+        {
+          label: 'Submodules…',
+          enabled: !!currentRepoPath,
+          click: () => sendMenuCommand('submodules')
+        },
+        { type: 'separator' },
         {
           label: isMac
             ? 'Reveal in Finder'
@@ -415,18 +480,217 @@ function registerIpc(): void {
   ipcMain.handle(IPC.openTerminal, (_e, repoPath: string) => openTerminal(repoPath))
 
   ipcMain.handle(IPC.status, (_e, repoPath: string) => getStatus(repoPath))
+  // The snapshot is returned as a single JSON string: on a 90k-change repo the
+  // object graph would otherwise be deep-copied twice (IPC structured clone,
+  // then the contextBridge world boundary) — seconds of main-thread work.
+  // Strings cross both boundaries in one cheap copy; the renderer parses.
+  ipcMain.handle(IPC.snapshot, async (_e, repoPath: string) =>
+    JSON.stringify(await getRepoSnapshot(repoPath))
+  )
   ipcMain.handle(IPC.branches, (_e, repoPath: string) => getBranches(repoPath))
   ipcMain.handle(IPC.checkout, (_e, repoPath: string, branch: string) => checkout(repoPath, branch))
   ipcMain.handle(IPC.log, (_e, repoPath: string, options?: LogOptions) => getLog(repoPath, options))
   ipcMain.handle(IPC.commitFiles, (_e, repoPath: string, hash: string) =>
     getCommitFiles(repoPath, hash)
   )
-  ipcMain.handle(IPC.workingDiff, (_e, repoPath: string, file: ChangedFile) =>
-    getWorkingDiff(repoPath, file)
+  ipcMain.handle(IPC.workingDiff, (_e, repoPath: string, file: ChangedFile, area?: DiffArea) =>
+    getWorkingDiff(repoPath, file, area)
   )
   ipcMain.handle(IPC.commitDiff, (_e, repoPath: string, hash: string, file: ChangedFile) =>
     getCommitDiff(repoPath, hash, file)
   )
+
+  // ── Staging & commits ──
+  ipcMain.handle(
+    IPC.discardFiles,
+    async (_e, repoPath: string, paths: string[], untrackedPaths: string[]) => {
+      // Tracked paths restore from the index; untracked files go to the OS
+      // trash so a mis-click is recoverable (same behavior as GitHub Desktop).
+      await gitWrite.discardFiles(repoPath, paths)
+      for (const p of untrackedPaths) {
+        await shell.trashItem(join(repoPath, p)).catch(() => {})
+      }
+    }
+  )
+  ipcMain.handle(
+    IPC.applyPatch,
+    (_e, repoPath: string, patch: string, opts: { cached?: boolean; reverse?: boolean }) =>
+      gitWrite.applyPatch(repoPath, patch, opts)
+  )
+  ipcMain.handle(IPC.commit, (_e, repoPath: string, message: string, sel: CommitSelection) =>
+    gitWrite.commitSelection(repoPath, message, sel)
+  )
+  ipcMain.handle(IPC.lastCommitMessage, (_e, repoPath: string) =>
+    gitWrite.lastCommitMessage(repoPath)
+  )
+
+  // ── Sync ──
+  ipcMain.handle(IPC.fetch, (_e, repoPath: string, remote?: string) =>
+    gitWrite.fetch(repoPath, remote)
+  )
+  ipcMain.handle(IPC.pull, (_e, repoPath: string, opts?: { rebase?: boolean }) =>
+    gitWrite.pull(repoPath, opts)
+  )
+  ipcMain.handle(
+    IPC.push,
+    (
+      _e,
+      repoPath: string,
+      opts?: { setUpstream?: { remote: string; branch: string }; forceWithLease?: boolean }
+    ) => gitWrite.push(repoPath, opts)
+  )
+
+  // ── Branches ──
+  ipcMain.handle(
+    IPC.createBranch,
+    (_e, repoPath: string, name: string, opts?: { from?: string; checkout?: boolean }) =>
+      gitWrite.createBranch(repoPath, name, opts)
+  )
+  ipcMain.handle(
+    IPC.deleteBranch,
+    (_e, repoPath: string, name: string, opts?: { force?: boolean }) =>
+      gitWrite.deleteBranch(repoPath, name, opts)
+  )
+  ipcMain.handle(IPC.renameBranch, (_e, repoPath: string, from: string, to: string) =>
+    gitWrite.renameBranch(repoPath, from, to)
+  )
+  ipcMain.handle(IPC.checkoutDetached, (_e, repoPath: string, hash: string) =>
+    gitWrite.checkoutDetached(repoPath, hash)
+  )
+
+  // ── Merge / rebase / history surgery ──
+  ipcMain.handle(IPC.merge, (_e, repoPath: string, branch: string) =>
+    gitWrite.merge(repoPath, branch)
+  )
+  ipcMain.handle(IPC.rebase, (_e, repoPath: string, onto: string) =>
+    gitWrite.rebase(repoPath, onto)
+  )
+  ipcMain.handle(
+    IPC.rebaseInteractive,
+    (_e, repoPath: string, base: string, items: RebaseTodoItem[]) =>
+      gitWrite.rebaseInteractive(repoPath, base, items)
+  )
+  ipcMain.handle(IPC.cherryPick, (_e, repoPath: string, hash: string) =>
+    gitWrite.cherryPick(repoPath, hash)
+  )
+  ipcMain.handle(IPC.revertCommit, (_e, repoPath: string, hash: string) =>
+    gitWrite.revertCommit(repoPath, hash)
+  )
+  ipcMain.handle(IPC.reset, (_e, repoPath: string, hash: string, mode: ResetMode) =>
+    gitWrite.reset(repoPath, hash, mode)
+  )
+  ipcMain.handle(IPC.continueOp, (_e, repoPath: string, op: RepoOpKind) =>
+    gitWrite.continueOp(repoPath, op)
+  )
+  ipcMain.handle(IPC.abortOp, (_e, repoPath: string, op: RepoOpKind) =>
+    gitWrite.abortOp(repoPath, op)
+  )
+  ipcMain.handle(IPC.skipRebaseCommit, (_e, repoPath: string) =>
+    gitWrite.skipRebaseCommit(repoPath)
+  )
+  ipcMain.handle(
+    IPC.resolveConflict,
+    (_e, repoPath: string, path: string, side: 'ours' | 'theirs') =>
+      gitWrite.resolveConflict(repoPath, path, side)
+  )
+  ipcMain.handle(IPC.markResolved, (_e, repoPath: string, path: string) =>
+    gitWrite.markResolved(repoPath, path)
+  )
+  ipcMain.handle(IPC.openFileInEditor, (_e, repoPath: string, path: string) =>
+    shell.openPath(join(repoPath, path)).then(() => undefined)
+  )
+
+  // ── Stash ──
+  ipcMain.handle(IPC.stashList, (_e, repoPath: string) => gitWrite.listStashes(repoPath))
+  ipcMain.handle(IPC.stashFiles, async (_e, repoPath: string, sha: string) => {
+    // A stash's tracked changes diff against its first parent; untracked
+    // files live in a third parent commit (created by `stash push -u`) and
+    // would otherwise be invisible in a review.
+    const tracked = await getCommitFiles(repoPath, sha)
+    let untracked: ChangedFile[] = []
+    try {
+      untracked = (await getCommitFiles(repoPath, `${sha}^3`)).map((f) => ({
+        ...f,
+        status: 'untracked' as const
+      }))
+    } catch {
+      /* no untracked parent */
+    }
+    return [...tracked, ...untracked].sort((a, b) =>
+      a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+    )
+  })
+  ipcMain.handle(
+    IPC.stashSave,
+    (_e, repoPath: string, opts?: { message?: string; includeUntracked?: boolean }) =>
+      gitWrite.stashSave(repoPath, opts)
+  )
+  ipcMain.handle(IPC.stashApply, (_e, repoPath: string, index: number, pop: boolean) =>
+    gitWrite.stashApply(repoPath, index, pop)
+  )
+  ipcMain.handle(IPC.stashDrop, (_e, repoPath: string, index: number) =>
+    gitWrite.stashDrop(repoPath, index)
+  )
+
+  // ── Tags ──
+  ipcMain.handle(
+    IPC.createTag,
+    (
+      _e,
+      repoPath: string,
+      name: string,
+      opts?: { hash?: string; message?: string; push?: boolean }
+    ) =>
+      gitWrite.createTag(repoPath, name, opts)
+  )
+  ipcMain.handle(IPC.deleteTag, (_e, repoPath: string, name: string) =>
+    gitWrite.deleteTag(repoPath, name)
+  )
+
+  // ── Worktrees & submodules ──
+  ipcMain.handle(IPC.worktreeList, (_e, repoPath: string) => gitWrite.listWorktrees(repoPath))
+  ipcMain.handle(
+    IPC.worktreeAdd,
+    (_e, repoPath: string, path: string, opts?: { branch?: string; newBranch?: string }) =>
+      gitWrite.addWorktree(repoPath, path, opts)
+  )
+  ipcMain.handle(
+    IPC.worktreeRemove,
+    (_e, repoPath: string, path: string, opts?: { force?: boolean }) =>
+      gitWrite.removeWorktree(repoPath, path, opts)
+  )
+  ipcMain.handle(IPC.submoduleList, (_e, repoPath: string) => gitWrite.listSubmodules(repoPath))
+  ipcMain.handle(IPC.submoduleUpdate, (_e, repoPath: string) => gitWrite.updateSubmodules(repoPath))
+  ipcMain.handle(IPC.optimizeRepo, (_e, repoPath: string) => gitWrite.optimizeRepo(repoPath))
+  ipcMain.handle(IPC.selectionSize, async (_e, repoPath: string, paths: string[]) => {
+    // Working-tree byte sizes of the included files — a fast, honest proxy
+    // for "how big is this commit" (these are the blobs about to be written).
+    const sizes = await Promise.all(
+      paths.map((p) =>
+        stat(join(repoPath, p)).then(
+          (s) => (s.isFile() ? s.size : 0),
+          () => 0
+        )
+      )
+    )
+    return sizes.reduce((a, b) => a + b, 0)
+  })
+
+  // ── Clone ──
+  ipcMain.handle(IPC.cloneRepo, (_e, url: string, parentDir: string) =>
+    gitWrite.clone(url, parentDir, (phase, percent) => {
+      mainWindow?.webContents.send(IPC.cloneProgress, { phase, percent, done: false })
+    })
+  )
+  ipcMain.handle(IPC.pickDirectory, async (_e, title?: string) => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: title ?? 'Choose Folder',
+      properties: ['openDirectory', 'createDirectory'],
+      buttonLabel: 'Choose'
+    })
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+  })
 
   ipcMain.handle(IPC.checkGit, (_e, force?: boolean) => checkGit(!!force))
   ipcMain.handle(IPC.openExternal, (_e, url: string) => shell.openExternal(url))

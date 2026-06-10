@@ -4,8 +4,10 @@ import { parseRefs, pluralize } from '../lib/format'
 import { Icon } from '../lib/icons'
 import { Avatar } from './Avatar'
 import { RefChip } from './CommitSummary'
-import { FileTreeView } from './FileTreeView'
+import { ContextMenu, type ContextMenuItem } from './ContextMenu'
+import { useFileFilter } from './FileFilter'
 import { Resizer } from './Resizer'
+import { WorkingFileList } from './WorkingFileList'
 
 interface Props {
   commits: Commit[]
@@ -16,6 +18,8 @@ interface Props {
   commitFilesLoading: boolean
   selectedFilePath: string | null
   onSelectFile: (path: string) => void
+  /** Right-click menu builder for a commit row (checkout, cherry-pick, reset, …). */
+  commitMenuFor?: (commit: Commit) => ContextMenuItem[]
 }
 
 /** How many ref chips to show inline in the list before collapsing to "+N". */
@@ -29,9 +33,22 @@ export function HistoryView({
   commitFiles,
   commitFilesLoading,
   selectedFilePath,
-  onSelectFile
+  onSelectFile,
+  commitMenuFor
 }: Props) {
   const [filesHeight, setFilesHeight] = useState(360)
+  // Right-clicked commit: cursor position + menu items for that commit.
+  const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
+  // Name + type filter over the selected commit's files (same UI as Changes;
+  // history has no untracked entries). Cleared when another commit is picked.
+  const {
+    filtered: visibleFiles,
+    active: filterActive,
+    bar: filterBar,
+    reset: resetFilter
+  } = useFileFilter(commitFiles, ['added', 'modified', 'deleted', 'renamed'])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the commit switch is the intentional trigger
+  useEffect(() => resetFilter(), [selectedCommit?.hash])
   // Height is applied to this node directly while dragging (see Resizer.onPreview)
   // so resizing the commit-files panel never re-renders the history list.
   const filesRef = useRef<HTMLDivElement>(null)
@@ -78,6 +95,15 @@ export function HistoryView({
               ref={active ? activeRef : null}
               className={`commit${active ? ' is-active' : ''}`}
               onClick={() => onSelectCommit(commit)}
+              onContextMenu={
+                commitMenuFor
+                  ? (e) => {
+                      e.preventDefault()
+                      onSelectCommit(commit)
+                      setMenu({ x: e.clientX, y: e.clientY, items: commitMenuFor(commit) })
+                    }
+                  : undefined
+              }
             >
               <Avatar name={commit.authorName} email={commit.authorEmail} size={28} />
               <div className="commit__main">
@@ -117,8 +143,13 @@ export function HistoryView({
           />
           <div className="commit-files" ref={filesRef} style={{ height: filesHeight }}>
             <div className="section-head commit-files__head">
-              {commitFilesLoading ? 'Loading…' : pluralize(commitFiles.length, 'file')}
+              {commitFilesLoading
+                ? 'Loading…'
+                : filterActive
+                  ? `${visibleFiles.length} of ${commitFiles.length}`
+                  : pluralize(commitFiles.length, 'file')}
             </div>
+            {!commitFilesLoading && commitFiles.length > 0 && filterBar}
             <div className="tree-wrap">
               {commitFilesLoading ? (
                 <div className="center-state">
@@ -126,16 +157,29 @@ export function HistoryView({
                 </div>
               ) : commitFiles.length === 0 ? (
                 <div className="list-empty">No file changes in this commit.</div>
+              ) : visibleFiles.length === 0 ? (
+                <div className="list-empty">No files match the filter.</div>
               ) : (
-                <FileTreeView
-                  files={commitFiles}
+                <WorkingFileList
+                  files={visibleFiles}
                   selectedPath={selectedFilePath}
-                  onSelectFile={onSelectFile}
+                  onSelect={onSelectFile}
+                  contextMenuFor={(file) => [
+                    {
+                      label: 'Copy Path',
+                      icon: <Icon.Copy size={15} />,
+                      onClick: () => window.gitgrove.clipboardWrite(file.path)
+                    }
+                  ]}
                 />
               )}
             </div>
           </div>
         </>
+      )}
+
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
       )}
     </div>
   )

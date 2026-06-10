@@ -1,11 +1,11 @@
 # 🌳 GitGrove
 
-A fast, beautiful desktop app for reading your git repositories. Open any repo to
-browse your working changes and full commit history, and read syntax‑highlighted
-diffs — split or unified, light or dark.
+A fast, beautiful desktop git client. Open any repo to stage hunk by hunk, commit,
+branch, sync, stash, rebase interactively — and read syntax‑highlighted diffs that
+are a pleasure to look at, split or unified, light or dark.
 
-GitGrove is a **viewer**: it stays out of your way while you write commits in your
-editor or terminal, and gives you a clear, calm window onto what changed.
+GitGrove keeps a viewer's calm: one window, two tabs, no ceremony. The full power
+of git is there when you reach for it, and invisible when you don't.
 
 ![GitGrove history view in light and dark themes](docs/screenshot.png)
 
@@ -28,24 +28,39 @@ Updates…**
 
 ## What you can do
 
-- **Open any repository** from the folder picker, and jump back into recent ones from
+- **Open or clone any repository** from the folder picker, a URL, or the recents on
   the welcome screen.
-- **Right‑click a repository** — the toolbar switcher or any recent — to copy its name
-  or path, reveal it in Finder/Explorer, open a terminal there, or jump to its remote
-  on GitHub. The same actions live in the **Repository** menu for the open repo.
-- **Switch branches** — local or remote — straight from the toolbar; GitGrove checks
-  them out in place.
-- **Browse your changes** in the **Changes** tab: a status‑colored file tree (added,
-  modified, deleted, renamed, untracked) with a diff for every file.
-- **Explore history** in the **History** tab: the commit log with refs and tags. Pick
-  a commit to see exactly what it changed, then click a file for its diff.
-- **Read diffs that are a pleasure to read** — word‑level intra‑line highlighting,
-  Split or Unified layout, line‑wrap toggle, and expandable context.
+- **Pick what to commit with checkboxes** — every file has one, and every change
+  block in the diff has its own, inline in one continuous, context‑expandable view.
+  Checkboxes are instant (they never touch git); the selection is applied once, at
+  commit time. Discards are guarded: untracked files go to the system trash, never
+  `rm`.
+- **Commit and amend** from the composer (⌘↵), with your configured commit signing
+  (GPG/SSH) applied exactly as in the terminal.
+- **Fetch, pull, push** from one adaptive toolbar button with ahead/behind badges —
+  publish new branches, pull with rebase, or force‑push with `--force-with-lease`
+  behind an explicit confirmation. A quiet background fetch keeps the counts honest.
+- **Manage branches** from the switcher: create, rename, delete (with an unmerged
+  safety net), merge or rebase onto the current branch.
+- **Rewrite history carefully** — right‑click any commit to cherry‑pick, revert,
+  tag, branch, reset (soft/mixed/hard), or start an **interactive rebase**: reorder,
+  squash, fixup, reword and drop in a visual todo editor; no terminal editor ever
+  opens.
+- **Resolve conflicts in place** — when a merge/rebase/cherry‑pick stops, a banner
+  shows the state and conflicted files offer *ours/theirs/mark resolved*, then
+  continue, skip or abort.
+- **Stash** with a message (untracked included), then apply, pop or drop from the
+  stash list.
+- **Work across worktrees and submodules** from the Repository menu — list, add,
+  remove and open them as repos.
+- **Explore history** in the **History** tab and **read diffs that are a pleasure
+  to read** — word‑level highlighting, Split or Unified, line wrap, expandable
+  context.
 - **Stay in sync automatically** — GitGrove watches the repo and refreshes as you
   commit, checkout, or edit, without disrupting the diff you're reading.
 
-It never writes to your repository beyond checking out branches — no staging, no
-commits, no surprises.
+Destructive actions always ask first, and never more than once when they don't
+need to.
 
 ## Contributing
 
@@ -53,8 +68,10 @@ GitGrove is an [Electron](https://www.electronjs.org) + [React](https://react.de
 app. The renderer never touches git directly: it talks to the main process through a
 typed, sandboxed bridge (`contextIsolation` on, `nodeIntegration` off), and all git
 work happens in the main process via [`simple-git`](https://github.com/steveukx/git-js)
-and raw `git` for precise patch output. The file tree and diffs are rendered with
-[`@pierre/trees`](https://trees.software) and [`@pierre/diffs`](https://diffs.com).
+and raw `git` for precise patch output. Write operations (`src/main/git-write.ts`)
+shell out to the same binary with prompting disabled, so credentials and signing
+come from the user's own git configuration; the interactive rebase is fully
+scripted through `GIT_SEQUENCE_EDITOR`/`GIT_EDITOR` shims. Diffs are rendered with [`@pierre/diffs`](https://diffs.com).
 
 You'll need [Bun](https://bun.sh) and `git` on your PATH.
 

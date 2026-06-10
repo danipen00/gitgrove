@@ -1877,3 +1877,760 @@ button {
   gap: 8px;
   margin-top: 12px;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Write-side UI: staging sections, composer, sync button, op banner, hunks,
+   stash, dialogs, interactive rebase, worktrees/submodules, clone.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Operation banner (merge/rebase/cherry-pick/revert in progress) ──────── */
+.op-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--toast-border);
+  background: var(--st-modified-soft);
+}
+.op-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.op-banner__text strong {
+  font-size: 12.5px;
+  color: var(--fg);
+}
+.op-banner__text span {
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+.op-banner__actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ── Stash row + popover list ────────────────────────────────────────────── */
+.changes__stash-row {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+}
+.stash-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.stash-chip:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.stash-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.stash-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px 0 6px;
+}
+.stash-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+}
+.stash-item:hover {
+  background: var(--bg-hover);
+}
+.stash-item__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.stash-item__msg {
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stash-item__date {
+  font-size: 10.5px;
+  color: var(--fg-faint);
+}
+.stash-item__actions {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+/* ── Commit composer ─────────────────────────────────────────────────────── */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.composer__summary,
+.composer__description {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+}
+.composer__summary:focus,
+.composer__description:focus {
+  outline: none;
+  border-color: var(--accent-border);
+}
+.composer__description {
+  resize: vertical;
+  min-height: 30px;
+  max-height: 180px;
+  line-height: 1.45;
+}
+.changes__stash-spacer {
+  flex: 1;
+}
+.segmented--sm button {
+  padding: 3px 9px;
+  font-size: 11px;
+}
+.segmented--sm button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.composer__amend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.composer__commit {
+  flex: 1;
+  justify-content: center;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  box-shadow: none;
+}
+.composer__commit:disabled {
+  opacity: 0.55;
+  cursor: default;
+  filter: none;
+}
+
+
+/* ── Sync button (toolbar) ───────────────────────────────────────────────── */
+.sync {
+  display: flex;
+  align-items: stretch;
+}
+.sync__main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+.sync__chev {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding: 0 6px;
+}
+.sync-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--bg-active);
+  color: var(--fg-muted);
+}
+.sync-badge--behind {
+  color: var(--st-modified);
+}
+.sync-badge--ahead {
+  color: var(--st-added);
+}
+
+/* ── Dialog form bits (PromptDialog & friends) ───────────────────────────── */
+.dlg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+.dlg-field label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.dlg-field input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12.5px;
+}
+.dlg-field input:focus {
+  outline: none;
+  border-color: var(--accent-border);
+}
+.dlg-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.dlg-error {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--st-deleted);
+}
+.dlg-pickrow {
+  display: flex;
+  gap: 8px;
+}
+.dlg-pickrow input {
+  flex: 1;
+  min-width: 0;
+}
+.btn-danger {
+  background: var(--st-deleted);
+  border-color: var(--st-deleted);
+  color: #fff;
+  box-shadow: none;
+}
+.trust__icon--danger {
+  color: var(--st-deleted);
+  background: rgba(240, 97, 109, 0.14);
+}
+.popover__item--footer {
+  position: static !important;
+  height: 34px;
+  width: 100%;
+}
+
+/* ── Tree slot context menu (rendered by @pierre/trees, styled like ours) ── */
+.tree-menu {
+  min-width: 200px;
+  padding: 5px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: var(--popover-shadow);
+}
+
+/* ── Interactive rebase editor ───────────────────────────────────────────── */
+.irebase {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  padding: 2px;
+}
+.irebase__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+}
+.irebase__row.is-dragging {
+  border-color: var(--accent-border);
+  opacity: 0.85;
+}
+.irebase__row.is-dropped {
+  opacity: 0.45;
+}
+.irebase__row.is-dropped .irebase__subject {
+  text-decoration: line-through;
+}
+.irebase__grip {
+  display: flex;
+  align-items: center;
+  color: var(--fg-faint);
+  cursor: grab;
+  padding-top: 4px;
+}
+.irebase__action {
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 11.5px;
+}
+.irebase__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.irebase__subject {
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-top: 4px;
+}
+.irebase__hash {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  margin-right: 4px;
+}
+.irebase__message {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+}
+.irebase__message:focus {
+  outline: none;
+  border-color: var(--accent-border);
+}
+.irebase__order {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 0 0 auto;
+}
+
+/* ── Worktrees / submodules lists ────────────────────────────────────────── */
+.wt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+  margin-bottom: 6px;
+}
+.wt-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+}
+.wt-item__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wt-item__branch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.wt-item__path {
+  font-size: 11px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wt-item__actions {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.submodule-state.is-modified {
+  color: var(--st-modified);
+}
+.submodule-state.is-uninitialized {
+  color: var(--fg-faint);
+}
+.submodule-state.is-conflict {
+  color: var(--st-conflicted);
+}
+
+/* ── Clone progress ──────────────────────────────────────────────────────── */
+.clone-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+.clone-progress__bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-active);
+  overflow: hidden;
+}
+.clone-progress__fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+.clone-progress__label {
+  font-size: 11.5px;
+  color: var(--fg-muted);
+}
+
+/* ── Welcome actions row ─────────────────────────────────────────────────── */
+.welcome__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── Changes layout: one list above the stash row and composer ───────────── */
+.changes {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.changes__list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.section-head__label {
+  font-weight: 600;
+}
+.section-head__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.section-head__action:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.section-head__action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.section-head__action.is-danger:hover:not(:disabled) {
+  color: var(--st-deleted);
+}
+.list-empty {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+/* ── Working file list (tri-state staging checkboxes) ────────────────────── */
+.wfl {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+.wfl__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 10px;
+  min-height: 28px;
+  cursor: default;
+  user-select: none;
+}
+.wfl__row:hover {
+  background: var(--bg-hover);
+}
+.wfl__row.is-selected {
+  background: var(--accent-soft);
+}
+.wfl__check {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.wfl__conflict {
+  display: flex;
+  flex: 0 0 auto;
+  width: 14px;
+  justify-content: center;
+  color: var(--st-conflicted);
+}
+.wfl__status {
+  flex: 0 0 auto;
+  width: 14px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+.wfl__status.st-added,
+.wfl__status.st-untracked {
+  color: var(--st-added);
+}
+.wfl__status.st-modified {
+  color: var(--st-modified);
+}
+.wfl__status.st-deleted {
+  color: var(--st-deleted);
+}
+.wfl__status.st-renamed {
+  color: var(--st-renamed);
+}
+.wfl__status.st-conflicted {
+  color: var(--st-conflicted);
+}
+.wfl__path {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.wfl__dir {
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+}
+.wfl__name {
+  color: var(--fg);
+  flex: 0 0 auto;
+}
+
+/* ── Hunk staging bar (annotation row inside the working diff) ───────────── */
+.stage-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 10px;
+  margin: 1px 0;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--fg-muted);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.stage-bar[data-state='staged'] {
+  background: color-mix(in srgb, var(--st-added) 7%, var(--bg-panel));
+}
+.stage-bar__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.stage-bar__check input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.stage-bar[data-state='staged'] .stage-bar__check {
+  color: var(--st-added);
+}
+.stage-bar__spacer {
+  flex: 1;
+}
+.stage-bar__discard {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--fg-faint);
+  font-size: 11px;
+  cursor: pointer;
+}
+.stage-bar__discard:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--st-deleted);
+}
+.stage-bar__discard:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ── Changes filter row (name + status type) ─────────────────────────────── */
+.wfl-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.wfl-filter__input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+}
+.wfl-filter__input:focus {
+  outline: none;
+  border-color: var(--accent-border);
+}
+.wfl-filter__chip {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.45;
+  cursor: pointer;
+}
+.wfl-filter__chip:hover {
+  opacity: 0.8;
+}
+.wfl-filter__chip.is-active {
+  opacity: 1;
+  border-color: currentColor;
+  background: var(--bg-hover);
+}
+.wfl-filter__chip.st-added,
+.wfl-filter__chip.st-untracked {
+  color: var(--st-added);
+}
+.wfl-filter__chip.st-modified {
+  color: var(--st-modified);
+}
+.wfl-filter__chip.st-deleted {
+  color: var(--st-deleted);
+}
+.wfl-filter__chip.st-renamed {
+  color: var(--st-renamed);
+}
+
+/* ── Composer: commit button label ───────────────────────────────────────── */
+.composer__commit-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Stash review (a stash explored like a commit) ───────────────────────── */
+.stash-review {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 94vw);
+  height: min(760px, 86vh);
+  padding: 0;
+  overflow: hidden;
+}
+.stash-review__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.stash-review__title {
+  flex: 1;
+  min-width: 0;
+}
+.stash-review__title h2 {
+  margin: 0;
+  font-size: 14.5px;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stash-review__title span {
+  font-size: 11.5px;
+  color: var(--fg-muted);
+}
+.is-danger-text {
+  color: var(--st-deleted);
+}
+.stash-review__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.stash-review__files {
+  flex: 0 0 300px;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+}
+.stash-review__diff {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.stash-review__diff .diff-pane {
+  height: 100%;
+}
+.stash-item__main {
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}

@@ -1,12 +1,33 @@
-import type { BaseDiffOptions } from '@pierre/diffs/react'
-import { MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
+import { parseDiffFromFile } from '@pierre/diffs'
+import type { BaseDiffOptions, DiffLineAnnotation } from '@pierre/diffs/react'
+import { FileDiff, MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
 import type { DiffPayload } from '@shared/types'
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { splitPath, statusLabel, statusLetter } from '../lib/format'
 import { Icon } from '../lib/icons'
+import { buildBlockPatch, listChangeBlocks } from '../lib/staging'
 import type { ResolvedTheme } from '../lib/theme'
+import { ConfirmDialog } from './Dialog'
 
 export type DiffMode = 'split' | 'unified'
+
+/** Per-file commit selection: 'all', 'none', or the selected change blocks. */
+export type FileSelection = 'all' | 'none' | ReadonlyMap<number, string>
+
+/** Wiring for the change-block selection bars on working diffs. */
+export interface SelectionActions {
+  /** Current selection for the displayed file. */
+  selection: FileSelection
+  /**
+   * Replace the file's block selection: selected block index → its standalone
+   * patch (used at commit time), plus the total block count so the caller can
+   * normalize full/empty selections back to 'all'/'none'.
+   */
+  onChange: (selected: Map<number, string>, totalBlocks: number) => void
+  /** Discard a change block in the working tree (reverse-applies its patch). */
+  onDiscard: (patch: string) => void
+  busy: boolean
+}
 
 interface Props {
   diff: DiffPayload | null
@@ -16,6 +37,19 @@ interface Props {
   theme: ResolvedTheme
   onModeChange: (mode: DiffMode) => void
   onWrapChange: (wrap: boolean) => void
+  /**
+   * Present for working diffs in the Changes tab: each contiguous change
+   * block gets a checkbox bar ("include in commit") plus a guarded discard,
+   * rendered inside the same continuous, context-expandable diff used
+   * everywhere else. Toggling never touches git — it edits the renderer's
+   * commit selection.
+   */
+  selectionActions?: SelectionActions
+}
+
+/** Annotation metadata: which change block a selection bar belongs to. */
+interface BlockRef {
+  blockIndex: number
 }
 
 function countChanges(patch: string): { additions: number; deletions: number } {
@@ -28,8 +62,18 @@ function countChanges(patch: string): { additions: number; deletions: number } {
   return { additions, deletions }
 }
 
-function DiffViewerImpl({ diff, loading, mode, wrap, theme, onModeChange, onWrapChange }: Props) {
+function DiffViewerImpl({
+  diff,
+  loading,
+  mode,
+  wrap,
+  theme,
+  onModeChange,
+  onWrapChange,
+  selectionActions
+}: Props) {
   const stats = useMemo(() => (diff?.patch ? countChanges(diff.patch) : null), [diff?.patch])
+  const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null)
 
   const diffOptions = useMemo(
     () =>
@@ -59,6 +103,84 @@ function DiffViewerImpl({ diff, loading, mode, wrap, theme, onModeChange, onWrap
     () => ({ name: diff?.path ?? '', contents: diff?.newContents ?? '' }),
     [diff?.path, diff?.newContents]
   )
+
+  // ── Change-block selection bars (Changes tab, tracked modified files) ─────
+  // The displayed diff is parsed from the full contents; every contiguous
+  // changed region gets its own bar (finer than hunks — the differ merges
+  // nearby blocks into one hunk). Patches are rendered only when needed
+  // (commit / discard); toggling is pure renderer state — no git, no waiting.
+  const selectable =
+    !!selectionActions && !!diff && canExpand && diff.status === 'modified' && !diff.oldPath
+  const meta = useMemo(
+    () => (selectable ? parseDiffFromFile(oldFile, newFile) : null),
+    [selectable, oldFile, newFile]
+  )
+  const blocks = useMemo(() => (meta ? listChangeBlocks(meta) : []), [meta])
+  const annotations = useMemo<DiffLineAnnotation<BlockRef>[]>(
+    () => blocks.map((b) => ({ ...b.anchor, metadata: { blockIndex: b.index } })),
+    [blocks]
+  )
+
+  const blockPatch = (blockIndex: number): string | null =>
+    meta && diff && blocks[blockIndex]
+      ? buildBlockPatch(diff.path, meta, blocks, blockIndex)
+      : null
+
+  const isBlockSelected = (blockIndex: number): boolean => {
+    const sel = selectionActions?.selection ?? 'all'
+    if (sel === 'all') return true
+    if (sel === 'none') return false
+    return sel.has(blockIndex)
+  }
+
+  const toggleBlock = (blockIndex: number) => {
+    if (!meta || !selectionActions) return
+    const next = new Map<number, string>()
+    for (const b of blocks) {
+      const selected = b.index === blockIndex ? !isBlockSelected(b.index) : isBlockSelected(b.index)
+      if (selected) {
+        const patch = blockPatch(b.index)
+        if (patch) next.set(b.index, patch)
+      }
+    }
+    selectionActions.onChange(next, blocks.length)
+  }
+
+  const renderSelectionBar = (annotation: DiffLineAnnotation<BlockRef>) => {
+    const { blockIndex } = annotation.metadata
+    const block = blocks[blockIndex]
+    if (!block || !selectionActions) return null
+    const selected = isBlockSelected(blockIndex)
+    return (
+      <div className="stage-bar" data-state={selected ? 'staged' : 'unstaged'}>
+        <label className="stage-bar__check">
+          <input
+            type="checkbox"
+            checked={selected}
+            disabled={selectionActions.busy}
+            onChange={() => toggleBlock(blockIndex)}
+          />
+          Include in commit
+        </label>
+        <span className="diff-stat">
+          {block.newLines > 0 && <span className="diff-stat__add">+{block.newLines}</span>}
+          {block.oldLines > 0 && <span className="diff-stat__del">−{block.oldLines}</span>}
+        </span>
+        <span className="stage-bar__spacer" />
+        <button
+          className="stage-bar__discard"
+          disabled={selectionActions.busy}
+          data-tip="Discard this change"
+          onClick={() => {
+            const patch = blockPatch(blockIndex)
+            if (patch) setConfirmDiscard(patch)
+          }}
+        >
+          <Icon.Undo size={12} />
+        </button>
+      </div>
+    )
+  }
 
   if (!diff && !loading) {
     return (
@@ -147,7 +269,18 @@ function DiffViewerImpl({ diff, loading, mode, wrap, theme, onModeChange, onWrap
             <p>{diff.notice}</p>
           </div>
         )}
-        {!loading && diff && !diff.notice && diff.patch && canExpand && (
+        {!loading && diff && !diff.notice && diff.patch && selectable && meta && (
+          <FileDiff<BlockRef>
+            key={`${diff.path}:${theme}`}
+            fileDiff={meta}
+            lineAnnotations={annotations}
+            renderAnnotation={renderSelectionBar}
+            disableWorkerPool
+            options={diffOptions}
+            style={{ minHeight: '100%' }}
+          />
+        )}
+        {!loading && diff && !diff.notice && diff.patch && !selectable && canExpand && (
           <MultiFileDiff
             key={`${diff.path}:${theme}`}
             oldFile={oldFile}
@@ -157,7 +290,7 @@ function DiffViewerImpl({ diff, loading, mode, wrap, theme, onModeChange, onWrap
             style={{ minHeight: '100%' }}
           />
         )}
-        {!loading && diff && !diff.notice && diff.patch && !canExpand && (
+        {!loading && diff && !diff.notice && diff.patch && !selectable && !canExpand && (
           <PatchDiff
             key={`${diff.path}:${theme}`}
             patch={diff.patch}
@@ -176,6 +309,21 @@ function DiffViewerImpl({ diff, loading, mode, wrap, theme, onModeChange, onWrap
           </div>
         )}
       </div>
+
+      {confirmDiscard && selectionActions && (
+        <ConfirmDialog
+          title="Discard this change?"
+          danger
+          body="The selected lines will be reverted in your working tree. This cannot be undone."
+          confirmLabel="Discard"
+          onConfirm={() => {
+            const patch = confirmDiscard
+            setConfirmDiscard(null)
+            selectionActions.onDiscard(patch)
+          }}
+          onCancel={() => setConfirmDiscard(null)}
+        />
+      )}
     </div>
   )
 }

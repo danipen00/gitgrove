@@ -10,6 +10,7 @@ import type {
   BranchInfo,
   ChangedFile,
   Commit,
+  DiffArea,
   DiffPayload,
   FileStatus,
   LogOptions,
@@ -56,12 +57,26 @@ export class DubiousOwnershipError extends Error {
 
 const gitCache = new Map<string, SimpleGit>()
 
+// Reads must never take the index lock: `git status` refreshes the stat cache
+// by default, which creates .git/index.lock and collides with a concurrent
+// stage/commit ("index.lock: File exists"). GIT_OPTIONAL_LOCKS=0 makes status
+// & friends skip that optional write — the same lever GitHub Desktop uses.
+//
+// It is set on *our own* process env (inherited by every spawned git) rather
+// than passed to simple-git's .env(): an explicit env there triggers its
+// unsafe-variable audit, which rejects common user variables (PAGER, EDITOR,
+// GIT_SSH_COMMAND, …) that are perfectly fine when merely inherited. Mutating
+// writes are unaffected — their index lock is mandatory, not optional.
+process.env.GIT_OPTIONAL_LOCKS = '0'
+
 async function getGit(repoPath: string): Promise<SimpleGit> {
   let git = gitCache.get(repoPath)
   if (!git) {
     // Pin the binary so simple-git uses the same git we resolved for execFile —
     // important when git lives off PATH (e.g. bundled in GitHub Desktop).
     const binary = await locateGit()
+    // No explicit .env() here — children inherit process.env, which carries
+    // GIT_OPTIONAL_LOCKS=0 (see above) without tripping simple-git's audit.
     git = simpleGit({ baseDir: repoPath, binary, maxConcurrentProcesses: 6 })
     gitCache.set(repoPath, git)
   }
@@ -71,9 +86,9 @@ async function getGit(repoPath: string): Promise<SimpleGit> {
 /**
  * Run a raw git command, returning stdout regardless of exit code when the code
  * is in `tolerateExitCodes` (git diff family uses code 1 to mean "differences
- * found", which is not an error for us).
+ * found", which is not an error for us). Exported for the snapshot module.
  */
-async function runGit(
+export async function runGit(
   repoPath: string,
   args: string[],
   tolerateExitCodes: number[] = []
@@ -222,12 +237,24 @@ export async function getStatus(repoPath: string): Promise<ChangedFile[]> {
     const mapped = mapStatusCode(index, working)
     const staged = index !== ' ' && index !== '?' && index !== '!'
     const unstaged = working !== ' ' && working !== '?' && working !== '!'
+    const untracked = index === '?' || working === '?'
+    const conflicted = mapped === 'conflicted'
     return {
       path: f.path,
       oldPath: renameFrom.get(f.path),
       status: mapped,
-      staged,
-      partiallyStaged: staged && unstaged
+      staged: staged && !conflicted,
+      partiallyStaged: staged && unstaged && !conflicted,
+      // Per-side statuses drive the split Staged / Unstaged sections. A
+      // conflicted file lives on the unstaged side only, until resolved.
+      indexStatus: staged && !conflicted ? mapStatusCode(index, ' ') : undefined,
+      workingStatus: conflicted
+        ? 'conflicted'
+        : untracked
+          ? 'untracked'
+          : unstaged
+            ? mapStatusCode(' ', working)
+            : undefined
     }
   })
 }
@@ -511,11 +538,21 @@ function withContents(
   return { ...payload, oldContents, newContents }
 }
 
-export async function getWorkingDiff(repoPath: string, file: ChangedFile): Promise<DiffPayload> {
-  const base = { path: file.path, oldPath: file.oldPath, status: file.status }
+export async function getWorkingDiff(
+  repoPath: string,
+  file: ChangedFile,
+  area: DiffArea = 'all'
+): Promise<DiffPayload> {
+  const status =
+    area === 'staged'
+      ? (file.indexStatus ?? file.status)
+      : area === 'unstaged'
+        ? (file.workingStatus ?? file.status)
+        : file.status
+  const base = { path: file.path, oldPath: file.oldPath, status }
   let patch = ''
 
-  if (file.status === 'untracked') {
+  if (file.status === 'untracked' || (area === 'unstaged' && status === 'untracked')) {
     // Untracked files have no index entry; diff against /dev/null. git returns
     // exit code 1 when the files differ, which is expected here.
     patch = await runGit(
@@ -523,6 +560,14 @@ export async function getWorkingDiff(repoPath: string, file: ChangedFile): Promi
       ['diff', '--no-color', '--no-index', '--', '/dev/null', file.path],
       [1]
     )
+  } else if (area === 'staged') {
+    // Index vs HEAD: exactly what `commit` would record for this file.
+    const args = ['diff', '--no-color', '--cached', '-M', '--', file.path]
+    if (file.oldPath) args.push(file.oldPath)
+    patch = await runGit(repoPath, args, [1])
+  } else if (area === 'unstaged') {
+    // Working tree vs index: what's left to stage.
+    patch = await runGit(repoPath, ['diff', '--no-color', '--', file.path], [1])
   } else {
     // Everything tracked: full working-tree state (staged + unstaged) vs HEAD.
     const args = ['diff', '--no-color', 'HEAD', '--', file.path]
@@ -533,23 +578,33 @@ export async function getWorkingDiff(repoPath: string, file: ChangedFile): Promi
   const payload = finalizeDiff({ ...base, patch })
   if (payload.notice || payload.binary) return payload
 
-  // Working tree (staged + unstaged) vs HEAD, mirroring the patch above.
+  // Old/new sides matching the patch above, so the viewer can expand context.
+  // `:0` is the index (stage 0); HEAD is the last commit. The old side of an
+  // unstaged diff is the index; everything else diffs from HEAD.
+  const oldSideRef = area === 'unstaged' ? ':0' : 'HEAD'
+  const newFromIndex = (path: string) => showFile(repoPath, ':0', path)
   let oldContents: string | null
   let newContents: string | null
-  switch (file.status) {
+  switch (status) {
     case 'untracked':
     case 'added':
       oldContents = ''
-      newContents = await readWorkingFile(repoPath, file.path)
+      newContents =
+        area === 'staged'
+          ? await newFromIndex(file.path)
+          : await readWorkingFile(repoPath, file.path)
       break
     case 'deleted':
-      oldContents = await showFile(repoPath, 'HEAD', file.oldPath ?? file.path)
+      oldContents = await showFile(repoPath, oldSideRef, file.oldPath ?? file.path)
       newContents = ''
       break
     case 'modified':
     case 'renamed':
-      oldContents = await showFile(repoPath, 'HEAD', file.oldPath ?? file.path)
-      newContents = await readWorkingFile(repoPath, file.path)
+      oldContents = await showFile(repoPath, oldSideRef, file.oldPath ?? file.path)
+      newContents =
+        area === 'staged'
+          ? await newFromIndex(file.path)
+          : await readWorkingFile(repoPath, file.path)
       break
     default:
       // conflicted / ignored: leave non-expandable.

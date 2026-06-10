@@ -50,17 +50,19 @@ console.log('git detected — setup screen not shown')
 await win.waitForSelector('.recent-row', { timeout: 8000 })
 await win.click('.recent-row')
 
-// Wait for the sidebar + the diff viewer to mount, then for Pierre to paint.
+// Wait for the sidebar + the changes panel to mount (the working file list
+// when the repo is dirty, the clean-tree state otherwise), then for Pierre
+// to paint.
 await win.waitForSelector('.sidebar', { timeout: 15000 })
-await win.waitForSelector('.tree-wrap', { timeout: 15000 })
+await win.waitForSelector('.wfl, .changes .center-state', { timeout: 15000 })
 await win.waitForTimeout(2500)
 await win.screenshot({ path: join(shots, '2-changes.png') })
 console.log('captured changes view')
 
 // Report what actually rendered inside the panels.
 const treeTag = await win.evaluate(() => {
-  const el = document.querySelector('.tree-wrap')?.firstElementChild
-  return el ? el.tagName.toLowerCase() : null
+  const el = document.querySelector('.wfl, .changes .center-state')
+  return el ? `${el.tagName.toLowerCase()}.${el.className.split(' ')[0]}` : null
 })
 const diffTag = await win.evaluate(() => {
   const el = document.querySelector('.diff-body')

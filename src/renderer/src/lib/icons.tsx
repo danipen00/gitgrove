@@ -24,6 +24,99 @@ function Svg({ size = 16, children, ...props }: IconProps & { children: React.Re
 }
 
 export const Icon = {
+  Plus: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M12 5v14M5 12h14" />
+    </Svg>
+  ),
+  Minus: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M5 12h14" />
+    </Svg>
+  ),
+  Undo: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </Svg>
+  ),
+  Upload: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M12 17V4" />
+      <path d="m6 10 6-6 6 6" />
+      <path d="M4 20h16" />
+    </Svg>
+  ),
+  Tag: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M3.5 12.6 11 20a2 2 0 0 0 2.8 0l6.2-6.2a2 2 0 0 0 0-2.8L12.6 3.5A2 2 0 0 0 11.2 3H5a2 2 0 0 0-2 2v6.2c0 .5.2 1 .5 1.4Z" />
+      <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none" />
+    </Svg>
+  ),
+  Stash: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M3 7.5 12 3l9 4.5-9 4.5z" />
+      <path d="m3 12 9 4.5 9-4.5" />
+      <path d="m3 16.5 9 4.5 9-4.5" />
+    </Svg>
+  ),
+  Merge: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="6" cy="5" r="2.4" />
+      <circle cx="6" cy="19" r="2.4" />
+      <circle cx="18" cy="12" r="2.4" />
+      <path d="M6 7.4v9.2" />
+      <path d="M6 8c0 4 6 4 9.6 4" />
+    </Svg>
+  ),
+  CherryPick: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3v6M12 15v6" />
+    </Svg>
+  ),
+  Pencil: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 3 21.5l1-4.5Z" />
+    </Svg>
+  ),
+  Reset: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+    </Svg>
+  ),
+  Worktree: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M3 11h18" />
+    </Svg>
+  ),
+  Module: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M12 3 4 7.5v9L12 21l8-4.5v-9z" />
+      <path d="M4 7.5 12 12l8-4.5" />
+      <path d="M12 12v9" />
+    </Svg>
+  ),
+  ListTodo: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M9 6h12M9 12h12M9 18h12" />
+      <path d="m3 5.6 1.2 1.2L6.4 4.5" />
+      <path d="m3 11.6 1.2 1.2 2.2-2.3" />
+      <path d="m3 17.6 1.2 1.2 2.2-2.3" />
+    </Svg>
+  ),
+  Grip: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="9" cy="6" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="6" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="12" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="18" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="18" r="1.1" fill="currentColor" stroke="none" />
+    </Svg>
+  ),
   Branch: (p: IconProps) => (
     <Svg {...p}>
       <circle cx="6" cy="6" r="2.4" />
