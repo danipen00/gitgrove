@@ -352,6 +352,15 @@ export async function renameBranch(repoPath: string, from: string, to: string): 
   await run(repoPath, ['branch', '-m', from, to])
 }
 
+/**
+ * Switch branches. Checkout rewrites HEAD, the index and the working tree, so
+ * it MUST ride the write queue — running it concurrently with a stage/commit
+ * is exactly the index.lock race the queue exists to prevent.
+ */
+export async function checkoutBranch(repoPath: string, branch: string): Promise<void> {
+  await run(repoPath, ['checkout', branch])
+}
+
 /** Check out a commit directly, leaving HEAD detached. */
 export async function checkoutDetached(repoPath: string, hash: string): Promise<void> {
   await run(repoPath, ['checkout', '--detach', hash])
@@ -475,29 +484,39 @@ export async function markResolved(repoPath: string, path: string): Promise<void
 
 // ── Stash ───────────────────────────────────────────────────────────────────
 
-/** Parse `git stash list` in our `%gd<US>%H<US>%gs<US>%cr` format. Exported for tests. */
+/** Field count of the stash-list format below. */
+const STASH_FIELDS = 4
+
+/**
+ * Parse `git stash list -z` in our NUL-joined `%gd %H %gs %cr` format: a flat
+ * NUL stream read in groups of four. NUL because `%gs` carries the user's
+ * stash message, which can contain any byte except NUL. Exported for tests.
+ */
 export function parseStashList(out: string): StashEntry[] {
+  const tokens = out.split('\0')
   const entries: StashEntry[] = []
-  for (const line of out.split('\n')) {
-    if (!line.trim()) continue
-    const [ref, sha, message, relativeDate] = line.split('\x1f')
-    const m = ref?.match(/stash@\{(\d+)\}/)
+  for (let i = 0; i + STASH_FIELDS <= tokens.length; i += STASH_FIELDS) {
+    const [ref, sha, message, relativeDate] = tokens.slice(i, i + STASH_FIELDS)
+    const m = ref.match(/stash@\{(\d+)\}/)
     if (!m) continue
     entries.push({
       index: Number(m[1]),
-      sha: sha ?? '',
+      sha,
       // `%gs` looks like "On main: message" or "WIP on main: deadbeef Subject".
-      message: (message ?? '').replace(/^(WIP on|On) [^:]+: /, ''),
-      relativeDate: relativeDate ?? ''
+      message: message.replace(/^(WIP on|On) [^:]+: /, ''),
+      relativeDate
     })
   }
   return entries
 }
 
 export async function listStashes(repoPath: string): Promise<StashEntry[]> {
-  const out = await runRead(repoPath, ['stash', 'list', '--format=%gd%x1f%H%x1f%gs%x1f%cr']).catch(
-    () => ''
-  )
+  const out = await runRead(repoPath, [
+    'stash',
+    'list',
+    '-z',
+    '--format=%gd%x00%H%x00%gs%x00%cr'
+  ]).catch(() => '')
   return parseStashList(out)
 }
 

@@ -1,6 +1,9 @@
-// Git access layer for the main process. Uses `simple-git` for the convenient
-// structured commands (status, branches, checkout) and a thin execFile wrapper
-// for diff/log where we need exact control over formatting and exit codes.
+// Read-side git access for the main process: one thin execFile wrapper with
+// exact control over arguments, formatting and exit codes — the GitHub Desktop
+// approach (a single `git()` entry point in core.ts) rather than a wrapper
+// library. All output that contains file paths or user text is NUL-delimited
+// (`-z` / `%x00`), because NUL is the only byte git guarantees can never
+// appear inside refnames, paths, or commit messages.
 
 import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
@@ -16,7 +19,6 @@ import type {
   LogOptions,
   RepoSummary
 } from '@shared/types'
-import simpleGit, { type SimpleGit } from 'simple-git'
 import { locateGit } from './git-bin'
 
 const execFileAsync = promisify(execFile)
@@ -55,32 +57,23 @@ export class DubiousOwnershipError extends Error {
   }
 }
 
-const gitCache = new Map<string, SimpleGit>()
-
 // Reads must never take the index lock: `git status` refreshes the stat cache
 // by default, which creates .git/index.lock and collides with a concurrent
 // stage/commit ("index.lock: File exists"). GIT_OPTIONAL_LOCKS=0 makes status
 // & friends skip that optional write — the same lever GitHub Desktop uses.
-//
-// It is set on *our own* process env (inherited by every spawned git) rather
-// than passed to simple-git's .env(): an explicit env there triggers its
-// unsafe-variable audit, which rejects common user variables (PAGER, EDITOR,
-// GIT_SSH_COMMAND, …) that are perfectly fine when merely inherited. Mutating
+// Set on our own process env so every spawned git inherits it. Mutating
 // writes are unaffected — their index lock is mandatory, not optional.
 process.env.GIT_OPTIONAL_LOCKS = '0'
 
-async function getGit(repoPath: string): Promise<SimpleGit> {
-  let git = gitCache.get(repoPath)
-  if (!git) {
-    // Pin the binary so simple-git uses the same git we resolved for execFile —
-    // important when git lives off PATH (e.g. bundled in GitHub Desktop).
-    const binary = await locateGit()
-    // No explicit .env() here — children inherit process.env, which carries
-    // GIT_OPTIONAL_LOCKS=0 (see above) without tripping simple-git's audit.
-    git = simpleGit({ baseDir: repoPath, binary, maxConcurrentProcesses: 6 })
-    gitCache.set(repoPath, git)
+/**
+ * Raised when a command's stdout exceeds `runGit`'s maxBuffer. The diff layer
+ * turns this into a "too large to display" notice instead of a raw error.
+ */
+export class GitOutputTooLargeError extends Error {
+  constructor() {
+    super('git output exceeded the maximum buffer size')
+    this.name = 'GitOutputTooLargeError'
   }
-  return git
 }
 
 /**
@@ -102,10 +95,11 @@ export async function runGit(
     })
     return stdout
   } catch (err) {
-    const e = err as { code?: number; stdout?: string; stderr?: string; message?: string }
+    const e = err as { code?: number | string; stdout?: string; stderr?: string; message?: string }
     if (typeof e.code === 'number' && tolerateExitCodes.includes(e.code)) {
       return e.stdout ?? ''
     }
+    if (e.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') throw new GitOutputTooLargeError()
     const stderr = e.stderr ?? ''
     // Surface the ownership case as a distinct, recoverable error so the app can
     // offer to trust the folder rather than reporting "not a git repository".
@@ -129,8 +123,7 @@ export async function addSafeDirectory(value: string): Promise<void> {
 
 export async function isGitRepo(repoPath: string): Promise<boolean> {
   try {
-    const git = await getGit(repoPath)
-    return await git.checkIsRepo()
+    return (await runGit(repoPath, ['rev-parse', '--is-inside-work-tree'])).trim() === 'true'
   } catch {
     return false
   }
@@ -150,42 +143,57 @@ export async function resolveRepoRoot(somePath: string): Promise<string | null> 
   }
 }
 
-function mapStatusCode(index: string, working: string): FileStatus {
-  if (index === '?' || working === '?') return 'untracked'
-  if (index === '!' || working === '!') return 'ignored'
-  if (
-    index === 'U' ||
-    working === 'U' ||
-    (index === 'A' && working === 'A') ||
-    (index === 'D' && working === 'D')
-  ) {
-    return 'conflicted'
+/**
+ * Resolve what HEAD points at. `symbolic-ref` answers with the branch name on
+ * a normal (or unborn) branch and exits 1 when detached; detached HEAD then
+ * resolves to its short hash.
+ */
+async function resolveHead(repoPath: string): Promise<{ current: string; detached: boolean }> {
+  try {
+    const name = (await runGit(repoPath, ['symbolic-ref', '--short', '-q', 'HEAD'], [1])).trim()
+    if (name) return { current: name, detached: false }
+  } catch {
+    /* fall through to detached handling */
   }
-  if (index === 'R' || working === 'R') return 'renamed'
-  if (index === 'C' || working === 'C') return 'added'
-  if (index === 'A' || working === 'A') return 'added'
-  if (index === 'D' || working === 'D') return 'deleted'
-  return 'modified'
+  try {
+    const short = (await runGit(repoPath, ['rev-parse', '--short', 'HEAD'])).trim()
+    return { current: short, detached: true }
+  } catch {
+    return { current: 'HEAD', detached: true }
+  }
 }
 
 export async function getBranches(repoPath: string): Promise<BranchInfo> {
-  const git = await getGit(repoPath)
-  // Enumerating local and remote branches are independent git invocations;
-  // run them together so a repo with many remote refs (e.g. unity) isn't
-  // billed for both serially.
-  const [local, remote] = await Promise.all([
-    git.branchLocal(),
-    git
-      .branch(['-r'])
-      .then((raw) => Object.keys(raw.branches).filter((name) => !name.includes('->')))
-      .catch(() => [] as string[])
+  // One `for-each-ref` enumerates local + remote branches AND marks the
+  // checked-out one (`*`) — the GitHub Desktop approach. `git branch -v`
+  // (what a wrapper library would run) additionally computes ahead/behind
+  // for every tracked branch, a rev walk per branch that costs seconds on
+  // remote-heavy repos. Fields are NUL-separated; refnames cannot contain
+  // NUL or newline, so line-based parsing is exact.
+  const out = await runGit(repoPath, [
+    'for-each-ref',
+    '--format=%(HEAD)%00%(refname)%00%(refname:short)%00%(symref)',
+    'refs/heads',
+    'refs/remotes'
   ])
-  return {
-    current: local.current,
-    detached: local.detached,
-    local: local.all,
-    remote
+  const local: string[] = []
+  const remote: string[] = []
+  let current = ''
+  for (const line of out.split('\n')) {
+    if (!line) continue
+    const [head, refname, short, symref] = line.split('\0')
+    if (symref) continue // e.g. refs/remotes/origin/HEAD — a pointer, not a branch
+    if (refname.startsWith('refs/heads/')) {
+      local.push(short)
+      if (head === '*') current = short
+    } else if (refname.startsWith('refs/remotes/')) {
+      remote.push(short)
+    }
   }
+  if (current) return { current, detached: false, local, remote }
+  // No starred local ref: HEAD is unborn (first commit pending) or detached.
+  const head = await resolveHead(repoPath)
+  return { current: head.current, detached: head.detached, local, remote }
 }
 
 /**
@@ -196,23 +204,7 @@ export async function getBranches(repoPath: string): Promise<BranchInfo> {
  * surfaced in the UI.
  */
 export async function getQuickSummary(repoPath: string): Promise<RepoSummary> {
-  let current = ''
-  let detached = false
-  // symbolic-ref resolves the branch name on a normal (or unborn) branch and
-  // exits 1 when HEAD is detached.
-  try {
-    current = (await runGit(repoPath, ['symbolic-ref', '--short', '-q', 'HEAD'], [1])).trim()
-  } catch {
-    /* fall through to detached handling */
-  }
-  if (!current) {
-    detached = true
-    try {
-      current = (await runGit(repoPath, ['rev-parse', '--short', 'HEAD'])).trim()
-    } catch {
-      current = 'HEAD'
-    }
-  }
+  const { current, detached } = await resolveHead(repoPath)
   return {
     path: repoPath,
     name: basename(repoPath),
@@ -220,55 +212,6 @@ export async function getQuickSummary(repoPath: string): Promise<RepoSummary> {
     changeCount: 0,
     ahead: 0,
     behind: 0
-  }
-}
-
-export async function getStatus(repoPath: string): Promise<ChangedFile[]> {
-  const git = await getGit(repoPath)
-  const status = await git.status()
-
-  // Map "to" path -> "from" path for renames so the tree can show both.
-  const renameFrom = new Map<string, string>()
-  for (const r of status.renamed) renameFrom.set(r.to, r.from)
-
-  return status.files.map((f) => {
-    const index = f.index || ' '
-    const working = f.working_dir || ' '
-    const mapped = mapStatusCode(index, working)
-    const staged = index !== ' ' && index !== '?' && index !== '!'
-    const unstaged = working !== ' ' && working !== '?' && working !== '!'
-    const untracked = index === '?' || working === '?'
-    const conflicted = mapped === 'conflicted'
-    return {
-      path: f.path,
-      oldPath: renameFrom.get(f.path),
-      status: mapped,
-      staged: staged && !conflicted,
-      partiallyStaged: staged && unstaged && !conflicted,
-      // Per-side statuses drive the split Staged / Unstaged sections. A
-      // conflicted file lives on the unstaged side only, until resolved.
-      indexStatus: staged && !conflicted ? mapStatusCode(index, ' ') : undefined,
-      workingStatus: conflicted
-        ? 'conflicted'
-        : untracked
-          ? 'untracked'
-          : unstaged
-            ? mapStatusCode(' ', working)
-            : undefined
-    }
-  })
-}
-
-export async function getSummary(repoPath: string): Promise<RepoSummary> {
-  const git = await getGit(repoPath)
-  const [branch, status] = await Promise.all([getBranches(repoPath), git.status()])
-  return {
-    path: repoPath,
-    name: basename(repoPath),
-    branch,
-    changeCount: status.files.length,
-    ahead: status.ahead,
-    behind: status.behind
   }
 }
 
@@ -325,20 +268,16 @@ export async function getRemoteWebUrl(repoPath: string): Promise<string | null> 
   return raw ? toWebUrl(raw) : null
 }
 
-export async function checkout(repoPath: string, branch: string): Promise<BranchInfo> {
-  const git = await getGit(repoPath)
-  await git.checkout(branch)
-  gitCache.delete(repoPath)
-  return getBranches(repoPath)
-}
-
-const SEP = '\x1f'
-const REC = '\x1e'
-const LOG_FORMAT = ['%H', '%h', '%s', '%b', '%an', '%ae', '%aI', '%ar', '%D', '%P'].join(SEP) + REC
+// Log fields, NUL-joined: subjects/bodies can contain any byte except NUL, so
+// NUL is the only safe field separator (the trick GitHub Desktop's log parser
+// uses). With `-z` git also terminates each commit record with NUL, so the
+// whole output is one flat NUL stream parsed by fixed field count.
+const LOG_FIELDS = ['%H', '%h', '%s', '%b', '%an', '%ae', '%aI', '%ar', '%D', '%P']
+const LOG_FORMAT = LOG_FIELDS.join('%x00')
 
 export async function getLog(repoPath: string, options: LogOptions = {}): Promise<Commit[]> {
   const { ref, limit = 200, skip = 0, search } = options
-  const args = ['log', `--pretty=format:${LOG_FORMAT}`, `--max-count=${limit}`]
+  const args = ['log', '-z', `--format=${LOG_FORMAT}`, `--max-count=${limit}`]
   if (skip > 0) args.push(`--skip=${skip}`)
   if (search?.trim()) {
     args.push(`--grep=${search.trim()}`, '-i', '--all-match')
@@ -346,36 +285,26 @@ export async function getLog(repoPath: string, options: LogOptions = {}): Promis
   args.push(ref?.trim() ? ref : 'HEAD')
 
   const out = await runGit(repoPath, args)
-  return out
-    .split(REC)
-    .map((rec) => rec.replace(/^\n/, ''))
-    .filter((rec) => rec.trim().length > 0)
-    .map((rec) => {
-      const [
-        hash,
-        shortHash,
-        subject,
-        body,
-        authorName,
-        authorEmail,
-        date,
-        relativeDate,
-        refs,
-        parents
-      ] = rec.split(SEP)
-      return {
-        hash,
-        shortHash,
-        subject,
-        body: (body ?? '').trim(),
-        authorName,
-        authorEmail,
-        date,
-        relativeDate,
-        refs: refs ?? '',
-        parents: (parents ?? '').trim() ? parents.trim().split(' ') : []
-      } satisfies Commit
-    })
+  const fields = out.split('\0')
+  const commits: Commit[] = []
+  for (let i = 0; i + LOG_FIELDS.length <= fields.length; i += LOG_FIELDS.length) {
+    const [hash, shortHash, subject, body, authorName, authorEmail, date, relativeDate, refs] =
+      fields.slice(i, i + 9)
+    const parents = fields[i + 9]
+    commits.push({
+      hash,
+      shortHash,
+      subject,
+      body: body.trim(),
+      authorName,
+      authorEmail,
+      date,
+      relativeDate,
+      refs,
+      parents: parents.trim() ? parents.trim().split(' ') : []
+    } satisfies Commit)
+  }
+  return commits
 }
 
 function parseStatusLetter(letter: string): FileStatus {
@@ -398,91 +327,82 @@ function parseStatusLetter(letter: string): FileStatus {
   }
 }
 
+/** True when an error means `<hash>^` didn't resolve (root commit, no parent). */
+const isNoParentError = (e: unknown) =>
+  e instanceof Error && /unknown revision|bad revision/i.test(e.message)
+
+/**
+ * Parse combined `diff-tree -z --raw --numstat` output (raw records first,
+ * then numstat). NUL-delimited, so any filename — unicode, tabs, newlines —
+ * parses exactly; without `-z` git C-quotes such paths and the parse breaks.
+ * Token layout (NUL-separated):
+ *   raw:      `:oldmode newmode oldsha newsha S` `path` (R/C: `src` `dst`)
+ *   numstat:  `ins\tdel\tpath`                  (R/C: `ins\tdel\t` `src` `dst`)
+ * Exported for tests.
+ */
+export function parseRawNumstat(out: string): ChangedFile[] {
+  const tokens = out.split('\0')
+  const files: ChangedFile[] = []
+  const byPath = new Map<string, ChangedFile>()
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i]
+    if (!tok) continue
+    if (tok.startsWith(':')) {
+      const status = tok.split(' ')[4] ?? ''
+      const rename = status.startsWith('R') || status.startsWith('C')
+      const oldPath = rename ? tokens[++i] : undefined
+      const path = tokens[++i]
+      // Dedup guard: a single tree-pair diff yields each path once, but a
+      // duplicate would make the file-tree renderer throw.
+      if (path && !byPath.has(path)) {
+        const file: ChangedFile = { path, oldPath, status: parseStatusLetter(status), staged: true }
+        byPath.set(path, file)
+        files.push(file)
+      }
+      continue
+    }
+    const m = tok.match(/^(\d+|-)\t(\d+|-)\t(.*)$/s)
+    if (!m) continue
+    let path = m[3]
+    if (!path) {
+      // Rename numstat: empty inline path, then src + dst tokens.
+      i += 2
+      path = tokens[i] ?? ''
+    }
+    const file = byPath.get(path)
+    if (file) {
+      const binary = m[1] === '-' && m[2] === '-'
+      file.binary = binary
+      file.insertions = binary ? undefined : Number(m[1])
+      file.deletions = binary ? undefined : Number(m[2])
+    }
+  }
+  // Plain byte sort, matching the snapshot's ordering contract.
+  return files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+}
+
 export async function getCommitFiles(repoPath: string, hash: string): Promise<ChangedFile[]> {
   // Diff against the first parent so merge commits report only what the merge
   // introduced on top of the mainline (like GitHub Desktop) rather than the
   // union of every parent. `diff-tree -m --first-parent` does NOT do this —
   // `-m` emits a section per parent and silently ignores `--first-parent`,
-  // producing the union — so we name the two trees explicitly. Root commits
-  // have no parent, so they diff against the empty tree via `--root`.
-  let hasParent = true
+  // producing the union — so we name the two trees explicitly. One spawn
+  // carries status AND line counts; root commits (no parent) retry against
+  // the empty tree.
+  const args = ['diff-tree', '--no-commit-id', '-M', '-r', '-z', '--raw', '--numstat']
+  let out: string
   try {
-    await runGit(repoPath, ['rev-parse', '--verify', '--quiet', `${hash}^`])
-  } catch {
-    hasParent = false
+    out = await runGit(repoPath, [...args, `${hash}^`, hash])
+  } catch (e) {
+    if (!isNoParentError(e)) throw e
+    out = await runGit(repoPath, [...args, EMPTY_TREE, hash])
   }
-  // Trees to diff: `<hash>^ <hash>` for normal/merge commits, `--root <hash>`
-  // (against the empty tree) for the initial commit.
-  const treeArgs = hasParent ? [`${hash}^`, hash] : ['--root', hash]
+  return parseRawNumstat(out)
+}
 
-  // name-status gives us per-file status plus rename source/target.
-  const nameStatus = await runGit(repoPath, [
-    'diff-tree',
-    '--no-commit-id',
-    '--name-status',
-    '-M',
-    '-r',
-    ...treeArgs
-  ])
-
-  // Defensive dedup: a single tree-pair diff yields each path once, but a stray
-  // duplicate path would make the file-tree renderer throw, so guard anyway.
-  const files: ChangedFile[] = []
-  const seen = new Set<string>()
-  for (const line of nameStatus.split('\n')) {
-    if (!line.trim()) continue
-    const parts = line.split('\t')
-    const code = parts[0]
-    const status = parseStatusLetter(code)
-    let file: ChangedFile | null = null
-    if ((code.startsWith('R') || code.startsWith('C')) && parts.length >= 3) {
-      file = { path: parts[2], oldPath: parts[1], status, staged: true }
-    } else if (parts.length >= 2) {
-      file = { path: parts[1], status, staged: true }
-    }
-    if (file && !seen.has(file.path)) {
-      seen.add(file.path)
-      files.push(file)
-    }
-  }
-
-  // Best-effort line counts from numstat, matched on the new path.
-  try {
-    const numstat = await runGit(repoPath, [
-      'diff-tree',
-      '--no-commit-id',
-      '--numstat',
-      '-M',
-      '-r',
-      ...treeArgs
-    ])
-    const counts = new Map<string, { insertions?: number; deletions?: number; binary: boolean }>()
-    for (const line of numstat.split('\n')) {
-      if (!line.trim()) continue
-      const [ins, del, ...rest] = line.split('\t')
-      const rawPath = rest.join('\t')
-      // Normalise rename notation `old => new` / `dir/{a => b}` to the new path.
-      const path = rawPath.replace(/.*\{(?:.*) => (.*)\}/, '$1').replace(/^.* => /, '')
-      const binary = ins === '-' && del === '-'
-      counts.set(path, {
-        insertions: binary ? undefined : Number(ins),
-        deletions: binary ? undefined : Number(del),
-        binary
-      })
-    }
-    for (const f of files) {
-      const c = counts.get(f.path)
-      if (c) {
-        f.insertions = c.insertions
-        f.deletions = c.deletions
-        f.binary = c.binary
-      }
-    }
-  } catch {
-    // counts are optional
-  }
-
-  return files.sort((a, b) => a.path.localeCompare(b.path))
+/** The payload for a diff whose text exceeded `runGit`'s output buffer. */
+function tooLargeDiff(base: Omit<DiffPayload, 'patch' | 'binary' | 'notice'>): DiffPayload {
+  return { ...base, patch: '', binary: false, notice: 'This diff is too large to display.' }
 }
 
 function finalizeDiff(
@@ -552,27 +472,32 @@ export async function getWorkingDiff(
   const base = { path: file.path, oldPath: file.oldPath, status }
   let patch = ''
 
-  if (file.status === 'untracked' || (area === 'unstaged' && status === 'untracked')) {
-    // Untracked files have no index entry; diff against /dev/null. git returns
-    // exit code 1 when the files differ, which is expected here.
-    patch = await runGit(
-      repoPath,
-      ['diff', '--no-color', '--no-index', '--', '/dev/null', file.path],
-      [1]
-    )
-  } else if (area === 'staged') {
-    // Index vs HEAD: exactly what `commit` would record for this file.
-    const args = ['diff', '--no-color', '--cached', '-M', '--', file.path]
-    if (file.oldPath) args.push(file.oldPath)
-    patch = await runGit(repoPath, args, [1])
-  } else if (area === 'unstaged') {
-    // Working tree vs index: what's left to stage.
-    patch = await runGit(repoPath, ['diff', '--no-color', '--', file.path], [1])
-  } else {
-    // Everything tracked: full working-tree state (staged + unstaged) vs HEAD.
-    const args = ['diff', '--no-color', 'HEAD', '--', file.path]
-    if (file.oldPath) args.push(file.oldPath)
-    patch = await runGit(repoPath, args, [1])
+  try {
+    if (file.status === 'untracked' || (area === 'unstaged' && status === 'untracked')) {
+      // Untracked files have no index entry; diff against /dev/null. git returns
+      // exit code 1 when the files differ, which is expected here.
+      patch = await runGit(
+        repoPath,
+        ['diff', '--no-color', '--no-index', '--', '/dev/null', file.path],
+        [1]
+      )
+    } else if (area === 'staged') {
+      // Index vs HEAD: exactly what `commit` would record for this file.
+      const args = ['diff', '--no-color', '--cached', '-M', '--', file.path]
+      if (file.oldPath) args.push(file.oldPath)
+      patch = await runGit(repoPath, args, [1])
+    } else if (area === 'unstaged') {
+      // Working tree vs index: what's left to stage.
+      patch = await runGit(repoPath, ['diff', '--no-color', '--', file.path], [1])
+    } else {
+      // Everything tracked: full working-tree state (staged + unstaged) vs HEAD.
+      const args = ['diff', '--no-color', 'HEAD', '--', file.path]
+      if (file.oldPath) args.push(file.oldPath)
+      patch = await runGit(repoPath, args, [1])
+    }
+  } catch (e) {
+    if (e instanceof GitOutputTooLargeError) return tooLargeDiff(base)
+    throw e
   }
 
   const payload = finalizeDiff({ ...base, patch })
@@ -621,20 +546,33 @@ export async function getCommitDiff(
 ): Promise<DiffPayload> {
   const base = { path: file.path, oldPath: file.oldPath, status: file.status }
 
-  // Detect whether the commit has a parent; root commits diff against the empty tree.
-  let hasParent = true
-  try {
-    await runGit(repoPath, ['rev-parse', '--verify', '--quiet', `${hash}^`])
-  } catch {
-    hasParent = false
-  }
-
+  // Try the first parent directly; only root commits fail, and they retry
+  // against the empty tree — one spawn in the common case instead of a
+  // rev-parse probe plus the diff.
   const paths = file.oldPath ? [file.path, file.oldPath] : [file.path]
-  const args = hasParent
-    ? ['diff', '--no-color', '-M', `${hash}^`, hash, '--', ...paths]
-    : ['diff', '--no-color', '-M', EMPTY_TREE, hash, '--', ...paths]
-
-  const patch = await runGit(repoPath, args, [1])
+  let hasParent = true
+  let patch: string
+  try {
+    patch = await runGit(
+      repoPath,
+      ['diff', '--no-color', '-M', `${hash}^`, hash, '--', ...paths],
+      [1]
+    )
+  } catch (e) {
+    if (e instanceof GitOutputTooLargeError) return tooLargeDiff(base)
+    if (!isNoParentError(e)) throw e
+    hasParent = false
+    try {
+      patch = await runGit(
+        repoPath,
+        ['diff', '--no-color', '-M', EMPTY_TREE, hash, '--', ...paths],
+        [1]
+      )
+    } catch (e2) {
+      if (e2 instanceof GitOutputTooLargeError) return tooLargeDiff(base)
+      throw e2
+    }
+  }
   const payload = finalizeDiff({ ...base, patch })
   if (payload.notice || payload.binary) return payload
 
@@ -645,8 +583,4 @@ export async function getCommitDiff(
   const newContents = file.status === 'deleted' ? '' : await showFile(repoPath, hash, file.path)
 
   return withContents(payload, oldContents, newContents)
-}
-
-export function forgetRepo(repoPath: string): void {
-  gitCache.delete(repoPath)
 }

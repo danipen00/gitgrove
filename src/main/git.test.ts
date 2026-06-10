@@ -9,7 +9,6 @@ import {
   getCommitFiles,
   getLog,
   getRemoteWebUrl,
-  getStatus,
   isGitRepo,
   resolveRepoRoot,
   toWebUrl
@@ -21,6 +20,8 @@ import {
 
 let repo: string
 let firstHash: string
+let secondHash: string
+let renameHash: string
 
 function git(args: string[], cwd = repo): string {
   return execFileSync('git', args, {
@@ -53,6 +54,15 @@ beforeAll(() => {
   writeFileSync(join(repo, 'added.txt'), 'new\n')
   git(['add', '.'])
   git(['commit', '-q', '-m', 'second commit'])
+  secondHash = git(['rev-parse', 'HEAD'])
+
+  // Third commit: a rename plus a non-ASCII filename — both break parsers that
+  // read git's quoted, tab-separated output instead of `-z` NUL records.
+  git(['mv', 'added.txt', 'moved.txt'])
+  writeFileSync(join(repo, 'ümläut ñ.txt'), 'unicode\n')
+  git(['add', '.'])
+  git(['commit', '-q', '-m', 'rename and unicode'])
+  renameHash = git(['rev-parse', 'HEAD'])
 })
 
 afterAll(() => {
@@ -99,44 +109,26 @@ describe('getBranches', () => {
 describe('getLog', () => {
   it('returns commits newest-first with parsed metadata', async () => {
     const log = await getLog(repo)
-    expect(log.length).toBe(2)
-    expect(log[0].subject).toBe('second commit')
-    expect(log[1].subject).toBe('initial commit')
+    expect(log.length).toBe(3)
+    expect(log[0].subject).toBe('rename and unicode')
+    expect(log[1].subject).toBe('second commit')
+    expect(log[2].subject).toBe('initial commit')
     expect(log[0].authorName).toBe('Test Author')
     expect(log[0].authorEmail).toBe('author@example.com')
-    // The root commit has no parents; the tip has exactly one.
-    expect(log[0].parents).toEqual([firstHash])
-    expect(log[1].parents).toEqual([])
+    // The root commit has no parents; the others have exactly one.
+    expect(log[1].parents).toEqual([firstHash])
+    expect(log[2].parents).toEqual([])
   })
 
   it('honours the limit option', async () => {
     const log = await getLog(repo, { limit: 1 })
     expect(log.length).toBe(1)
-    expect(log[0].subject).toBe('second commit')
+    expect(log[0].subject).toBe('rename and unicode')
   })
 
   it('filters by message with search', async () => {
     const log = await getLog(repo, { search: 'initial' })
     expect(log.map((c) => c.subject)).toEqual(['initial commit'])
-  })
-})
-
-describe('getStatus', () => {
-  it('reports an untracked working-tree file', async () => {
-    writeFileSync(join(repo, 'scratch.txt'), 'tmp\n')
-    try {
-      const status = await getStatus(repo)
-      const scratch = status.find((f) => f.path === 'scratch.txt')
-      expect(scratch).toBeDefined()
-      expect(scratch!.status).toBe('untracked')
-      expect(scratch!.staged).toBe(false)
-    } finally {
-      rmSync(join(repo, 'scratch.txt'))
-    }
-  })
-
-  it('is empty for a clean tree', async () => {
-    expect(await getStatus(repo)).toEqual([])
   })
 })
 
@@ -187,11 +179,22 @@ describe('getRemoteWebUrl', () => {
 })
 
 describe('getCommitFiles', () => {
-  it('lists files changed in a commit with their status', async () => {
-    const files = await getCommitFiles(repo, 'HEAD')
-    const byPath = Object.fromEntries(files.map((f) => [f.path, f.status]))
-    expect(byPath['added.txt']).toBe('added')
-    expect(byPath['keep.txt']).toBe('modified')
+  it('lists files changed in a commit with status and line counts', async () => {
+    const files = await getCommitFiles(repo, secondHash)
+    const byPath = Object.fromEntries(files.map((f) => [f.path, f]))
+    expect(byPath['added.txt'].status).toBe('added')
+    expect(byPath['keep.txt'].status).toBe('modified')
+    expect(byPath['keep.txt'].insertions).toBe(1)
+    expect(byPath['keep.txt'].deletions).toBe(0)
+  })
+
+  it('reports renames with both paths and exact unicode filenames', async () => {
+    const files = await getCommitFiles(repo, renameHash)
+    const byPath = Object.fromEntries(files.map((f) => [f.path, f]))
+    expect(byPath['moved.txt'].status).toBe('renamed')
+    expect(byPath['moved.txt'].oldPath).toBe('added.txt')
+    expect(byPath['ümläut ñ.txt'].status).toBe('added')
+    expect(byPath['ümläut ñ.txt'].insertions).toBe(1)
   })
 
   it('treats every file in a root commit as added', async () => {

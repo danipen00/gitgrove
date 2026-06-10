@@ -1,6 +1,6 @@
 // Locating a usable `git` executable.
 //
-// GitGrove shells out to git for every operation (via execFile and simple-git),
+// GitGrove shells out to git for every operation (via execFile and spawn),
 // which assumes `git` is discoverable on PATH. That assumption breaks for a
 // large class of users:
 //   • A GUI app launched from Explorer / Finder / the Dock inherits the *login*
@@ -34,7 +34,7 @@ let cached: Promise<string> | null = null
 
 /**
  * Resolve the git executable to use, cached after the first success. Returns
- * the value to pass as the binary to execFile / simple-git: `'git'` when PATH
+ * the value to pass as the binary to execFile / spawn: `'git'` when PATH
  * already works, otherwise an absolute path. When git is found off PATH its
  * directory is prepended to `process.env.PATH` so anything git itself shells
  * out to (hooks, pager, helpers) resolves too. Rejects with

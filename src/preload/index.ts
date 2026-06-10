@@ -12,7 +12,6 @@ const api: GitGroveApi = {
   remoteUrl: (repoPath) => ipcRenderer.invoke(IPC.remoteUrl, repoPath),
   revealRepo: (repoPath) => ipcRenderer.invoke(IPC.revealRepo, repoPath),
   openTerminal: (repoPath) => ipcRenderer.invoke(IPC.openTerminal, repoPath),
-  status: (repoPath) => ipcRenderer.invoke(IPC.status, repoPath),
   snapshot: (repoPath) => ipcRenderer.invoke(IPC.snapshot, repoPath),
   branches: (repoPath) => ipcRenderer.invoke(IPC.branches, repoPath),
   checkout: (repoPath, branch) => ipcRenderer.invoke(IPC.checkout, repoPath, branch),

@@ -39,7 +39,6 @@ import type {
 } from '@shared/types'
 import {
   addSafeDirectory,
-  checkout,
   DubiousOwnershipError,
   getBranches,
   getCommitDiff,
@@ -47,7 +46,6 @@ import {
   getLog,
   getQuickSummary,
   getRemoteWebUrl,
-  getStatus,
   getWorkingDiff,
   resolveRepoRoot
 } from './git'
@@ -479,7 +477,6 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.openTerminal, (_e, repoPath: string) => openTerminal(repoPath))
 
-  ipcMain.handle(IPC.status, (_e, repoPath: string) => getStatus(repoPath))
   // The snapshot is returned as a single JSON string: on a 90k-change repo the
   // object graph would otherwise be deep-copied twice (IPC structured clone,
   // then the contextBridge world boundary) — seconds of main-thread work.
@@ -488,7 +485,11 @@ function registerIpc(): void {
     JSON.stringify(await getRepoSnapshot(repoPath))
   )
   ipcMain.handle(IPC.branches, (_e, repoPath: string) => getBranches(repoPath))
-  ipcMain.handle(IPC.checkout, (_e, repoPath: string, branch: string) => checkout(repoPath, branch))
+  ipcMain.handle(IPC.checkout, async (_e, repoPath: string, branch: string) => {
+    // Checkout mutates HEAD/index/worktree → serialized on the write queue.
+    await gitWrite.checkoutBranch(repoPath, branch)
+    return getBranches(repoPath)
+  })
   ipcMain.handle(IPC.log, (_e, repoPath: string, options?: LogOptions) => getLog(repoPath, options))
   ipcMain.handle(IPC.commitFiles, (_e, repoPath: string, hash: string) =>
     getCommitFiles(repoPath, hash)

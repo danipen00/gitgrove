@@ -67,8 +67,8 @@ need to.
 GitGrove is an [Electron](https://www.electronjs.org) + [React](https://react.dev)
 app. The renderer never touches git directly: it talks to the main process through a
 typed, sandboxed bridge (`contextIsolation` on, `nodeIntegration` off), and all git
-work happens in the main process via [`simple-git`](https://github.com/steveukx/git-js)
-and raw `git` for precise patch output. Write operations (`src/main/git-write.ts`)
+work happens in the main process by shelling out to raw `git` with NUL-delimited
+(`-z`/`%x00`) machine output — no wrapper library. Write operations (`src/main/git-write.ts`)
 shell out to the same binary with prompting disabled, so credentials and signing
 come from the user's own git configuration; the interactive rebase is fully
 scripted through `GIT_SEQUENCE_EDITOR`/`GIT_EDITOR` shims. Diffs are rendered with [`@pierre/diffs`](https://diffs.com).

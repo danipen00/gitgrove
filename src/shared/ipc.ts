@@ -34,7 +34,6 @@ export const IPC = {
   remoteUrl: 'repo:remote-url',
   revealRepo: 'repo:reveal',
   openTerminal: 'repo:terminal',
-  status: 'repo:status',
   snapshot: 'repo:snapshot',
   branches: 'repo:branches',
   checkout: 'repo:checkout',
@@ -144,7 +143,6 @@ export interface GitGroveApi {
   revealRepo(repoPath: string): Promise<boolean>
   /** Open a terminal rooted at the repo. Resolves false if none could launch. */
   openTerminal(repoPath: string): Promise<boolean>
-  status(repoPath: string): Promise<ChangedFile[]>
   /**
    * One-call refresh payload: files, branch, sync counts, op state, stashes.
    * JSON-encoded (`RepoSnapshot`) so huge change lists cross the IPC and

@@ -237,7 +237,7 @@ export async function getRepoSnapshot(repoPath: string): Promise<RepoSnapshot> {
   }
 }
 
-/** Drop cached paths when a repo is closed (mirrors git.ts's forgetRepo). */
+/** Drop cached paths when a repo is closed. */
 export function forgetSnapshotCaches(repoPath: string): void {
   gitDirCache.delete(repoPath)
 }

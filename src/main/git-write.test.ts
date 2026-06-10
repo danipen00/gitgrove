@@ -10,11 +10,12 @@ import {
 
 describe('parseStashList', () => {
   test('parses indexes, strips WIP prefixes, keeps dates', () => {
+    // `git stash list -z --format=%gd%x00%H%x00%gs%x00%cr`: a flat NUL stream,
+    // each record NUL-terminated (so the output ends with a NUL too).
     const out = [
-      'stash@{0}\x1faaa111\x1fWIP on main: 1234abc Fix the thing\x1f2 hours ago',
-      'stash@{1}\x1fbbb222\x1fOn feature/x: my named stash\x1f3 days ago',
-      ''
-    ].join('\n')
+      'stash@{0}\x00aaa111\x00WIP on main: 1234abc Fix the thing\x002 hours ago\x00',
+      'stash@{1}\x00bbb222\x00On feature/x: my named stash\x003 days ago\x00'
+    ].join('')
     const entries = parseStashList(out)
     expect(entries).toHaveLength(2)
     expect(entries[0]).toEqual({
@@ -27,8 +28,14 @@ describe('parseStashList', () => {
     expect(entries[1].message).toBe('my named stash')
   })
 
-  test('ignores malformed lines', () => {
+  test('survives messages containing the old field separators', () => {
+    const out = 'stash@{0}\0ccc333\0On main: weird \x1f\x1e chars\0just now\0'
+    expect(parseStashList(out)[0].message).toBe('weird \x1f\x1e chars')
+  })
+
+  test('ignores malformed output', () => {
     expect(parseStashList('garbage\n\n')).toHaveLength(0)
+    expect(parseStashList('')).toHaveLength(0)
   })
 })
 
