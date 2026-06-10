@@ -1,8 +1,10 @@
 // Review a stash like a commit: a stash *is* a commit whose diff against its
 // first parent is exactly the stashed change, so this dialog reuses the
-// commit-files and commit-diff machinery with the stash's sha. Files on the
-// left (same list UI as Changes/History), the full diff on the right, with
-// Apply / Pop / Drop at hand.
+// commit-diff machinery with the stash's sha. Untracked files are the one
+// twist — `git stash push -u` stores them in a separate parentless commit
+// (the stash's third parent), so they're listed via the stashFiles IPC and
+// diffed against that commit instead. Files on the left (same list UI as
+// Changes/History), the full diff on the right, with Apply / Pop / Drop.
 
 import type { ChangedFile, DiffPayload, StashEntry } from '@shared/types'
 import { useEffect, useRef, useState } from 'react'
@@ -44,8 +46,11 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
     const id = ++diffReq.current
     setSelected(file.path)
     setDiffLoading(true)
+    // Untracked entries live in the stash's third parent (a root commit), so
+    // diffing that commit shows them as their full added contents.
+    const hash = file.status === 'untracked' ? `${stash.sha}^3` : stash.sha
     window.gitgrove
-      .commitDiff(repoPath, stash.sha, file)
+      .commitDiff(repoPath, hash, file)
       .then((payload) => {
         if (id === diffReq.current) setDiff(payload)
       })
@@ -58,7 +63,7 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
   // biome-ignore lint/correctness/useExhaustiveDependencies: load once per stash
   useEffect(() => {
     window.gitgrove
-      .commitFiles(repoPath, stash.sha)
+      .stashFiles(repoPath, stash.sha)
       .then((list) => {
         setFiles(list)
         if (list.length > 0) loadDiff(list[0])
@@ -92,7 +97,7 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
             Pop
           </button>
           <button className="btn-ghost btn-ghost--sm is-danger-text" onClick={onDrop}>
-            Drop
+            Delete
           </button>
           <button className="icon-btn" title="Close" onClick={onClose}>
             <Icon.Close size={16} />
@@ -106,7 +111,7 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
                 <div className="spinner" />
               </div>
             ) : files.length === 0 ? (
-              <div className="list-empty">This stash has no tracked file changes.</div>
+              <div className="list-empty">This stash has no file changes.</div>
             ) : (
               <WorkingFileList
                 files={files}

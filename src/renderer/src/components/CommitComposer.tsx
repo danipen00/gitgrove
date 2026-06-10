@@ -1,14 +1,18 @@
 // The commit box at the bottom of the Changes sidebar: summary + optional
-// description and one plain commit button whose label shows what will happen
-// — how many files, how large, which branch. The Commit | Amend mode lives in
-// the row above (next to the stash chips, owned by ChangesView) and arrives
-// as a prop: switching to Amend pre-fills HEAD's message here, switching back
-// restores the draft. Commit signing follows the user's git config — commits
-// run through the real `git commit` in the main process.
+// description and a split action button whose label shows what will happen
+// — how many files, how large, which branch — with a caret half that opens
+// the Commit | Amend | Stash mode popover (owned by ChangesView). The mode
+// arrives as a prop:
+// switching to Amend pre-fills HEAD's message here, switching back restores
+// the draft; Stash turns the box into a stash composer (message optional,
+// the checked files are stashed). Commit signing follows the user's git
+// config — commits run through the real `git commit` in the main process.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatBytes, pluralize } from '../lib/format'
 import { Icon } from '../lib/icons'
+
+export type CommitMode = 'commit' | 'amend' | 'stash'
 
 interface Props {
   repoPath: string
@@ -20,11 +24,21 @@ interface Props {
   commitSize: number | null
   /** Disabled while another operation runs. */
   busy: boolean
-  /** Commit mode (controlled by the switch in the row above). */
-  amend: boolean
-  /** True while a commit is running — reported up so the mode switch can lock. */
+  /** Composer mode (controlled by the switch in the row above). */
+  mode: CommitMode
+  /** Fixed height (px) of the description box — driven by the panel splitter. */
+  descriptionHeight: number
+  /** Receives the description textarea node, for live splitter previews. */
+  descriptionRef?: (el: HTMLTextAreaElement | null) => void
+  /** Receives the mode button node — the mode popover anchors to it. */
+  modeMenuRef: (el: HTMLButtonElement | null) => void
+  /** Open the mode popover (Commit / Amend / Stash), owned by ChangesView. */
+  onOpenModeMenu: () => void
+  /** True while a commit/stash is running — reported up so the mode switch can lock. */
   onCommittingChange: (committing: boolean) => void
   onCommit: (message: string, amend: boolean) => Promise<boolean>
+  /** Stash the checked files with an optional message. */
+  onStash: (message: string) => Promise<boolean>
 }
 
 export function CommitComposer({
@@ -33,9 +47,14 @@ export function CommitComposer({
   includedCount,
   commitSize,
   busy,
-  amend,
+  mode,
+  descriptionHeight,
+  descriptionRef,
+  modeMenuRef,
+  onOpenModeMenu,
   onCommittingChange,
-  onCommit
+  onCommit,
+  onStash
 }: Props) {
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
@@ -61,10 +80,12 @@ export function CommitComposer({
   }, [repoPath])
 
   // React to the (controlled) mode: entering Amend saves the draft and
-  // pre-fills HEAD's message; leaving it restores the draft.
-  const prevAmend = useRef(amend)
+  // pre-fills HEAD's message; leaving it restores the draft. Stash shares
+  // the draft — a half-written commit message survives a quick stash detour.
+  const prevAmend = useRef(mode === 'amend')
   // biome-ignore lint/correctness/useExhaustiveDependencies: only the amend flip should trigger this
   useEffect(() => {
+    const amend = mode === 'amend'
     if (amend === prevAmend.current) return
     prevAmend.current = amend
     if (amend) {
@@ -83,19 +104,24 @@ export function CommitComposer({
       setDescription(draft?.description ?? '')
       draftRef.current = null
     }
-  }, [amend])
+  }, [mode])
 
-  const canCommit =
-    summary.trim().length > 0 && (includedCount > 0 || amend) && !busy && !committing
+  const amend = mode === 'amend'
+  const stash = mode === 'stash'
 
-  const commit = useCallback(async () => {
-    if (!canCommit) return
+  // Stash: message optional, but something must be checked. Commit: summary
+  // required, something checked (unless amending — message-only amends are fine).
+  const canAct = stash
+    ? includedCount > 0 && !busy && !committing
+    : summary.trim().length > 0 && (includedCount > 0 || amend) && !busy && !committing
+
+  const act = useCallback(async () => {
+    if (!canAct) return
     setCommitting(true)
     try {
-      const message = description.trim()
-        ? `${summary.trim()}\n\n${description.trim()}`
-        : summary.trim()
-      const ok = await onCommit(message, amend)
+      // Joined generically: a stash may have a description with no summary.
+      const message = [summary.trim(), description.trim()].filter(Boolean).join('\n\n')
+      const ok = stash ? await onStash(message) : await onCommit(message, amend)
       if (ok) {
         setSummary('')
         setDescription('')
@@ -104,28 +130,52 @@ export function CommitComposer({
     } finally {
       setCommitting(false)
     }
-  }, [canCommit, summary, description, amend, onCommit])
+  }, [canAct, summary, description, amend, stash, onCommit, onStash])
 
-  // Cmd/Ctrl+Enter commits from either field.
+  // Cmd/Ctrl+Enter acts from either field.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault()
-      commit()
+      act()
     }
   }
 
-  const label = amend
-    ? 'Amend last commit'
-    : includedCount > 0
-      ? `Commit ${pluralize(includedCount, 'file')} to ${branch}` +
-        (commitSize !== null && commitSize > 0 ? ` · ${formatBytes(commitSize)}` : '')
-      : `Commit to ${branch}`
+  // Why the action button is unavailable, surfaced as its tooltip so a disabled
+  // button explains itself instead of silently refusing. null = ready to act.
+  // (Rendered via aria-disabled, not the native `disabled` attr, so the button
+  // still receives hover events and the tooltip can show — the click stays
+  // guarded by `canAct` inside `act`.)
+  const disabledReason =
+    busy || committing
+      ? null
+      : stash
+        ? includedCount === 0
+          ? 'Select some files to stash'
+          : null
+        : includedCount === 0 && !amend
+          ? 'Select some changes to commit'
+          : summary.trim().length === 0
+            ? 'Write a commit summary to continue'
+            : null
+
+  const size = commitSize !== null && commitSize > 0 ? ` · ${formatBytes(commitSize)}` : ''
+  const label = stash
+    ? includedCount > 0
+      ? `Stash ${pluralize(includedCount, 'file')}${size}`
+      : 'Stash'
+    : amend
+      ? 'Amend last commit'
+      : includedCount > 0
+        ? `Commit ${pluralize(includedCount, 'file')} to ${branch}${size}`
+        : `Commit to ${branch}`
 
   return (
     <div className="composer">
       <input
         className="composer__summary"
-        placeholder={amend ? 'Amend commit summary' : 'Commit summary'}
+        placeholder={
+          stash ? 'Stash message (optional)' : amend ? 'Amend commit summary' : 'Commit summary'
+        }
         value={summary}
         maxLength={500}
         disabled={busy || committing}
@@ -133,27 +183,48 @@ export function CommitComposer({
         onKeyDown={onKeyDown}
       />
       <textarea
+        ref={descriptionRef}
         className="composer__description"
         placeholder="Description (optional)"
         value={description}
-        rows={description ? 3 : 1}
+        style={{ height: descriptionHeight }}
         disabled={busy || committing}
         onChange={(e) => setDescription(e.target.value)}
         onKeyDown={onKeyDown}
       />
-      <button
-        className="btn-primary composer__commit"
-        disabled={!canCommit}
-        data-tip={
-          includedCount === 0 && !amend
-            ? 'Select some changes first'
-            : 'Commit selected changes (⌘↵)'
-        }
-        onClick={commit}
-      >
-        {committing ? <span className="about__spinner" aria-hidden /> : <Icon.Check size={14} />}
-        <span className="composer__commit-label">{label}</span>
-      </button>
+      <div className="composer__actions">
+        <button
+          className="btn-primary composer__commit"
+          aria-disabled={!canAct}
+          data-tip={
+            disabledReason ?? (stash ? 'Stash selected files (⌘↵)' : 'Commit selected changes (⌘↵)')
+          }
+          onClick={act}
+        >
+          {committing ? (
+            <span className="about__spinner" aria-hidden />
+          ) : stash ? (
+            <Icon.Stash size={14} />
+          ) : amend ? (
+            <Icon.Pencil size={14} />
+          ) : (
+            <Icon.Changes size={14} />
+          )}
+          <span className="composer__commit-label">{label}</span>
+        </button>
+        <button
+          type="button"
+          ref={modeMenuRef}
+          className="composer__mode-btn"
+          disabled={busy || committing}
+          aria-haspopup="menu"
+          aria-label="Change mode"
+          data-tip="Mode: Commit · Amend · Stash"
+          onClick={onOpenModeMenu}
+        >
+          <Icon.Chevron size={12} />
+        </button>
+      </div>
     </div>
   )
 }

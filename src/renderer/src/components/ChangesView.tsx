@@ -11,11 +11,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { pluralize } from '../lib/format'
 import { Icon } from '../lib/icons'
 import type { ResolvedTheme } from '../lib/theme'
-import { CommitComposer } from './CommitComposer'
+import { CommitComposer, type CommitMode } from './CommitComposer'
 import type { ContextMenuItem } from './ContextMenu'
-import { ConfirmDialog, PromptDialog } from './Dialog'
+import { ConfirmDialog } from './Dialog'
+import { usePersistentState } from '../lib/persist'
 import { useFileFilter } from './FileFilter'
 import { Popover } from './Popover'
+import { Resizer } from './Resizer'
 import { StashReviewDialog } from './StashReviewDialog'
 import { WorkingFileList } from './WorkingFileList'
 
@@ -42,6 +44,8 @@ interface Props {
   /** Run a mutating op (serialized, auto-refresh, errors → toast). True on success. */
   runOp: (fn: () => Promise<unknown>) => Promise<boolean>
   onCommit: (message: string, amend: boolean) => Promise<boolean>
+  /** Stash the checked files (optional message). True on success. */
+  onStash: (message: string) => Promise<boolean>
 }
 
 const OP_LABEL: Record<NonNullable<RepoState['op']>, string> = {
@@ -67,7 +71,8 @@ export function ChangesView({
   commitSize,
   theme,
   runOp,
-  onCommit
+  onCommit,
+  onStash
 }: Props) {
   const gg = window.gitgrove
 
@@ -105,15 +110,31 @@ export function ChangesView({
     all: boolean
   } | null>(null)
   const [stashOpen, setStashOpen] = useState(false)
-  const [stashPrompt, setStashPrompt] = useState(false)
   const [reviewStash, setReviewStash] = useState<StashEntry | null>(null)
   const stashAnchor = useRef<HTMLButtonElement>(null)
 
-  // Commit mode (Commit | Amend) — lives in the stash row, drives the composer.
-  const [amend, setAmend] = useState(false)
+  // Composer mode (Commit | Amend | Stash): the action button is a split
+  // button whose caret half opens this popover to switch modes.
+  const [mode, setMode] = useState<CommitMode>('commit')
+  const [modeOpen, setModeOpen] = useState(false)
+  const modeAnchor = useRef<HTMLButtonElement>(null)
   const [committing, setCommitting] = useState(false)
   // biome-ignore lint/correctness/useExhaustiveDependencies: repoPath is the intentional reset trigger
-  useEffect(() => setAmend(false), [repoPath])
+  useEffect(() => setMode('commit'), [repoPath])
+
+  const modeMeta = {
+    commit: { label: 'Commit', sub: `Create a new commit on ${branch}`, MIcon: Icon.Check },
+    amend: { label: 'Amend', sub: 'Replace the last commit with this one', MIcon: Icon.Pencil },
+    stash: { label: 'Stash', sub: 'Set the checked files aside for later', MIcon: Icon.Stash }
+  } as const
+
+  // Height of the composer's description box, driven by the splitter above
+  // the composer (the only stretchy part — everything else is fixed, so the
+  // panel never jumps when switching modes). Live drags write to the DOM
+  // node directly; state commits on release and persists across sessions.
+  const [storedDescHeight, setDescHeight] = usePersistentState('gg.composerDescHeight', 96)
+  const descHeight = Math.min(300, Math.max(30, storedDescHeight))
+  const descEl = useRef<HTMLTextAreaElement | null>(null)
 
   const discard = async () => {
     if (!confirmDiscard) return
@@ -308,55 +329,69 @@ export function ChangesView({
         )}
       </div>
 
-      <div className="changes__stash-row">
-        <button
-          ref={stashAnchor}
-          className="stash-chip"
-          disabled={busy}
-          data-tip={stashes.length > 0 ? 'Stashes' : 'No stashes yet'}
-          onClick={() => (stashes.length > 0 ? setStashOpen(true) : setStashPrompt(true))}
-        >
-          <Icon.Stash size={14} />
-          {stashes.length > 0
-            ? pluralize(stashes.length, 'stash').replace('stashs', 'stashes')
-            : 'Stash'}
-        </button>
-        {files.length > 0 && (
+      <Resizer
+        orientation="y"
+        invert
+        size={descHeight}
+        min={30}
+        max={300}
+        onPreview={(h) => {
+          if (descEl.current) descEl.current.style.height = `${h}px`
+        }}
+        onCommit={setDescHeight}
+      />
+      {stashes.length > 0 && (
+        <div className="composer-head">
+          <span className="changes__stash-spacer" />
           <button
+            ref={stashAnchor}
             className="stash-chip"
             disabled={busy}
-            data-tip="Stash all changes"
-            onClick={() => setStashPrompt(true)}
+            data-tip="Review stashes"
+            onClick={() => setStashOpen(true)}
           >
-            <Icon.Plus size={13} /> Stash changes…
-          </button>
-        )}
-        <span className="changes__stash-spacer" />
-        <div className="segmented segmented--sm" role="radiogroup" aria-label="Commit mode">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={!amend}
-            className={amend ? '' : 'is-active'}
-            disabled={busy || committing}
-            data-tip={`Create a new commit on ${branch}`}
-            onClick={() => setAmend(false)}
-          >
-            Commit
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={amend}
-            className={amend ? 'is-active' : ''}
-            disabled={busy || committing}
-            data-tip="Replace the last commit with this one"
-            onClick={() => setAmend(true)}
-          >
-            Amend
+            <Icon.Stash size={14} />
+            {pluralize(stashes.length, 'stash').replace('stashs', 'stashes')}
           </button>
         </div>
-      </div>
+      )}
+
+      <Popover
+        anchor={modeAnchor.current}
+        open={modeOpen}
+        onClose={() => setModeOpen(false)}
+        width={250}
+      >
+        <div className="popover__list">
+          <div className="popover__group-label">Mode</div>
+          {(['commit', 'amend', 'stash'] as const).map((m) => {
+            const { label, sub, MIcon } = modeMeta[m]
+            return (
+              <button
+                key={m}
+                className={`popover__item${mode === m ? ' is-active' : ''}`}
+                onClick={() => {
+                  setMode(m)
+                  setModeOpen(false)
+                }}
+              >
+                <span className="icon-muted">
+                  <MIcon size={15} />
+                </span>
+                <span className="popover__item-main">
+                  <span className="popover__item-title">{label}</span>
+                  <span className="popover__item-sub">{sub}</span>
+                </span>
+                {mode === m && (
+                  <span className="icon-muted" style={{ color: 'var(--accent)' }}>
+                    <Icon.Check size={15} />
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </Popover>
 
       <CommitComposer
         repoPath={repoPath}
@@ -364,11 +399,24 @@ export function ChangesView({
         includedCount={includedCount}
         commitSize={commitSize}
         busy={busy}
-        amend={amend}
+        mode={mode}
+        descriptionHeight={descHeight}
+        descriptionRef={(el) => {
+          descEl.current = el
+        }}
+        modeMenuRef={(el) => {
+          modeAnchor.current = el
+        }}
+        onOpenModeMenu={() => setModeOpen(true)}
         onCommittingChange={setCommitting}
         onCommit={async (message, withAmend) => {
           const ok = await onCommit(message, withAmend)
-          if (ok) setAmend(false)
+          if (ok) setMode('commit')
+          return ok
+        }}
+        onStash={async (message) => {
+          const ok = await onStash(message)
+          if (ok) setMode('commit')
           return ok
         }}
       />
@@ -412,7 +460,7 @@ export function ChangesView({
                 </button>
                 <button
                   className="section-head__action"
-                  data-tip="Apply and drop"
+                  data-tip="Apply and delete"
                   onClick={() => {
                     setStashOpen(false)
                     runOp(() => gg.stashApply(repoPath, s.index, true))
@@ -450,36 +498,6 @@ export function ChangesView({
             runOp(() => gg.stashDrop(repoPath, reviewStash.index))
           }}
           onClose={() => setReviewStash(null)}
-        />
-      )}
-
-      {stashPrompt && (
-        <PromptDialog
-          title="Stash all changes"
-          confirmLabel="Stash"
-          fields={[
-            {
-              key: 'message',
-              label: 'Message (optional)',
-              placeholder: 'What were you working on?'
-            },
-            {
-              key: 'untracked',
-              label: 'Include untracked files',
-              checkbox: true,
-              initialChecked: true
-            }
-          ]}
-          onSubmit={(values, checks) => {
-            setStashPrompt(false)
-            runOp(() =>
-              gg.stashSave(repoPath, {
-                message: values.message,
-                includeUntracked: checks.untracked
-              })
-            )
-          }}
-          onCancel={() => setStashPrompt(false)}
         />
       )}
 

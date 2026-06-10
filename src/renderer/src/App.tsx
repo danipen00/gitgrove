@@ -17,6 +17,7 @@ import type {
 } from '@shared/types'
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
 import { AboutDialog } from './components/AboutDialog'
+import { usePersistentState } from './lib/persist'
 import { ChangesView } from './components/ChangesView'
 import { CloneDialog } from './components/CloneDialog'
 import { CommitSummary } from './components/CommitSummary'
@@ -59,29 +60,6 @@ type Modal =
   | { kind: 'worktrees' }
   | { kind: 'submodules' }
   | { kind: 'stash' }
-
-function usePersistentState<T>(key: string, initial: T): [T, (v: T) => void] {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const raw = localStorage.getItem(key)
-      return raw ? (JSON.parse(raw) as T) : initial
-    } catch {
-      return initial
-    }
-  })
-  const set = useCallback(
-    (v: T) => {
-      setValue(v)
-      try {
-        localStorage.setItem(key, JSON.stringify(v))
-      } catch {
-        /* ignore */
-      }
-    },
-    [key]
-  )
-  return [value, set]
-}
 
 export function App() {
   const [repo, setRepo] = useState<RepoSummary | null>(null)
@@ -593,6 +571,40 @@ export function App() {
           all,
           paths: all ? [] : paths,
           patches
+        })
+      )
+      if (ok) setSelections(new Map())
+      return ok
+    },
+    [runOp, selections]
+  )
+
+  /**
+   * Stash the checked files (stash granularity is the file — partially
+   * included files are stashed whole). When everything is checked, plain
+   * `git stash push -u` runs with no pathspec; otherwise the checked paths
+   * stream to git over stdin, untracked included.
+   */
+  const doStash = useCallback(
+    async (message: string) => {
+      const repoPath = repoRef.current?.path
+      if (!repoPath) return false
+      const paths: string[] = []
+      let all = true
+      for (const f of changesRef.current) {
+        if (f.status === 'conflicted') {
+          all = false
+          continue
+        }
+        if ((selections.get(f.path) ?? 'all') === 'none') all = false
+        else paths.push(f.path)
+      }
+      if (paths.length === 0) return false
+      const ok = await runOp(() =>
+        window.gitgrove.stashSave(repoPath, {
+          message,
+          includeUntracked: true,
+          paths: all ? undefined : paths
         })
       )
       if (ok) setSelections(new Map())
@@ -1397,6 +1409,7 @@ export function App() {
                 theme={theme}
                 runOp={runOp}
                 onCommit={doCommit}
+                onStash={doStash}
               />
             ) : (
               <HistoryView

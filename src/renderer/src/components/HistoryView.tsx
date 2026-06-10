@@ -2,6 +2,7 @@ import type { ChangedFile, Commit } from '@shared/types'
 import { useEffect, useRef, useState } from 'react'
 import { parseRefs, pluralize } from '../lib/format'
 import { Icon } from '../lib/icons'
+import { usePersistentState } from '../lib/persist'
 import { Avatar } from './Avatar'
 import { RefChip } from './CommitSummary'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
@@ -36,7 +37,7 @@ export function HistoryView({
   onSelectFile,
   commitMenuFor
 }: Props) {
-  const [filesHeight, setFilesHeight] = useState(360)
+  const [filesHeight, setFilesHeight] = usePersistentState('gg.historyFilesHeight', 360)
   // Right-clicked commit: cursor position + menu items for that commit.
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
   // Name + type filter over the selected commit's files (same UI as Changes;
