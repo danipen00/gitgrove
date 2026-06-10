@@ -94,6 +94,10 @@ function DiffViewerImpl({
   // Full file contents let us render an expandable diff (MultiFileDiff); without
   // them (binary / too large / unreadable) we fall back to the patch-only view.
   const canExpand = diff?.oldContents != null && diff?.newContents != null
+  // A genuinely empty file (e.g. a freshly added 0-byte file) has no lines on
+  // either side, so the diff renderer would paint a blank pane — show a clear
+  // empty state instead.
+  const isEmptyFile = canExpand && diff?.oldContents === '' && diff?.newContents === ''
 
   const oldFile = useMemo(
     () => ({ name: diff?.oldPath ?? diff?.path ?? '', contents: diff?.oldContents ?? '' }),
@@ -122,9 +126,7 @@ function DiffViewerImpl({
   )
 
   const blockPatch = (blockIndex: number): string | null =>
-    meta && diff && blocks[blockIndex]
-      ? buildBlockPatch(diff.path, meta, blocks, blockIndex)
-      : null
+    meta && diff && blocks[blockIndex] ? buildBlockPatch(diff.path, meta, blocks, blockIndex) : null
 
   const isBlockSelected = (blockIndex: number): boolean => {
     const sel = selectionActions?.selection ?? 'all'
@@ -269,7 +271,16 @@ function DiffViewerImpl({
             <p>{diff.notice}</p>
           </div>
         )}
-        {!loading && diff && !diff.notice && diff.patch && selectable && meta && (
+        {!loading && diff && !diff.notice && isEmptyFile && (
+          <div className="center-state">
+            <div className="icon-ring">
+              <Icon.Diff size={22} />
+            </div>
+            <h3>Empty file</h3>
+            <p>This file has no content.</p>
+          </div>
+        )}
+        {!loading && diff && !diff.notice && !isEmptyFile && diff.patch && selectable && meta && (
           <FileDiff<BlockRef>
             key={`${diff.path}:${theme}`}
             fileDiff={meta}
@@ -280,26 +291,38 @@ function DiffViewerImpl({
             style={{ minHeight: '100%' }}
           />
         )}
-        {!loading && diff && !diff.notice && diff.patch && !selectable && canExpand && (
-          <MultiFileDiff
-            key={`${diff.path}:${theme}`}
-            oldFile={oldFile}
-            newFile={newFile}
-            disableWorkerPool
-            options={diffOptions}
-            style={{ minHeight: '100%' }}
-          />
-        )}
-        {!loading && diff && !diff.notice && diff.patch && !selectable && !canExpand && (
-          <PatchDiff
-            key={`${diff.path}:${theme}`}
-            patch={diff.patch}
-            disableWorkerPool
-            options={diffOptions}
-            style={{ minHeight: '100%' }}
-          />
-        )}
-        {!loading && diff && !diff.notice && !diff.patch && (
+        {!loading &&
+          diff &&
+          !diff.notice &&
+          !isEmptyFile &&
+          diff.patch &&
+          !selectable &&
+          canExpand && (
+            <MultiFileDiff
+              key={`${diff.path}:${theme}`}
+              oldFile={oldFile}
+              newFile={newFile}
+              disableWorkerPool
+              options={diffOptions}
+              style={{ minHeight: '100%' }}
+            />
+          )}
+        {!loading &&
+          diff &&
+          !diff.notice &&
+          !isEmptyFile &&
+          diff.patch &&
+          !selectable &&
+          !canExpand && (
+            <PatchDiff
+              key={`${diff.path}:${theme}`}
+              patch={diff.patch}
+              disableWorkerPool
+              options={diffOptions}
+              style={{ minHeight: '100%' }}
+            />
+          )}
+        {!loading && diff && !diff.notice && !isEmptyFile && !diff.patch && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Check size={22} />
