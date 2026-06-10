@@ -1420,6 +1420,7 @@ export function App() {
               />
             ) : (
               <HistoryView
+                repoPath={repo.path}
                 commits={commits}
                 loading={commitsLoading}
                 selectedCommit={selectedCommit}

@@ -6,11 +6,13 @@ import { usePersistentState } from '../lib/persist'
 import { Avatar } from './Avatar'
 import { RefChip } from './CommitSummary'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
+import { copyPathItems } from './copyPathItems'
 import { useFileFilter } from './FileFilter'
 import { Resizer } from './Resizer'
 import { WorkingFileList } from './WorkingFileList'
 
 interface Props {
+  repoPath: string
   commits: Commit[]
   loading: boolean
   selectedCommit: Commit | null
@@ -27,6 +29,7 @@ interface Props {
 const MAX_LIST_REFS = 2
 
 export function HistoryView({
+  repoPath,
   commits,
   loading,
   selectedCommit,
@@ -169,14 +172,7 @@ export function HistoryView({
                   // Read-only list: deselecting everything keeps the last diff.
                   onSelect={(path) => path !== null && onSelectFile(path)}
                   highlight={filterQuery}
-                  contextMenuFor={(selected) => [
-                    {
-                      label: selected.length > 1 ? 'Copy Paths' : 'Copy Path',
-                      icon: <Icon.Copy size={15} />,
-                      onClick: () =>
-                        window.gitgrove.clipboardWrite(selected.map((f) => f.path).join('\n'))
-                    }
-                  ]}
+                  contextMenuFor={(selected) => copyPathItems(selected, repoPath)}
                 />
               )}
             </div>

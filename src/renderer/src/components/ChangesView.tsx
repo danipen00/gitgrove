@@ -14,6 +14,7 @@ import { usePersistentState } from '../lib/persist'
 import type { ResolvedTheme } from '../lib/theme'
 import { CommitComposer, type CommitMode } from './CommitComposer'
 import type { ContextMenuItem } from './ContextMenu'
+import { copyPathItems } from './copyPathItems'
 import { ConfirmDialog } from './Dialog'
 import type { FileSelection } from './DiffViewer'
 import { useFileFilter } from './FileFilter'
@@ -205,11 +206,7 @@ export function ChangesView({
           {}
         )
       }
-      items.push({
-        label: 'Copy Paths',
-        icon: <Icon.Copy size={15} />,
-        onClick: () => gg.clipboardWrite(selected.map((f) => f.path).join('\n'))
-      })
+      items.push(...copyPathItems(selected, repoPath))
       return items
     }
     const file = selected[0]
@@ -237,11 +234,8 @@ export function ChangesView({
           icon: <Icon.External size={15} />,
           onClick: () => gg.openFileInEditor(repoPath, file.path)
         },
-        {
-          label: 'Copy Path',
-          icon: <Icon.Copy size={15} />,
-          onClick: () => gg.clipboardWrite(file.path)
-        }
+        {},
+        ...copyPathItems([file], repoPath)
       ]
     }
     const included = (selections.get(file.path) ?? 'all') !== 'none'
@@ -269,11 +263,8 @@ export function ChangesView({
         icon: <Icon.External size={15} />,
         onClick: () => gg.openFileInEditor(repoPath, file.path)
       },
-      {
-        label: 'Copy Path',
-        icon: <Icon.Copy size={15} />,
-        onClick: () => gg.clipboardWrite(file.path)
-      }
+      {},
+      ...copyPathItems([file], repoPath)
     ]
   }
 

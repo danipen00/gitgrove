@@ -429,10 +429,12 @@ button {
   -webkit-app-region: no-drag;
 }
 
-/* App-wide hover tooltip (see TooltipLayer). */
+/* App-wide hover tooltip (see TooltipLayer). Sits above everything — including
+   modals (70) and context menus (80) — so a truncated label always reveals
+   itself wherever it's hovered. */
 .tooltip {
   position: fixed;
-  z-index: 60;
+  z-index: 90;
   max-width: min(380px, calc(100vw - 16px));
   padding: 5px 9px;
   font-size: 11.5px;
@@ -651,15 +653,16 @@ button {
 .ctx-menu__backdrop {
   position: fixed;
   inset: 0;
-  /* Above the recents popover (41) so right-clicking a row layers cleanly. */
-  z-index: 49;
+  /* Above modals (70) so a right-click menu raised from a file list inside a
+     dialog (e.g. Stash review) layers over the backdrop instead of behind it. */
+  z-index: 79;
   /* See .popover-backdrop: override the toolbar drag region so clicks there
      dismiss the menu instead of being eaten as a window-drag gesture. */
   -webkit-app-region: no-drag;
 }
 .ctx-menu {
   position: fixed;
-  z-index: 50;
+  z-index: 80;
   min-width: 196px;
   padding: 5px;
   background: var(--bg-elevated);

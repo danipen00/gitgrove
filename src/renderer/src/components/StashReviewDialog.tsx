@@ -13,9 +13,13 @@ import { pluralize } from '../lib/format'
 import { Icon } from '../lib/icons'
 import { usePersistentState } from '../lib/persist'
 import type { ResolvedTheme } from '../lib/theme'
+import { copyPathItems } from './copyPathItems'
 import { type DiffMode, DiffViewer } from './DiffViewer'
+import { useFileFilter } from './FileFilter'
 import { Resizer } from './Resizer'
 import { WorkingFileList } from './WorkingFileList'
+
+const NO_FILES: ChangedFile[] = []
 
 interface Props {
   repoPath: string
@@ -37,6 +41,15 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
   const [filesWidth, setFilesWidth] = usePersistentState('gg.stashFilesWidth', 300)
   const filesRef = useRef<HTMLDivElement>(null)
   const diffReq = useRef(0)
+
+  // Name + type filter over the stash's files — same UI/behaviour as the
+  // Changes and History lists.
+  const {
+    filtered: visibleFiles,
+    query: filterQuery,
+    active: filterActive,
+    bar: filterBar
+  } = useFileFilter(files ?? NO_FILES)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -91,7 +104,9 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
             <h2>{stash.message || `stash@{${stash.index}}`}</h2>
             <span>
               {stash.relativeDate}
-              {files ? ` · ${pluralize(files.length, 'file')}` : ''}
+              {files
+                ? ` · ${filterActive ? `${visibleFiles.length} of ${files.length}` : pluralize(files.length, 'file')}`
+                : ''}
             </span>
           </div>
           <button className="btn-ghost btn-ghost--sm" onClick={() => onApply(false)}>
@@ -117,21 +132,23 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
             ) : files.length === 0 ? (
               <div className="list-empty">This stash has no file changes.</div>
             ) : (
-              <WorkingFileList
-                files={files}
-                selectedPath={selected}
-                onSelect={(path) => {
-                  const file = files.find((f) => f.path === path)
-                  if (file) loadDiff(file)
-                }}
-                contextMenuFor={(sel) => [
-                  {
-                    label: sel.length > 1 ? 'Copy Paths' : 'Copy Path',
-                    icon: <Icon.Copy size={15} />,
-                    onClick: () => window.gitgrove.clipboardWrite(sel.map((f) => f.path).join('\n'))
-                  }
-                ]}
-              />
+              <>
+                {filterBar}
+                {visibleFiles.length === 0 ? (
+                  <div className="list-empty">No files match the filter.</div>
+                ) : (
+                  <WorkingFileList
+                    files={visibleFiles}
+                    selectedPath={selected}
+                    onSelect={(path) => {
+                      const file = files.find((f) => f.path === path)
+                      if (file) loadDiff(file)
+                    }}
+                    highlight={filterQuery}
+                    contextMenuFor={(sel) => copyPathItems(sel, repoPath)}
+                  />
+                )}
+              </>
             )}
           </div>
           <Resizer
