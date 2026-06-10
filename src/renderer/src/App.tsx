@@ -127,6 +127,10 @@ export function App() {
 
   const [commits, setCommits] = useState<Commit[]>([])
   const [commitsLoading, setCommitsLoading] = useState(false)
+  // Infinite scroll: whether older commits may exist past what's loaded, and
+  // whether a "load more" page is currently in flight (bottom spinner).
+  const [logHasMore, setLogHasMore] = useState(false)
+  const [commitsLoadingMore, setCommitsLoadingMore] = useState(false)
   const [logLoaded, setLogLoaded] = useState(false)
   const [selectedCommit, setSelectedCommit] = useState<Commit | null>(null)
   const [commitFiles, setCommitFiles] = useState<ChangedFile[]>([])
@@ -171,6 +175,17 @@ export function App() {
   const commitFilesHashRef = useRef<string | null>(null)
   const logLoadedRef = useRef(logLoaded)
   logLoadedRef.current = logLoaded
+  // Mirrors for the pager: read the latest list/`hasMore` without re-creating
+  // `loadMoreLog` (its identity stays stable across appends).
+  const commitsRef = useRef<Commit[]>(commits)
+  commitsRef.current = commits
+  const logHasMoreRef = useRef(logHasMore)
+  logHasMoreRef.current = logHasMore
+  // Re-entrancy guard for the pager + a token so a full log reload (branch
+  // switch, refresh) invalidates any in-flight "load more" page: appending a
+  // stale page from another branch would corrupt the list.
+  const loadingMoreRef = useRef(false)
+  const logReq = useRef(0)
   const branchRef = useRef<BranchInfo | null>(branch)
   branchRef.current = branch
   const syncRef = useRef<SyncStatus | null>(sync)
@@ -245,17 +260,62 @@ export function App() {
     if (repoPath) loadBranches(repoPath)?.catch(() => {})
   }, [loadBranches])
 
-  const loadLog = useCallback(async (repoPath: string, ref?: string) => {
-    setCommitsLoading(true)
+  const loadLog = useCallback(
+    async (repoPath: string, ref?: string, opts?: { keepCount?: boolean }) => {
+      // `keepCount` (watcher/post-op refresh): re-fetch everything the user has
+      // already paged in, so the list never shrinks back to the first page and
+      // yanks their scroll position. Fresh loads reset to one page.
+      const limit = opts?.keepCount ? Math.max(LOG_LIMIT, commitsRef.current.length) : LOG_LIMIT
+      const id = ++logReq.current
+      setCommitsLoading(true)
+      try {
+        const log = await window.gitgrove.log(repoPath, { limit, ref })
+        if (id === logReq.current) {
+          setCommits(log)
+          // A short page means we hit the root commit — nothing left to page in.
+          setLogHasMore(log.length >= limit)
+          setLogLoaded(true)
+        }
+        return log
+      } finally {
+        if (id === logReq.current) setCommitsLoading(false)
+      }
+    },
+    []
+  )
+
+  /** Appends the next page of history when the list scrolls near the bottom. */
+  const loadMoreLog = useCallback(async () => {
+    const repoPath = repoRef.current?.path
+    if (!repoPath || loadingMoreRef.current || !logHasMoreRef.current) return
+    loadingMoreRef.current = true
+    const id = logReq.current
+    setCommitsLoadingMore(true)
     try {
-      const log = await window.gitgrove.log(repoPath, { limit: LOG_LIMIT, ref })
-      setCommits(log)
-      setLogLoaded(true)
-      return log
+      const page = await window.gitgrove.log(repoPath, {
+        limit: LOG_LIMIT,
+        skip: commitsRef.current.length
+      })
+      // A reload (branch switch / refresh) raced us: drop this stale page.
+      if (id !== logReq.current) return
+      setLogHasMore(page.length >= LOG_LIMIT)
+      if (page.length > 0) {
+        setCommits((prev) => {
+          // `--skip` is offset-based, so a commit landing upstream mid-scroll
+          // shifts the window and can hand us rows we already have — dedupe to
+          // keep React keys (and the list) clean.
+          const seen = new Set(prev.map((c) => c.hash))
+          const fresh = page.filter((c) => !seen.has(c.hash))
+          return fresh.length > 0 ? [...prev, ...fresh] : prev
+        })
+      }
+    } catch (e) {
+      fail(e)
     } finally {
-      setCommitsLoading(false)
+      loadingMoreRef.current = false
+      setCommitsLoadingMore(false)
     }
-  }, [])
+  }, [fail])
 
   const loadWorkingDiff = useCallback(
     async (file: ChangedFile) => {
@@ -450,7 +510,7 @@ export function App() {
       if (logLoadedRef.current && !refreshLog) setLogLoaded(false)
       const [files] = await Promise.all([
         loadSnapshot(repoPath),
-        refreshLog ? loadLog(repoPath) : Promise.resolve(null)
+        refreshLog ? loadLog(repoPath, undefined, { keepCount: true }) : Promise.resolve(null)
       ])
       // Keep the working selection valid; only re-fetch its diff when the
       // Changes tab is actually showing it, so a background edit never clobbers
@@ -513,6 +573,7 @@ export function App() {
       setBranch(summary.branch)
       setChanges([])
       setCommits([])
+      setLogHasMore(false)
       setLogLoaded(false)
       setSelectedCommit(null)
       setCommitFiles([])
@@ -602,6 +663,7 @@ export function App() {
         setChangeSel(null)
         setSelections(new Map())
         setCommits([])
+        setLogHasMore(false)
         setLogLoaded(false)
         setDiff(null)
         diffReq.current++
@@ -1494,6 +1556,9 @@ export function App() {
                 repoPath={repo.path}
                 commits={commits}
                 loading={commitsLoading}
+                hasMore={logHasMore}
+                loadingMore={commitsLoadingMore}
+                onLoadMore={loadMoreLog}
                 selectedCommit={selectedCommit}
                 onSelectCommit={selectCommit}
                 commitFiles={commitFiles}

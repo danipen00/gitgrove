@@ -27,6 +27,12 @@ interface Props {
   onFileSelectionChange?: (count: number) => void
   /** Right-click menu builder for a commit row (checkout, cherry-pick, reset, …). */
   commitMenuFor?: (commit: Commit) => ContextMenuItem[]
+  /** Whether older commits exist past the loaded window (shows the sentinel). */
+  hasMore?: boolean
+  /** True while the next page is being fetched (bottom spinner). */
+  loadingMore?: boolean
+  /** Called when the list scrolls near the bottom; the parent appends a page. */
+  onLoadMore?: () => void
 }
 
 /** How many ref chips to show inline in the list before collapsing to "+N". */
@@ -43,7 +49,10 @@ export function HistoryView({
   selectedFilePath,
   onSelectFile,
   onFileSelectionChange,
-  commitMenuFor
+  commitMenuFor,
+  hasMore,
+  loadingMore,
+  onLoadMore
 }: Props) {
   const [filesHeight, setFilesHeight] = usePersistentState('gg.historyFilesHeight', 360)
   // Commit files usually load in a few ms — render a quiet blank panel during
@@ -75,6 +84,30 @@ export function HistoryView({
     activeRef.current?.scrollIntoView({ block: 'nearest' })
   }, [selectedCommit?.hash, filesHeight])
 
+  // Infinite scroll: an IntersectionObserver on a sentinel row instead of an
+  // onScroll handler — zero work per scrolled frame, fires once when the
+  // sentinel enters the 600px pre-fetch margin so the next page is usually in
+  // before the user reaches the end. `onLoadMore` lives in a ref so observer
+  // setup never depends on the callback's identity.
+  const listRef = useRef<HTMLDivElement>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const onLoadMoreRef = useRef(onLoadMore)
+  onLoadMoreRef.current = onLoadMore
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-observing per appended page is the point — a new observer reports the current intersection immediately, which keeps paging until the sentinel leaves the margin (fills tall viewports with no scroll event at all).
+  useEffect(() => {
+    const root = listRef.current
+    const sentinel = sentinelRef.current
+    if (!root || !sentinel || !hasMore) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) onLoadMoreRef.current?.()
+      },
+      { root, rootMargin: '0px 0px 600px 0px' }
+    )
+    io.observe(sentinel)
+    return () => io.disconnect()
+  }, [hasMore, commits.length])
+
   if (loading && commits.length === 0) {
     return (
       <div className="center-state">
@@ -97,7 +130,7 @@ export function HistoryView({
 
   return (
     <div className="history">
-      <div className="commit-list">
+      <div className="commit-list" ref={listRef}>
         {commits.map((commit) => {
           const refs = parseRefs(commit.refs)
           const overflow = refs.length - MAX_LIST_REFS
@@ -139,6 +172,11 @@ export function HistoryView({
             </button>
           )
         })}
+        {hasMore && (
+          <div ref={sentinelRef} className="commit-list__more" aria-hidden="true">
+            {loadingMore && <div className="spinner spinner--sm" />}
+          </div>
+        )}
       </div>
 
       {selectedCommit && (

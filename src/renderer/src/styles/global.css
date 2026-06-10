@@ -850,6 +850,15 @@ button {
   flex: 1;
   min-height: 0;
 }
+/* Infinite-scroll sentinel row: observed by HistoryView to page in older
+   commits; shows a compact spinner while the next page is fetched. */
+.commit-list__more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 10px 0;
+}
 .commit {
   display: flex;
   align-items: flex-start;
@@ -1361,6 +1370,11 @@ button {
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+}
+.spinner--sm {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
 }
 
 .list-empty {
