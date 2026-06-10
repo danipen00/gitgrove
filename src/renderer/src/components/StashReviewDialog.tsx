@@ -120,11 +120,11 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
                   const file = files.find((f) => f.path === path)
                   if (file) loadDiff(file)
                 }}
-                contextMenuFor={(file) => [
+                contextMenuFor={(sel) => [
                   {
-                    label: 'Copy Path',
+                    label: sel.length > 1 ? 'Copy Paths' : 'Copy Path',
                     icon: <Icon.Copy size={15} />,
-                    onClick: () => window.gitgrove.clipboardWrite(file.path)
+                    onClick: () => window.gitgrove.clipboardWrite(sel.map((f) => f.path).join('\n'))
                   }
                 ]}
               />

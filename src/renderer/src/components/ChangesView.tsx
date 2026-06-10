@@ -30,7 +30,8 @@ interface Props {
   repoState: RepoState | null
   stashes: StashEntry[]
   selectedPath: string | null
-  onSelectFile: (path: string) => void
+  /** Focus change; null when the list selection was emptied. */
+  onSelectFile: (path: string | null) => void
   /** Commit selection per path; missing key = fully included. */
   selections: ReadonlyMap<string, FileSelection>
   /** Toggle one file's inclusion in the next commit (pure renderer state). */
@@ -152,7 +153,52 @@ export function ChangesView({
       all: true
     })
 
-  const contextMenuFor = (file: ChangedFile): ContextMenuItem[] => {
+  /** Menu for the list selection: single file keeps the full menu; a
+   *  multi-selection gets bulk include/exclude, discard and copy. */
+  const contextMenuFor = (selected: ChangedFile[]): ContextMenuItem[] => {
+    if (selected.length > 1) {
+      const actionable = selected.filter((f) => f.status !== 'conflicted')
+      const items: ContextMenuItem[] = []
+      if (actionable.length > 0) {
+        const allIncluded = actionable.every((f) => (selections.get(f.path) ?? 'all') !== 'none')
+        items.push(
+          allIncluded
+            ? {
+                label: 'Exclude from Commit',
+                icon: <Icon.Minus size={15} />,
+                onClick: () =>
+                  onSetAllIncluded(
+                    false,
+                    actionable.map((f) => f.path)
+                  )
+              }
+            : {
+                label: 'Include in Commit',
+                icon: <Icon.Plus size={15} />,
+                onClick: () =>
+                  onSetAllIncluded(
+                    true,
+                    actionable.map((f) => f.path)
+                  )
+              },
+          {
+            label: 'Discard Changes…',
+            icon: <Icon.Undo size={15} />,
+            danger: true,
+            onClick: () => setConfirmDiscard({ files: actionable, all: false })
+          },
+          {}
+        )
+      }
+      items.push({
+        label: 'Copy Paths',
+        icon: <Icon.Copy size={15} />,
+        onClick: () => gg.clipboardWrite(selected.map((f) => f.path).join('\n'))
+      })
+      return items
+    }
+    const file = selected[0]
+    if (!file) return []
     if (file.status === 'conflicted') {
       return [
         {
@@ -317,11 +363,13 @@ export function ChangesView({
               <div className="list-empty">No changes match the filter.</div>
             ) : (
               <WorkingFileList
+                key={repoPath}
                 files={files}
                 selections={selections}
                 selectedPath={selectedPath}
                 onSelect={onSelectFile}
                 onToggleIncluded={onToggleFile}
+                onSetIncluded={(paths, included) => onSetAllIncluded(included, paths)}
                 contextMenuFor={contextMenuFor}
               />
             )}
@@ -507,9 +555,9 @@ export function ChangesView({
           danger
           body={
             <>
-              {confirmDiscard.all ? (
+              {confirmDiscard.all || confirmDiscard.files.length > 1 ? (
                 <>
-                  This will discard the unstaged changes in{' '}
+                  This will discard the {confirmDiscard.all ? 'unstaged ' : ''}changes in{' '}
                   {pluralize(confirmDiscard.files.length, 'file')}.{' '}
                 </>
               ) : (

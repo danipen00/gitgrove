@@ -259,7 +259,14 @@ export function App() {
 
   // ── Selection handlers ─────────────────────────────────────────────────────
   const selectWorkingFile = useCallback(
-    (path: string, list?: ChangedFile[]) => {
+    (path: string | null, list?: ChangedFile[]) => {
+      // null = the list selection was emptied (Cmd/Ctrl+click on the last row).
+      if (path === null) {
+        setChangeSel(null)
+        setDiff(null)
+        diffReq.current++
+        return
+      }
       const file = (list ?? changes).find((f) => f.path === path)
       if (!file) return
       setChangeSel(path)

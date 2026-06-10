@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatBytes, pluralize } from '../lib/format'
 import { Icon } from '../lib/icons'
+import { isCmdOrCtrl, modKeyLabel } from '../lib/platform'
 
 export type CommitMode = 'commit' | 'amend' | 'stash'
 
@@ -132,9 +133,9 @@ export function CommitComposer({
     }
   }, [canAct, summary, description, amend, stash, onCommit, onStash])
 
-  // Cmd/Ctrl+Enter acts from either field.
+  // Cmd+Enter (macOS) / Ctrl+Enter (Windows/Linux) acts from either field.
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    if (isCmdOrCtrl(e) && e.key === 'Enter') {
       e.preventDefault()
       act()
     }
@@ -197,7 +198,10 @@ export function CommitComposer({
           className="btn-primary composer__commit"
           aria-disabled={!canAct}
           data-tip={
-            disabledReason ?? (stash ? 'Stash selected files (⌘↵)' : 'Commit selected changes (⌘↵)')
+            disabledReason ??
+            (stash
+              ? `Stash selected files (${modKeyLabel}↵)`
+              : `Commit selected changes (${modKeyLabel}↵)`)
           }
           onClick={act}
         >

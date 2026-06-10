@@ -162,14 +162,17 @@ export function HistoryView({
                 <div className="list-empty">No files match the filter.</div>
               ) : (
                 <WorkingFileList
+                  key={selectedCommit.hash}
                   files={visibleFiles}
                   selectedPath={selectedFilePath}
-                  onSelect={onSelectFile}
-                  contextMenuFor={(file) => [
+                  // Read-only list: deselecting everything keeps the last diff.
+                  onSelect={(path) => path !== null && onSelectFile(path)}
+                  contextMenuFor={(selected) => [
                     {
-                      label: 'Copy Path',
+                      label: selected.length > 1 ? 'Copy Paths' : 'Copy Path',
                       icon: <Icon.Copy size={15} />,
-                      onClick: () => window.gitgrove.clipboardWrite(file.path)
+                      onClick: () =>
+                        window.gitgrove.clipboardWrite(selected.map((f) => f.path).join('\n'))
                     }
                   ]}
                 />
