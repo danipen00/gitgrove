@@ -34,6 +34,9 @@ interface Props {
   selectedPath: string | null
   /** Focus change; null when the list selection was emptied. */
   onSelectFile: (path: string | null) => void
+  /** Reports the file-list selection size so the diff pane can show a
+   *  "multiple files selected" state. */
+  onFileSelectionChange?: (count: number) => void
   /** Commit selection per path; missing key = fully included. */
   selections: ReadonlyMap<string, FileSelection>
   /** Toggle one file's inclusion in the next commit (pure renderer state). */
@@ -68,6 +71,7 @@ export function ChangesView({
   stashes,
   selectedPath,
   onSelectFile,
+  onFileSelectionChange,
   selections,
   onToggleFile,
   onSetAllIncluded,
@@ -377,6 +381,7 @@ export function ChangesView({
                 onToggleIncluded={onToggleFile}
                 onSetIncluded={(paths, included) => onSetAllIncluded(included, paths)}
                 highlight={filterQuery}
+                onSelectionChange={onFileSelectionChange}
                 contextMenuFor={contextMenuFor}
               />
             )}

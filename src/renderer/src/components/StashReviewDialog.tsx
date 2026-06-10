@@ -38,6 +38,7 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
   const [diffLoading, setDiffLoading] = useState(false)
   const [mode, setMode] = useState<DiffMode>('split')
   const [wrap, setWrap] = useState(false)
+  const [selCount, setSelCount] = useState(1)
   const [filesWidth, setFilesWidth] = usePersistentState('gg.stashFilesWidth', 300)
   const filesRef = useRef<HTMLDivElement>(null)
   const diffReq = useRef(0)
@@ -145,6 +146,7 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
                       if (file) loadDiff(file)
                     }}
                     highlight={filterQuery}
+                    onSelectionChange={setSelCount}
                     contextMenuFor={(sel) => copyPathItems(sel, repoPath)}
                   />
                 )}
@@ -168,6 +170,7 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
               mode={mode}
               wrap={wrap}
               theme={theme}
+              selectedCount={selCount}
               onModeChange={setMode}
               onWrapChange={setWrap}
             />

@@ -92,6 +92,9 @@ export function App() {
   const [changesLoading, setChangesLoading] = useState(false)
   // Selected working file (repo-relative path).
   const [changeSel, setChangeSel] = useState<string | null>(null)
+  // File-list selection sizes per tab — drive the "multiple files selected"
+  // diff state. The list owns multi-selection; it reports just the count up.
+  const [changeSelCount, setChangeSelCount] = useState(1)
 
   // Write-side repo state: in-progress op, upstream tracking, stashes.
   const [repoState, setRepoState] = useState<RepoState | null>(null)
@@ -108,6 +111,7 @@ export function App() {
   const [commitFiles, setCommitFiles] = useState<ChangedFile[]>([])
   const [commitFilesLoading, setCommitFilesLoading] = useState(false)
   const [commitSelPath, setCommitSelPath] = useState<string | null>(null)
+  const [commitSelCount, setCommitSelCount] = useState(1)
 
   const [diff, setDiff] = useState<DiffPayload | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
@@ -332,13 +336,18 @@ export function App() {
   const switchTab = useCallback(
     (next: Tab) => {
       setTab(next)
+      // The file list remounts on a tab switch, dropping any multi-selection;
+      // reset the count up front so the diff pane doesn't flash a stale
+      // "multiple files selected" state before the remount reports back.
       if (next === 'changes') {
+        setChangeSelCount(1)
         if (changeSel) selectWorkingFile(changeSel)
         else {
           setDiff(null)
           diffReq.current++
         }
       } else {
+        setCommitSelCount(1)
         // First visit to History: fetch the log on demand.
         const repoPath = repoRef.current?.path
         if (repoPath && !logLoaded && !commitsLoading) loadLog(repoPath).catch(fail)
@@ -1409,6 +1418,7 @@ export function App() {
                 stashes={stashes}
                 selectedPath={changeSel}
                 onSelectFile={(path) => selectWorkingFile(path)}
+                onFileSelectionChange={setChangeSelCount}
                 selections={selections}
                 onToggleFile={toggleFileIncluded}
                 onSetAllIncluded={setAllIncluded}
@@ -1429,6 +1439,7 @@ export function App() {
                 commitFilesLoading={commitFilesLoading}
                 selectedFilePath={commitSelPath}
                 onSelectFile={(p) => selectedCommit && selectCommitFile(p, selectedCommit.hash)}
+                onFileSelectionChange={setCommitSelCount}
                 commitMenuFor={commitMenuFor}
               />
             )}
@@ -1459,6 +1470,7 @@ export function App() {
             mode={diffMode}
             wrap={diffWrap}
             theme={theme}
+            selectedCount={tab === 'changes' ? changeSelCount : commitSelCount}
             onModeChange={setDiffMode}
             onWrapChange={setDiffWrap}
             selectionActions={

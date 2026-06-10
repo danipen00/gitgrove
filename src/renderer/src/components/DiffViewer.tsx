@@ -45,6 +45,13 @@ interface Props {
    * commit selection.
    */
   selectionActions?: SelectionActions
+  /**
+   * Rows currently selected in the file list. When more than one is selected
+   * the pane shows a "multiple files selected" state instead of the focused
+   * file's diff, which would otherwise be misleading. Defaults to a single
+   * selection (normal diff).
+   */
+  selectedCount?: number
 }
 
 /** Annotation metadata: which change block a selection bar belongs to. */
@@ -70,7 +77,8 @@ function DiffViewerImpl({
   theme,
   onModeChange,
   onWrapChange,
-  selectionActions
+  selectionActions,
+  selectedCount = 1
 }: Props) {
   const stats = useMemo(() => (diff?.patch ? countChanges(diff.patch) : null), [diff?.patch])
   const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null)
@@ -180,6 +188,22 @@ function DiffViewerImpl({
         >
           <Icon.Undo size={12} />
         </button>
+      </div>
+    )
+  }
+
+  // A multi-selection has no single diff to show — the focused file's diff
+  // would look like "the" selected file, so show a count instead.
+  if (selectedCount > 1) {
+    return (
+      <div className="diff-pane">
+        <div className="center-state">
+          <div className="icon-ring">
+            <Icon.Diff size={24} />
+          </div>
+          <h3>{selectedCount} files selected</h3>
+          <p>Select a single file to see its diff here.</p>
+        </div>
       </div>
     )
   }

@@ -21,6 +21,9 @@ interface Props {
   commitFilesLoading: boolean
   selectedFilePath: string | null
   onSelectFile: (path: string) => void
+  /** Reports the file-list selection size so the diff pane can show a
+   *  "multiple files selected" state. */
+  onFileSelectionChange?: (count: number) => void
   /** Right-click menu builder for a commit row (checkout, cherry-pick, reset, …). */
   commitMenuFor?: (commit: Commit) => ContextMenuItem[]
 }
@@ -38,6 +41,7 @@ export function HistoryView({
   commitFilesLoading,
   selectedFilePath,
   onSelectFile,
+  onFileSelectionChange,
   commitMenuFor
 }: Props) {
   const [filesHeight, setFilesHeight] = usePersistentState('gg.historyFilesHeight', 360)
@@ -172,6 +176,7 @@ export function HistoryView({
                   // Read-only list: deselecting everything keeps the last diff.
                   onSelect={(path) => path !== null && onSelectFile(path)}
                   highlight={filterQuery}
+                  onSelectionChange={onFileSelectionChange}
                   contextMenuFor={(selected) => copyPathItems(selected, repoPath)}
                 />
               )}

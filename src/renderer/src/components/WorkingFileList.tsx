@@ -39,6 +39,9 @@ interface Props {
   onSetIncluded?: (paths: string[], included: boolean) => void
   /** Active filter query — when set, the matched path portion is highlighted. */
   highlight?: string
+  /** Reports the selection size whenever it changes — lets the parent show a
+   *  "multiple files selected" state in the diff pane. Must be stable. */
+  onSelectionChange?: (count: number) => void
   /** Right-click menu for the current selection, passed in list order. */
   contextMenuFor: (files: ChangedFile[]) => ContextMenuItem[]
 }
@@ -134,6 +137,7 @@ export function WorkingFileList({
   onToggleIncluded,
   onSetIncluded,
   highlight = '',
+  onSelectionChange,
   contextMenuFor
 }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
@@ -159,6 +163,13 @@ export function WorkingFileList({
     if (selectedPath !== null && multi.has(selectedPath)) return multi
     return selectedPath !== null ? new Set([selectedPath]) : EMPTY_SET
   }, [multi, selectedPath])
+
+  // Tell the parent how many rows are selected so it can swap the diff for a
+  // "multiple files selected" state. Runs only when the selection changes —
+  // `selected` is memoized, so scrolling/menu state churn doesn't fire it.
+  useEffect(() => {
+    onSelectionChange?.(selected.size)
+  }, [selected, onSelectionChange])
 
   useEffect(() => {
     const el = viewportRef.current
