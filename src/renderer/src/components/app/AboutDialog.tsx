@@ -1,8 +1,8 @@
 import type { AppInfo, UpdateStatus } from '@shared/types'
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import iconUrl from '../assets/icon.svg'
 import { Icon } from '@/lib/icons'
+import iconUrl from '../../assets/icon.svg'
 
 interface Props {
   info: AppInfo | null

@@ -14,8 +14,13 @@ const devIconPath = join(moduleDir, '../../build/icon.png')
 import { IPC } from '@shared/ipc'
 import type { GitAvailability, RepoOpenResult } from '@shared/types'
 import { REPO_URL } from './app-info'
-import { addSafeDirectory, DubiousOwnershipError, getQuickSummary, resolveRepoRoot } from './git/read'
 import { gitVersion, locateGit, resetGitLocation } from './git/bin'
+import {
+  addSafeDirectory,
+  DubiousOwnershipError,
+  getQuickSummary,
+  resolveRepoRoot
+} from './git/read'
 import { registerIpc } from './ipc'
 import { buildMenu, type MenuContext } from './menu'
 import { rememberRepo } from './store'

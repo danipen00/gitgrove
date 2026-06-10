@@ -88,9 +88,7 @@ export function ignoreSelectionOption(paths: string[], totalSelected: number): I
   const qualifier = paths.length === totalSelected ? '' : ' Untracked'
   return {
     label:
-      paths.length === 1
-        ? `Ignore${qualifier} File`
-        : `Ignore ${paths.length}${qualifier} Files`,
+      paths.length === 1 ? `Ignore${qualifier} File` : `Ignore ${paths.length}${qualifier} Files`,
     patterns: paths.map(exactPattern),
     count: paths.length
   }

@@ -5,7 +5,6 @@
 
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { type BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from 'electron'
 import { IPC } from '@shared/ipc'
 import type {
   ChangedFile,
@@ -21,6 +20,7 @@ import type {
   RepoOpKind,
   ResetMode
 } from '@shared/types'
+import { type BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from 'electron'
 import { appInfo } from './app-info'
 import {
   getBranches,
@@ -35,7 +35,7 @@ import { getRepoSnapshot } from './git/status'
 import * as gitSync from './git/sync'
 import * as gitWrite from './git/write'
 import { openTerminal } from './menu'
-import { getRecentRepos, rememberRepo, removeRecentRepo } from './store'
+import { getRecentRepos, removeRecentRepo } from './store'
 import { checkForUpdates, quitAndInstall } from './updater'
 
 /** What the handlers need from the app shell. */
@@ -260,8 +260,7 @@ export function registerIpc(ctx: IpcContext): void {
       repoPath: string,
       name: string,
       opts?: { hash?: string; message?: string; push?: boolean }
-    ) =>
-      gitWrite.createTag(repoPath, name, opts)
+    ) => gitWrite.createTag(repoPath, name, opts)
   )
   ipcMain.handle(IPC.deleteTag, (_e, repoPath: string, name: string) =>
     gitWrite.deleteTag(repoPath, name)

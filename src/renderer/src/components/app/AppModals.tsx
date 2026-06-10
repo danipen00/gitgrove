@@ -119,8 +119,8 @@ export function AppModals({
               </>
             ) : (
               <>
-                The local branch <code>{modal.name}</code> will be deleted. Its remote
-                counterpart, if any, is untouched.
+                The local branch <code>{modal.name}</code> will be deleted. Its remote counterpart,
+                if any, is untouched.
               </>
             )
           }

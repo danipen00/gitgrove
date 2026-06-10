@@ -469,9 +469,7 @@ export async function createTag(
   name: string,
   opts: { hash?: string; message?: string; push?: boolean } = {}
 ): Promise<void> {
-  const args = opts.message?.trim()
-    ? ['tag', '-a', name, '-m', opts.message.trim()]
-    : ['tag', name]
+  const args = opts.message?.trim() ? ['tag', '-a', name, '-m', opts.message.trim()] : ['tag', name]
   if (opts.hash) args.push(opts.hash)
   await run(repoPath, args)
   if (opts.push) {

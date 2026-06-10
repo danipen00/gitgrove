@@ -1,12 +1,12 @@
 import type { BranchInfo } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ContextMenu } from '@/components/common/ContextMenu'
+import { Popover } from '@/components/common/Popover'
+import { useVirtualScroll, VScrollbar } from '@/components/common/VirtualScroll'
 import { type BranchRow, buildBranchRows } from '@/lib/branch-rows'
 import { highlightMatch } from '@/lib/highlight'
 import { Icon } from '@/lib/icons'
 import { useListKeyNav } from '@/lib/useListKeyNav'
-import { ContextMenu } from '@/components/common/ContextMenu'
-import { Popover } from '@/components/common/Popover'
-import { useVirtualScroll, VScrollbar } from '@/components/common/VirtualScroll'
 
 /** Branch operations surfaced from the switcher (beyond plain checkout). */
 export type BranchAction = 'new' | 'merge' | 'rebase' | 'rename' | 'delete'
@@ -56,10 +56,7 @@ export function BranchSwitcher({
   const rows = useMemo<BranchRow[]>(() => buildBranchRows(branch, query), [branch, query])
 
   // Indexes of selectable rows (labels excluded) — the keyboard nav space.
-  const itemRows = useMemo(
-    () => rows.flatMap((row, i) => (row.kind === 'item' ? [i] : [])),
-    [rows]
-  )
+  const itemRows = useMemo(() => rows.flatMap((row, i) => (row.kind === 'item' ? [i] : [])), [rows])
 
   // Main-thread scrolling via the shared scroller (see VirtualScroll.tsx for
   // the full rationale): native compositor scrolling would outrun the windowed
@@ -185,11 +182,7 @@ export function BranchSwitcher({
         className="pill"
         disabled={!branch || busy || loading}
         title={
-          loading
-            ? 'Loading branches…'
-            : switching
-              ? `Switching to ${switching.name}…`
-              : undefined
+          loading ? 'Loading branches…' : switching ? `Switching to ${switching.name}…` : undefined
         }
         onClick={() => {
           setOpen((v) => {

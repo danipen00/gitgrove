@@ -26,7 +26,10 @@ export function samePayload(a: DiffPayload | null, b: DiffPayload): boolean {
   )
 }
 
-export function useDiffLoader(getRepoPath: () => string | undefined, onError: (e: unknown) => void) {
+export function useDiffLoader(
+  getRepoPath: () => string | undefined,
+  onError: (e: unknown) => void
+) {
   const [diff, setDiff] = useState<DiffPayload | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
   const req = useRef(0)

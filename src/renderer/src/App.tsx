@@ -16,22 +16,22 @@ import type {
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
 import { AboutDialog } from './components/app/AboutDialog'
 import { AppModals, type Modal } from './components/app/AppModals'
-import type { BranchAction } from './components/toolbar/BranchSwitcher'
-import { ChangesView } from './components/changes/ChangesView'
 import { CloneDialog } from './components/app/CloneDialog'
-import { commitMenuItems } from './components/history/commitMenuItems'
-import { CommitSummary } from './components/history/CommitSummary'
-import type { ContextMenuItem } from './components/common/ContextMenu'
-import { type DiffMode, DiffViewer } from './components/common/DiffViewer'
 import { GitSetup } from './components/app/GitSetup'
-import { HistoryView } from './components/history/HistoryView'
-import { Resizer } from './components/common/Resizer'
-import type { SyncAction } from './components/toolbar/SyncButton'
-import { Toolbar } from './components/toolbar/Toolbar'
-import { TooltipLayer } from './components/common/TooltipLayer'
 import { TrustDialog } from './components/app/TrustDialog'
 import { UpdateBanner } from './components/app/UpdateBanner'
 import { Welcome } from './components/app/Welcome'
+import { ChangesView } from './components/changes/ChangesView'
+import type { ContextMenuItem } from './components/common/ContextMenu'
+import { type DiffMode, DiffViewer } from './components/common/DiffViewer'
+import { Resizer } from './components/common/Resizer'
+import { TooltipLayer } from './components/common/TooltipLayer'
+import { CommitSummary } from './components/history/CommitSummary'
+import { commitMenuItems } from './components/history/commitMenuItems'
+import { HistoryView } from './components/history/HistoryView'
+import type { BranchAction } from './components/toolbar/BranchSwitcher'
+import type { SyncAction } from './components/toolbar/SyncButton'
+import { Toolbar } from './components/toolbar/Toolbar'
 import {
   buildCommitSelection,
   buildStashSelection,
@@ -300,6 +300,7 @@ export function App() {
   }, [fail])
 
   // ── Selection handlers ─────────────────────────────────────────────────────
+  // biome-ignore lint/correctness/useExhaustiveDependencies: diffRef is read for its live value, not as a trigger — depending on it would churn this handler on every diff load.
   const selectWorkingFile = useCallback(
     (path: string | null, list?: ChangedFile[], opts?: { force?: boolean }) => {
       // null = the list selection was emptied (Cmd/Ctrl+click on the last row).
@@ -339,6 +340,7 @@ export function App() {
     [selectWorkingFile, clearDiff]
   )
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: diffRef is read for its live value, not as a trigger — depending on it would churn this handler on every diff load.
   const selectCommitFile = useCallback(
     (path: string, hash: string, list?: ChangedFile[], opts?: { force?: boolean }) => {
       const file = (list ?? commitFiles).find((f) => f.path === path)
@@ -728,14 +730,11 @@ export function App() {
   )
 
   /** Discard a hunk in the working tree (reverse-apply its display patch). */
-  const discardHunk = useCallback(
-    (patch: string) => {
-      const repoPath = repoRef.current?.path
-      if (!repoPath) return
-      runOpRef.current(() => window.gitgrove.applyPatch(repoPath, patch, { reverse: true }))
-    },
-    []
-  )
+  const discardHunk = useCallback((patch: string) => {
+    const repoPath = repoRef.current?.path
+    if (!repoPath) return
+    runOpRef.current(() => window.gitgrove.applyPatch(repoPath, patch, { reverse: true }))
+  }, [])
 
   const doSync = useCallback(
     async (action: SyncAction) => {

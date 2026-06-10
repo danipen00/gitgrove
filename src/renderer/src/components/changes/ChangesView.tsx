@@ -7,6 +7,13 @@
 
 import type { ChangedFile, RepoState, StashEntry } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ContextMenuItem } from '@/components/common/ContextMenu'
+import { copyPathItems } from '@/components/common/copyPathItems'
+import { ConfirmDialog } from '@/components/common/Dialog'
+import { useFileFilter } from '@/components/common/FileFilter'
+import { Popover } from '@/components/common/Popover'
+import { Resizer } from '@/components/common/Resizer'
+import { WorkingFileList } from '@/components/common/WorkingFileList'
 import type { FileSelection } from '@/lib/commit-selection'
 import { pluralize, statusLetter } from '@/lib/format'
 import { Icon } from '@/lib/icons'
@@ -14,14 +21,7 @@ import { ignoreOptionsFor, ignoreSelectionOption } from '@/lib/ignore'
 import { usePersistentState } from '@/lib/persist'
 import type { ResolvedTheme } from '@/lib/theme'
 import { CommitComposer, type CommitMode } from './CommitComposer'
-import type { ContextMenuItem } from '@/components/common/ContextMenu'
-import { copyPathItems } from '@/components/common/copyPathItems'
-import { ConfirmDialog } from '@/components/common/Dialog'
-import { useFileFilter } from '@/components/common/FileFilter'
-import { Popover } from '@/components/common/Popover'
-import { Resizer } from '@/components/common/Resizer'
 import { StashPanel } from './StashPanel'
-import { WorkingFileList } from '@/components/common/WorkingFileList'
 
 interface Props {
   repoPath: string
@@ -103,10 +103,7 @@ function DiscardSummary({
       {progress !== null ? (
         <div className="clone-progress" role="status">
           <div className="clone-progress__bar">
-            <div
-              className="clone-progress__fill"
-              style={{ width: `${Math.max(2, progress)}%` }}
-            />
+            <div className="clone-progress__fill" style={{ width: `${Math.max(2, progress)}%` }} />
           </div>
           <span className="clone-progress__label">Discarding… {progress}%</span>
         </div>
@@ -190,7 +187,6 @@ export function ChangesView({
   const [mode, setMode] = useState<CommitMode>('commit')
   const [modeOpen, setModeOpen] = useState(false)
   const modeAnchor = useRef<HTMLButtonElement>(null)
-  const [committing, setCommitting] = useState(false)
   // biome-ignore lint/correctness/useExhaustiveDependencies: repoPath is the intentional reset trigger
   useEffect(() => setMode('commit'), [repoPath])
 
@@ -295,7 +291,10 @@ export function ChangesView({
       }
       const untracked = selected.filter((f) => f.status === 'untracked')
       if (untracked.length > 0) {
-        const option = ignoreSelectionOption(untracked.map((f) => f.path), selected.length)
+        const option = ignoreSelectionOption(
+          untracked.map((f) => f.path),
+          selected.length
+        )
         items.push(
           {
             label: option.label,
@@ -550,7 +549,6 @@ export function ChangesView({
           modeAnchor.current = el
         }}
         onOpenModeMenu={() => setModeOpen(true)}
-        onCommittingChange={setCommitting}
         onCommit={async (message, withAmend) => {
           const ok = await onCommit(message, withAmend)
           if (ok) setMode('commit')

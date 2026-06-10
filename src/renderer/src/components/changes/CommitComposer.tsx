@@ -35,8 +35,6 @@ interface Props {
   modeMenuRef: (el: HTMLButtonElement | null) => void
   /** Open the mode popover (Commit / Amend / Stash), owned by ChangesView. */
   onOpenModeMenu: () => void
-  /** True while a commit/stash is running — reported up so the mode switch can lock. */
-  onCommittingChange: (committing: boolean) => void
   onCommit: (message: string, amend: boolean) => Promise<boolean>
   /** Stash the checked files with an optional message. */
   onStash: (message: string) => Promise<boolean>
@@ -53,20 +51,12 @@ export function CommitComposer({
   descriptionRef,
   modeMenuRef,
   onOpenModeMenu,
-  onCommittingChange,
   onCommit,
   onStash
 }: Props) {
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
-  const [committing, setCommittingState] = useState(false)
-  const setCommitting = useCallback(
-    (value: boolean) => {
-      setCommittingState(value)
-      onCommittingChange(value)
-    },
-    [onCommittingChange]
-  )
+  const [committing, setCommitting] = useState(false)
 
   // Remember what the composer held before amend pre-filled it, so leaving
   // amend mode restores the user's draft instead of leaving HEAD's message.

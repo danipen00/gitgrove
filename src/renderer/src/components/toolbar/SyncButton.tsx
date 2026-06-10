@@ -5,9 +5,9 @@
 
 import type { SyncStatus } from '@shared/types'
 import { useRef, useState } from 'react'
-import { Icon } from '@/lib/icons'
 import { ConfirmDialog } from '@/components/common/Dialog'
 import { Popover } from '@/components/common/Popover'
+import { Icon } from '@/lib/icons'
 
 export type SyncAction = 'fetch' | 'pull' | 'pull-rebase' | 'push' | 'force-push' | 'publish'
 
@@ -172,10 +172,9 @@ export function SyncButton({
           danger
           body={
             <>
-              This will overwrite <code>{sync.upstream}</code> with your local{' '}
-              <code>{branch}</code> using <code>--force-with-lease</code>, which still refuses to
-              clobber commits you haven't fetched. Anyone based on the old history will need to
-              recover.
+              This will overwrite <code>{sync.upstream}</code> with your local <code>{branch}</code>{' '}
+              using <code>--force-with-lease</code>, which still refuses to clobber commits you
+              haven't fetched. Anyone based on the old history will need to recover.
             </>
           }
           confirmLabel="Force push"

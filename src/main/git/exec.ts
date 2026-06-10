@@ -53,7 +53,10 @@ export function enqueue<T>(repoPath: string, task: () => Promise<T>): Promise<T>
   // Chain regardless of the predecessor's outcome; failures propagate to their
   // own caller only.
   const next = tail.then(task, task)
-  writeQueues.set(repoPath, next.catch(() => {}))
+  writeQueues.set(
+    repoPath,
+    next.catch(() => {})
+  )
   return next
 }
 
@@ -71,7 +74,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
  * index lock. Errors carry git's stderr (or stdout — some commands like
  * `merge` report conflicts there) so the renderer toast shows the real reason.
  */
-export async function run(repoPath: string, args: string[], opts: RunOptions = {}): Promise<string> {
+export async function run(
+  repoPath: string,
+  args: string[],
+  opts: RunOptions = {}
+): Promise<string> {
   return enqueue(repoPath, async () => {
     let lastError: Error | null = null
     for (let attempt = 0; attempt <= LOCK_RETRY_DELAYS.length; attempt++) {

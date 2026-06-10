@@ -15,9 +15,9 @@
 import { readFile, stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type { ChangedFile, FileStatus, RepoOpKind, RepoSnapshot, RepoState } from '@shared/types'
-import { listStashes } from './write'
-import { runGit } from './read'
 import { PERF } from './perf'
+import { runGit } from './read'
+import { listStashes } from './write'
 
 /** Parsed `# branch.*` headers from porcelain v2. */
 export interface StatusHeaders {
@@ -193,13 +193,7 @@ export async function getRepoSnapshot(repoPath: string): Promise<RepoSnapshot> {
   // One status spawn carries files + branch + upstream + ahead/behind; the
   // remote list and stashes are cheap config/reflog reads, run concurrently.
   const [statusOut, remotesOut, stashes] = await Promise.all([
-    runGit(repoPath, [
-      'status',
-      '--untracked-files=all',
-      '--branch',
-      '--porcelain=2',
-      '-z'
-    ]),
+    runGit(repoPath, ['status', '--untracked-files=all', '--branch', '--porcelain=2', '-z']),
     runGit(repoPath, ['remote']).catch(() => ''),
     listStashes(repoPath)
   ])

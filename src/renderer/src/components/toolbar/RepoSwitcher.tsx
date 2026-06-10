@@ -1,13 +1,13 @@
 import type { RecentRepo, RepoInfo, RepoSummary } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { ContextMenu, type ContextMenuItem } from '@/components/common/ContextMenu'
+import { Popover } from '@/components/common/Popover'
 import { prettyPath } from '@/lib/format'
 import { highlightMatch } from '@/lib/highlight'
 import { Icon } from '@/lib/icons'
 import { isGithubUrl, remoteLabel, revealLabel } from '@/lib/repo-actions'
 import { useListKeyNav } from '@/lib/useListKeyNav'
-import { ContextMenu, type ContextMenuItem } from '@/components/common/ContextMenu'
-import { Popover } from '@/components/common/Popover'
 
 /** One rendered line of the popover: a section label or a repository row. */
 type Row =
@@ -120,9 +120,7 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
     onHighlight: (i) => {
       // Rows are natively scrolled (no virtualization) — nudge the highlighted
       // one into view. Labels aren't .popover__item, so nth-of-item matches i.
-      listRef.current
-        ?.querySelectorAll('.popover__item')
-        [i]?.scrollIntoView({ block: 'nearest' })
+      listRef.current?.querySelectorAll('.popover__item')[i]?.scrollIntoView({ block: 'nearest' })
     }
   })
   const kbdRow = itemRows[nav.index] ?? -1

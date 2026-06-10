@@ -21,12 +21,12 @@
 
 import type { ChangedFile } from '@shared/types'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import type { FileSelection } from '@/lib/commit-selection'
 import { splitPath, statusLabel, statusLetter } from '@/lib/format'
 import { highlightMatch } from '@/lib/highlight'
 import { Icon } from '@/lib/icons'
 import { isCmdOrCtrl } from '@/lib/platform'
 import { useEvent } from '@/lib/useEvent'
-import type { FileSelection } from '@/lib/commit-selection'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { useVirtualScroll, VScrollbar } from './VirtualScroll'
 
@@ -92,7 +92,6 @@ const Row = memo(function Row({
   const conflicted = file.status === 'conflicted'
   const { dir, name } = splitPath(file.path)
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: the listbox viewport is the keyboard target
     <div
       role="option"
       aria-selected={selected}
@@ -162,7 +161,9 @@ export function WorkingFileList({
 
   const indexOf = useMemo(() => {
     const m = new Map<string, number>()
-    files.forEach((f, i) => m.set(f.path, i))
+    files.forEach((f, i) => {
+      m.set(f.path, i)
+    })
     return m
   }, [files])
 

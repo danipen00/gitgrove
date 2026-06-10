@@ -150,7 +150,10 @@ export function useVirtualScroll({
       setScrollTop(clamp(rowT + rowHeight - viewportH, 0, live.current.maxScroll))
   }, [])
 
-  const rowTop = useCallback((index: number) => live.current.padTop + index * rowHeight, [rowHeight])
+  const rowTop = useCallback(
+    (index: number) => live.current.padTop + index * rowHeight,
+    [rowHeight]
+  )
 
   const start = Math.max(0, Math.floor((top - padTop) / rowHeight) - overscan)
   const end = Math.min(count, Math.ceil((top - padTop + viewportH) / rowHeight) + overscan)

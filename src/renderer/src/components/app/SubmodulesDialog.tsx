@@ -4,8 +4,8 @@
 
 import type { SubmoduleInfo } from '@shared/types'
 import { useCallback, useEffect, useState } from 'react'
-import { Icon } from '@/lib/icons'
 import { DialogShell } from '@/components/common/Dialog'
+import { Icon } from '@/lib/icons'
 
 interface Props {
   repoPath: string

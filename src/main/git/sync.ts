@@ -6,7 +6,7 @@
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { locateGit } from './bin'
-import { parseProgressText, type ProgressHandler, run, runOnce } from './exec'
+import { type ProgressHandler, parseProgressText, run, runOnce } from './exec'
 
 export async function fetch(
   repoPath: string,

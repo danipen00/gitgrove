@@ -4,9 +4,9 @@
 
 import type { WorktreeInfo } from '@shared/types'
 import { useCallback, useEffect, useState } from 'react'
+import { ConfirmDialog, DialogShell, validateRefName } from '@/components/common/Dialog'
 import { prettyPath } from '@/lib/format'
 import { Icon } from '@/lib/icons'
-import { ConfirmDialog, DialogShell, validateRefName } from '@/components/common/Dialog'
 
 interface Props {
   repoPath: string

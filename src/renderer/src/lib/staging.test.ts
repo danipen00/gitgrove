@@ -1,9 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import {
-  buildBlockPatch,
-  type DisplayMeta,
-  listChangeBlocks
-} from './staging'
+import { buildBlockPatch, type DisplayMeta, listChangeBlocks } from './staging'
 
 /** 10-line file with two edits close enough that the differ merges the hunk. */
 const META: DisplayMeta = {

@@ -1,5 +1,5 @@
-import { app } from 'electron'
 import type { AppInfo } from '@shared/types'
+import { app } from 'electron'
 
 export const REPO_URL = 'https://github.com/danipen/gitgrove'
 

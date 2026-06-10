@@ -5,8 +5,8 @@
 // only open confirmation modals — App decides what actually runs.
 
 import type { Commit } from '@shared/types'
-import { Icon } from '@/lib/icons'
 import type { ContextMenuItem } from '@/components/common/ContextMenu'
+import { Icon } from '@/lib/icons'
 
 /** What the menu's entries need from App. */
 export interface CommitMenuActions {

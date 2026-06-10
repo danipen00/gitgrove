@@ -6,8 +6,8 @@
 
 import type { Commit, RebaseAction, RebaseTodoItem } from '@shared/types'
 import { useMemo, useState } from 'react'
-import { Icon } from '@/lib/icons'
 import { DialogShell } from '@/components/common/Dialog'
+import { Icon } from '@/lib/icons'
 
 interface Props {
   /** Commits to rebase, newest-first as they come from the log. */
@@ -38,15 +38,13 @@ const ACTIONS: { value: RebaseAction; label: string; hint: string }[] = [
 export function InteractiveRebaseDialog({ commits, base, busy, onSubmit, onCancel }: Props) {
   // Oldest first — the order git applies them and the order users expect to read a todo.
   const [rows, setRows] = useState<Row[]>(() =>
-    [...commits]
-      .reverse()
-      .map((c) => ({
-        hash: c.hash,
-        shortHash: c.shortHash,
-        subject: c.subject,
-        action: 'pick',
-        message: ''
-      }))
+    [...commits].reverse().map((c) => ({
+      hash: c.hash,
+      shortHash: c.shortHash,
+      subject: c.subject,
+      action: 'pick',
+      message: ''
+    }))
   )
   const [dragIndex, setDragIndex] = useState<number | null>(null)
 

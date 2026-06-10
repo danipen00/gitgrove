@@ -5,12 +5,12 @@
 
 import type { StashEntry } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Popover } from '@/components/common/Popover'
 import { pluralize } from '@/lib/format'
 import { highlightMatch } from '@/lib/highlight'
 import { Icon } from '@/lib/icons'
 import type { ResolvedTheme } from '@/lib/theme'
 import { useListKeyNav } from '@/lib/useListKeyNav'
-import { Popover } from '@/components/common/Popover'
 import { StashReviewDialog } from './StashReviewDialog'
 
 interface Props {

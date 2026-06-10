@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react'
-
+import { Popover } from '@/components/common/Popover'
 import { Icon } from '@/lib/icons'
 import type { ResolvedTheme, ThemePref } from '@/lib/theme'
-import { Popover } from '@/components/common/Popover'
 
 interface Props {
   pref: ThemePref

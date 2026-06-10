@@ -34,7 +34,8 @@ export function bannerUpdateFor(
 ): UpdateStatus | null {
   if (!update) return null
   const deferred = isReady(update) && update.newVersion === dismissedVersion
-  const isProgress = update.state === 'downloading' || update.state === 'available' || isReady(update)
+  const isProgress =
+    update.state === 'downloading' || update.state === 'available' || isReady(update)
   if (isProgress && !deferred) return update
   if (isManualFeedback(update) && !feedbackDismissed && !aboutOpen) return update
   return null

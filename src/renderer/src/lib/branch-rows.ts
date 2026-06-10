@@ -44,9 +44,7 @@ export function buildBranchRows(branch: BranchInfo | null, query: string): Branc
     },
     {
       text: 'Local',
-      rows: branch.local
-        .filter((n) => !elsewhere.has(n) && match(n))
-        .map((n) => item('l', n, true))
+      rows: branch.local.filter((n) => !elsewhere.has(n) && match(n)).map((n) => item('l', n, true))
     },
     {
       text: 'Remote',

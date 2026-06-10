@@ -6,6 +6,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
+import { IPC, type MenuCommand } from '@shared/ipc'
 import {
   app,
   type BrowserWindow,
@@ -14,7 +15,6 @@ import {
   type MenuItemConstructorOptions,
   shell
 } from 'electron'
-import { IPC, type MenuCommand } from '@shared/ipc'
 import { REPO_URL } from './app-info'
 import { getRemoteWebUrl } from './git/read'
 import { checkForUpdates } from './updater'

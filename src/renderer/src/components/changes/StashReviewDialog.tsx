@@ -9,15 +9,15 @@
 import type { ChangedFile, DiffPayload, StashEntry } from '@shared/types'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { pluralize } from '@/lib/format'
-import { Icon } from '@/lib/icons'
-import { usePersistentState } from '@/lib/persist'
-import type { ResolvedTheme } from '@/lib/theme'
 import { copyPathItems } from '@/components/common/copyPathItems'
 import { type DiffMode, DiffViewer } from '@/components/common/DiffViewer'
 import { useFileFilter } from '@/components/common/FileFilter'
 import { Resizer } from '@/components/common/Resizer'
 import { WorkingFileList } from '@/components/common/WorkingFileList'
+import { pluralize } from '@/lib/format'
+import { Icon } from '@/lib/icons'
+import { usePersistentState } from '@/lib/persist'
+import type { ResolvedTheme } from '@/lib/theme'
 
 const NO_FILES: ChangedFile[] = []
 

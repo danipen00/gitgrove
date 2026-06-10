@@ -6,9 +6,9 @@
 
 import type { CloneProgress } from '@shared/types'
 import { useEffect, useState } from 'react'
+import { DialogShell } from '@/components/common/Dialog'
 import { prettyPath } from '@/lib/format'
 import { Icon } from '@/lib/icons'
-import { DialogShell } from '@/components/common/Dialog'
 
 interface Props {
   onDone: (repoPath: string) => void

@@ -1,5 +1,10 @@
 import type { ChangedFile, Commit } from '@shared/types'
 import { useEffect, useRef, useState } from 'react'
+import { ContextMenu, type ContextMenuItem } from '@/components/common/ContextMenu'
+import { copyPathItems } from '@/components/common/copyPathItems'
+import { useFileFilter } from '@/components/common/FileFilter'
+import { Resizer } from '@/components/common/Resizer'
+import { WorkingFileList } from '@/components/common/WorkingFileList'
 import { parseRefs, pluralize } from '@/lib/format'
 import { Icon } from '@/lib/icons'
 import { usePersistentState } from '@/lib/persist'
@@ -7,11 +12,6 @@ import { navTarget } from '@/lib/useListKeyNav'
 import { useSpinDelay } from '@/lib/useSpinDelay'
 import { Avatar } from './Avatar'
 import { RefChip } from './CommitSummary'
-import { ContextMenu, type ContextMenuItem } from '@/components/common/ContextMenu'
-import { copyPathItems } from '@/components/common/copyPathItems'
-import { useFileFilter } from '@/components/common/FileFilter'
-import { Resizer } from '@/components/common/Resizer'
-import { WorkingFileList } from '@/components/common/WorkingFileList'
 
 interface Props {
   repoPath: string
