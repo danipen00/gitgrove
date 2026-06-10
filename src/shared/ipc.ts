@@ -11,6 +11,7 @@ import type {
   Commit,
   DiffArea,
   DiffPayload,
+  DiscardItem,
   GitAvailability,
   LogOptions,
   RebaseTodoItem,
@@ -158,10 +159,12 @@ export interface GitGroveApi {
   commitDiff(repoPath: string, hash: string, file: ChangedFile): Promise<DiffPayload>
   // ── Staging & commits ──
   /**
-   * Discard unstaged changes: tracked paths restore from the index, untracked
-   * files move to the OS trash.
+   * Discard changes so the chosen paths end up as in HEAD (the GitHub Desktop
+   * model): staged state is reset, original files are restored, and files
+   * HEAD doesn't have (untracked, staged-new, rename targets) move to the OS
+   * trash so a mis-click is recoverable.
    */
-  discardFiles(repoPath: string, paths: string[], untrackedPaths: string[]): Promise<void>
+  discardFiles(repoPath: string, files: DiscardItem[], untrackedPaths: string[]): Promise<void>
   /** Apply a (hunk) patch to the index/working tree — see git-write.applyPatch. */
   applyPatch(
     repoPath: string,
