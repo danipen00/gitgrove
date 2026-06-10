@@ -96,6 +96,9 @@ describe('discardFiles', () => {
     repo = mkdtempSync(join(tmpdir(), 'gitgrove-discard-'))
     git(['init', '-q', '-b', 'main'])
     git(['config', 'commit.gpgsign', 'false'])
+    // Pin line endings so checkout never rewrites LF→CRLF: these tests read the
+    // restored file bytes back, and Git for Windows defaults core.autocrlf=true.
+    git(['config', 'core.autocrlf', 'false'])
     writeFileSync(join(repo, 'a.txt'), 'original a\n')
     writeFileSync(join(repo, 'b.txt'), 'original b\n')
     git(['add', '.'])
