@@ -132,8 +132,15 @@ export function WorkingFileList({
   const start = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN)
   const end = Math.min(files.length, Math.ceil((scrollTop + viewportH) / ROW_H) + OVERSCAN)
 
+  // Selecting a row pulls focus to the listbox so keyboard shortcuts (Space to
+  // toggle inclusion) land here instead of scrolling the viewport.
+  const handleSelect = (path: string) => {
+    onSelect(path)
+    viewportRef.current?.focus()
+  }
+
   const openMenu = (file: ChangedFile, x: number, y: number) => {
-    onSelect(file.path)
+    handleSelect(file.path)
     setMenu({ x, y, items: contextMenuFor(file) })
   }
 
@@ -143,6 +150,16 @@ export function WorkingFileList({
       className="wfl"
       role="listbox"
       aria-label="Changed files"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        // Space toggles the selected file's commit checkbox; without this it
+        // would fall through to the browser and scroll the viewport.
+        if (e.key !== ' ' || !onToggleIncluded || !selectedPath) return
+        const file = files.find((f) => f.path === selectedPath)
+        if (!file || file.status === 'conflicted') return
+        e.preventDefault()
+        onToggleIncluded(selectedPath)
+      }}
       onScroll={(e) => {
         // flushSync commits the new window synchronously within the scroll
         // event, so freshly exposed rows paint in the same frame instead of
@@ -159,7 +176,7 @@ export function WorkingFileList({
             check={selections ? checkState(selections.get(file.path)) : null}
             top={(start + i) * ROW_H}
             selected={file.path === selectedPath}
-            onSelect={onSelect}
+            onSelect={handleSelect}
             onToggleIncluded={onToggleIncluded}
             onMenu={openMenu}
           />

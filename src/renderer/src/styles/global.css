@@ -2415,6 +2415,9 @@ button {
   overflow-y: auto;
   padding: 4px 0 8px;
 }
+.wfl:focus {
+  outline: none;
+}
 .wfl__row {
   display: flex;
   align-items: center;
