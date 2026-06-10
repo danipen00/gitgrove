@@ -6,7 +6,9 @@ import { join } from 'node:path'
 import type { RecentRepo, RepoInfo } from '@shared/types'
 import { app } from 'electron'
 
-const MAX_RECENT = 12
+// Generous cap: the switcher shows the newest few under "Recent" and the rest
+// under "All", so retaining a long tail is what makes the filter useful.
+const MAX_RECENT = 100
 
 function storePath(): string {
   return join(app.getPath('userData'), 'recent-repos.json')

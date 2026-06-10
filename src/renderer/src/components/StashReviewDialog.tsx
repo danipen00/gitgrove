@@ -11,8 +11,10 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { pluralize } from '../lib/format'
 import { Icon } from '../lib/icons'
-import { type DiffMode, DiffViewer } from './DiffViewer'
+import { usePersistentState } from '../lib/persist'
 import type { ResolvedTheme } from '../lib/theme'
+import { type DiffMode, DiffViewer } from './DiffViewer'
+import { Resizer } from './Resizer'
 import { WorkingFileList } from './WorkingFileList'
 
 interface Props {
@@ -32,6 +34,8 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
   const [diffLoading, setDiffLoading] = useState(false)
   const [mode, setMode] = useState<DiffMode>('split')
   const [wrap, setWrap] = useState(false)
+  const [filesWidth, setFilesWidth] = usePersistentState('gg.stashFilesWidth', 300)
+  const filesRef = useRef<HTMLDivElement>(null)
   const diffReq = useRef(0)
 
   useEffect(() => {
@@ -105,7 +109,7 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
         </div>
 
         <div className="stash-review__body">
-          <div className="stash-review__files">
+          <div className="stash-review__files" ref={filesRef} style={{ width: filesWidth }}>
             {files === null ? (
               <div className="center-state">
                 <div className="spinner" />
@@ -130,6 +134,16 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
               />
             )}
           </div>
+          <Resizer
+            orientation="x"
+            size={filesWidth}
+            min={200}
+            max={560}
+            onPreview={(w) => {
+              if (filesRef.current) filesRef.current.style.width = `${w}px`
+            }}
+            onCommit={setFilesWidth}
+          />
           <div className="stash-review__diff">
             <DiffViewer
               diff={diff}

@@ -6,15 +6,16 @@
 // still go through `runOp` (serialized, auto-refresh, errors → toast).
 
 import type { ChangedFile, RepoState, StashEntry } from '@shared/types'
-import type { FileSelection } from './DiffViewer'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { pluralize } from '../lib/format'
+import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
+import { usePersistentState } from '../lib/persist'
 import type { ResolvedTheme } from '../lib/theme'
 import { CommitComposer, type CommitMode } from './CommitComposer'
 import type { ContextMenuItem } from './ContextMenu'
 import { ConfirmDialog } from './Dialog'
-import { usePersistentState } from '../lib/persist'
+import type { FileSelection } from './DiffViewer'
 import { useFileFilter } from './FileFilter'
 import { Popover } from './Popover'
 import { Resizer } from './Resizer'
@@ -81,7 +82,12 @@ export function ChangesView({
   // The snapshot arrives path-sorted from the main process. Filtering and the
   // header stats are each a single memoized pass, so a 90k-entry list stays
   // cheap per refresh.
-  const { filtered: files, active: filterActive, bar: filterBar } = useFileFilter(changes)
+  const {
+    filtered: files,
+    query: filterQuery,
+    active: filterActive,
+    bar: filterBar
+  } = useFileFilter(changes)
 
   const stats = useMemo(() => {
     let includedCount = 0
@@ -111,8 +117,17 @@ export function ChangesView({
     all: boolean
   } | null>(null)
   const [stashOpen, setStashOpen] = useState(false)
+  const [stashQuery, setStashQuery] = useState('')
   const [reviewStash, setReviewStash] = useState<StashEntry | null>(null)
   const stashAnchor = useRef<HTMLButtonElement>(null)
+
+  // Filter is only worth the vertical space once the list grows past a glance.
+  const stashFilterable = stashes.length > 5
+  const visibleStashes = useMemo(() => {
+    const q = stashQuery.trim().toLowerCase()
+    if (!q) return stashes
+    return stashes.filter((s) => (s.message || `stash@{${s.index}}`).toLowerCase().includes(q))
+  }, [stashes, stashQuery])
 
   // Composer mode (Commit | Amend | Stash): the action button is a split
   // button whose caret half opens this popover to switch modes.
@@ -370,6 +385,7 @@ export function ChangesView({
                 onSelect={onSelectFile}
                 onToggleIncluded={onToggleFile}
                 onSetIncluded={(paths, included) => onSetAllIncluded(included, paths)}
+                highlight={filterQuery}
                 contextMenuFor={contextMenuFor}
               />
             )}
@@ -472,63 +488,81 @@ export function ChangesView({
       <Popover
         anchor={stashAnchor.current}
         open={stashOpen}
-        onClose={() => setStashOpen(false)}
+        onClose={() => {
+          setStashOpen(false)
+          setStashQuery('')
+        }}
         width={320}
       >
-        <div className="popover__group-label" style={{ position: 'static' }}>
-          Stashes
-        </div>
+        {stashFilterable ? (
+          <div className="popover__search">
+            <input
+              autoFocus
+              placeholder="Filter stashes…"
+              value={stashQuery}
+              onChange={(e) => setStashQuery(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div className="popover__group-label" style={{ position: 'static' }}>
+            Stashes
+          </div>
+        )}
         <div className="stash-list">
-          {stashes.map((s) => (
-            <div key={s.index} className="stash-item">
-              <button
-                type="button"
-                className="stash-item__main"
-                data-tip="Review this stash"
-                onClick={() => {
-                  setStashOpen(false)
-                  setReviewStash(s)
-                }}
-              >
-                <span className="stash-item__msg" data-tip-overflow="">
-                  {s.message || `stash@{${s.index}}`}
-                </span>
-                <span className="stash-item__date">{s.relativeDate}</span>
-              </button>
-              <div className="stash-item__actions">
+          {visibleStashes.length === 0 ? (
+            <div className="popover__empty">No matching stashes</div>
+          ) : (
+            visibleStashes.map((s) => (
+              <div key={s.index} className="stash-item">
                 <button
-                  className="section-head__action"
-                  data-tip="Apply and keep"
+                  type="button"
+                  className="stash-item__main"
+                  data-tip="Review this stash"
                   onClick={() => {
                     setStashOpen(false)
-                    runOp(() => gg.stashApply(repoPath, s.index, false))
+                    setReviewStash(s)
                   }}
                 >
-                  Apply
+                  <span className="stash-item__msg" data-tip-overflow="">
+                    {highlightMatch(s.message || `stash@{${s.index}}`, stashQuery)}
+                  </span>
+                  <span className="stash-item__date">{s.relativeDate}</span>
                 </button>
-                <button
-                  className="section-head__action"
-                  data-tip="Apply and delete"
-                  onClick={() => {
-                    setStashOpen(false)
-                    runOp(() => gg.stashApply(repoPath, s.index, true))
-                  }}
-                >
-                  Pop
-                </button>
-                <button
-                  className="section-head__action is-danger"
-                  data-tip="Delete stash"
-                  onClick={() => {
-                    setStashOpen(false)
-                    runOp(() => gg.stashDrop(repoPath, s.index))
-                  }}
-                >
-                  <Icon.Trash size={13} />
-                </button>
+                <div className="stash-item__actions">
+                  <button
+                    className="section-head__action"
+                    data-tip="Apply and keep"
+                    onClick={() => {
+                      setStashOpen(false)
+                      runOp(() => gg.stashApply(repoPath, s.index, false))
+                    }}
+                  >
+                    Apply
+                  </button>
+                  <button
+                    className="section-head__action"
+                    data-tip="Apply and delete"
+                    onClick={() => {
+                      setStashOpen(false)
+                      runOp(() => gg.stashApply(repoPath, s.index, true))
+                    }}
+                  >
+                    Pop
+                  </button>
+                  <button
+                    className="section-head__action is-danger"
+                    data-tip="Delete stash"
+                    onClick={() => {
+                      setStashOpen(false)
+                      runOp(() => gg.stashDrop(repoPath, s.index))
+                    }}
+                  >
+                    <Icon.Trash size={13} />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </Popover>
 
@@ -562,8 +596,7 @@ export function ChangesView({
                 </>
               ) : (
                 <>
-                  This will discard the changes in{' '}
-                  <code>{confirmDiscard.files[0]?.path}</code>.{' '}
+                  This will discard the changes in <code>{confirmDiscard.files[0]?.path}</code>.{' '}
                 </>
               )}
               Tracked files are restored from the index; untracked files move to the system trash.

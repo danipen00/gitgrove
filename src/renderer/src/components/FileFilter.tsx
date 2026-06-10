@@ -17,6 +17,8 @@ const DEFAULT_TYPES: readonly FileStatus[] = [
 interface FileFilterResult {
   /** The files passing the current filter (input array when inactive). */
   filtered: ChangedFile[]
+  /** The current path query (trimmed-or-not as typed) — for match highlighting. */
+  query: string
   /** True when a query or type filter is set. */
   active: boolean
   /** The rendered filter bar. */
@@ -79,5 +81,5 @@ export function useFileFilter(
     </div>
   )
 
-  return { filtered, active, bar, reset }
+  return { filtered, query, active, bar, reset }
 }

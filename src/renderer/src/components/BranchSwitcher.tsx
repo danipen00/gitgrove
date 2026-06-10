@@ -1,6 +1,7 @@
 import type { BranchInfo } from '@shared/types'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
+import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
 import { ContextMenu } from './ContextMenu'
 import { Popover } from './Popover'
@@ -233,7 +234,7 @@ export function BranchSwitcher({
                   >
                     <span className="icon-muted branch-glyph" aria-hidden="true" />
                     <span className="popover__item-main">
-                      <span className="popover__item-title">{row.name}</span>
+                      <span className="popover__item-title">{highlightMatch(row.name, query)}</span>
                     </span>
                     {row.current && <span className="tag tag--current">current</span>}
                   </button>

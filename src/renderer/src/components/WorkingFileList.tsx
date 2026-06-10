@@ -19,6 +19,7 @@ import type { ChangedFile } from '@shared/types'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { splitPath, statusLabel, statusLetter } from '../lib/format'
+import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
 import { isCmdOrCtrl } from '../lib/platform'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
@@ -36,6 +37,8 @@ interface Props {
   onToggleIncluded?: (path: string) => void
   /** Bulk include/exclude — Space over a multi-selection. Omit for read-only lists. */
   onSetIncluded?: (paths: string[], included: boolean) => void
+  /** Active filter query — when set, the matched path portion is highlighted. */
+  highlight?: string
   /** Right-click menu for the current selection, passed in list order. */
   contextMenuFor: (files: ChangedFile[]) => ContextMenuItem[]
 }
@@ -63,6 +66,7 @@ interface RowProps {
   check: CheckState | null
   top: number
   selected: boolean
+  highlight: string
   onSelect: (path: string, e: React.MouseEvent) => void
   onToggleIncluded?: (path: string) => void
   onMenu: (file: ChangedFile, x: number, y: number) => void
@@ -73,6 +77,7 @@ const Row = memo(function Row({
   check,
   top,
   selected,
+  highlight,
   onSelect,
   onToggleIncluded,
   onMenu
@@ -114,8 +119,8 @@ const Row = memo(function Row({
         {statusLetter(file.status)}
       </span>
       <span className="wfl__path" data-tip={file.path} data-tip-overflow="">
-        {dir && <span className="wfl__dir">{dir}</span>}
-        <span className="wfl__name">{name}</span>
+        {dir && <span className="wfl__dir">{highlightMatch(dir, highlight)}</span>}
+        <span className="wfl__name">{highlightMatch(name, highlight)}</span>
       </span>
     </div>
   )
@@ -128,6 +133,7 @@ export function WorkingFileList({
   onSelect,
   onToggleIncluded,
   onSetIncluded,
+  highlight = '',
   contextMenuFor
 }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
@@ -346,6 +352,7 @@ export function WorkingFileList({
             check={selections ? checkState(selections.get(file.path)) : null}
             top={(start + i) * ROW_H}
             selected={selected.has(file.path)}
+            highlight={highlight}
             onSelect={handleRowClick}
             onToggleIncluded={onToggleIncluded}
             onMenu={openMenu}

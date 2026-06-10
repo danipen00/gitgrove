@@ -50,15 +50,6 @@
   --st-conflicted: #f0616d;
   --st-modified-soft: rgba(214, 160, 39, 0.16);
 
-  /* Status colors mirroring @pierre/trees' own palette, so the diff-header
-     M/R/A badge matches the letter colors shown in the file tree (dark). */
-  --tree-st-added: #00cab1;
-  --tree-st-modified: #08c0ef;
-  --tree-st-deleted: #ff6762;
-  --tree-st-renamed: #ffd452;
-  --tree-st-untracked: #00cab1;
-  --tree-st-ignored: #4a4a4e;
-
   /* Themed chrome details */
   --scrollbar-thumb: #2c2f39;
   --scrollbar-thumb-hover: #3a3e4a;
@@ -127,15 +118,6 @@
   --st-untracked: #1b7c83;
   --st-conflicted: #cf222e;
   --st-modified-soft: rgba(154, 103, 0, 0.14);
-
-  /* Status colors mirroring @pierre/trees' own palette, so the diff-header
-     M/R/A badge matches the letter colors shown in the file tree (light). */
-  --tree-st-added: #16a994;
-  --tree-st-modified: #1ca1c7;
-  --tree-st-deleted: #ff2e3f;
-  --tree-st-renamed: #d5a910;
-  --tree-st-untracked: #16a994;
-  --tree-st-ignored: #adadb1;
 
   /* Themed chrome details */
   --scrollbar-thumb: #c9ced7;
@@ -657,6 +639,12 @@ button {
   text-align: center;
   color: var(--fg-faint);
   font-size: 12px;
+}
+/* Natively-scrolled repo list (short rows, no virtualization needed). */
+.repo-list {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 4px 6px 6px;
 }
 
 /* ── Cursor-anchored context menu (RepoSwitcher) ──────────────────────────── */
@@ -1194,32 +1182,28 @@ button {
 }
 .diff-head__badge {
   flex: 0 0 auto;
-  /* match the sans font @pierre/trees uses for its M/R/A letters */
   font-family: var(--font-ui);
   font-weight: 700;
   font-size: 12px;
 }
-.diff-head__badge.st-added {
-  color: var(--tree-st-added);
+.diff-head__badge.st-added,
+.diff-head__badge.st-untracked {
+  color: var(--st-added);
 }
 .diff-head__badge.st-modified {
-  color: var(--tree-st-modified);
+  color: var(--st-modified);
 }
 .diff-head__badge.st-deleted {
-  color: var(--tree-st-deleted);
+  color: var(--st-deleted);
 }
 .diff-head__badge.st-renamed {
-  color: var(--tree-st-renamed);
-}
-.diff-head__badge.st-untracked {
-  color: var(--tree-st-untracked);
+  color: var(--st-renamed);
 }
 .diff-head__badge.st-conflicted {
-  /* @pierre/trees has no conflicted color; reuse its deleted red */
-  color: var(--tree-st-deleted);
+  color: var(--st-conflicted);
 }
 .diff-head__badge.st-ignored {
-  color: var(--tree-st-ignored);
+  color: var(--fg-faint);
 }
 .diff-head__file {
   display: flex;
@@ -2491,6 +2475,13 @@ button {
   flex: 0 0 auto;
 }
 
+/* Matched substring inside a filtered list item (files, branches, repos). */
+.hl {
+  background: var(--accent-glow);
+  color: inherit;
+  border-radius: 2px;
+}
+
 /* ── Hunk staging bar (annotation row inside the working diff) ───────────── */
 .stage-bar {
   display: flex;
@@ -2659,7 +2650,8 @@ button {
   display: flex;
 }
 .stash-review__files {
-  flex: 0 0 300px;
+  /* width is driven by the splitter (inline style); see StashReviewDialog. */
+  flex: 0 0 auto;
   min-width: 0;
   border-right: 1px solid var(--border);
   display: flex;

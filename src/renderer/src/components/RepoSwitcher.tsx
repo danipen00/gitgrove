@@ -1,7 +1,8 @@
 import type { RecentRepo, RepoInfo, RepoSummary } from '@shared/types'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { prettyPath } from '../lib/format'
+import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
 import { isGithubUrl, remoteLabel, revealLabel } from '../lib/repo-actions'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
@@ -24,8 +25,12 @@ interface MenuState {
   remote: string | null
 }
 
+/** Past this many known repos the popover gains a filter + Recent/All split. */
+const RECENT_TOP = 5
+
 export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const [recents, setRecents] = useState<RecentRepo[]>([])
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [notice, setNotice] = useState<{ message: string; ok: boolean } | null>(null)
@@ -35,6 +40,28 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
   useEffect(() => {
     if (open) window.gitgrove.recentRepos().then(setRecents)
   }, [open])
+
+  const close = () => {
+    setOpen(false)
+    setQuery('')
+  }
+
+  // `recentRepos` returns every known repo, newest first. Once the list is long
+  // enough to be awkward to eyeball we offer a filter and a Recent/All split:
+  // the handful of newest on top, then the full set alphabetically so any repo
+  // is a glance (or a few keystrokes) away.
+  const grouped = recents.length > RECENT_TOP
+  const q = query.trim().toLowerCase()
+  const matches = useMemo(() => {
+    if (!q) return recents
+    return recents.filter(
+      (r) => r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q)
+    )
+  }, [recents, q])
+  const allSorted = useMemo(
+    () => [...matches].sort((a, b) => a.name.localeCompare(b.name)),
+    [matches]
+  )
 
   useEffect(() => () => clearTimeout(noticeTimer.current), [])
 
@@ -117,12 +144,42 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
     return items
   }
 
+  const renderRow = (r: RecentRepo) => (
+    <button
+      key={r.path}
+      className={`popover__item${repo?.path === r.path ? ' is-active' : ''}`}
+      onClick={() => {
+        close()
+        onOpenRepo(r.path)
+      }}
+      onContextMenu={(e) => openMenu(e, r, true)}
+    >
+      <span className="icon-muted">
+        <Icon.Repo size={15} />
+      </span>
+      <span className="popover__item-main">
+        <span className="popover__item-title">{highlightMatch(r.name, query)}</span>
+        <span className="popover__item-sub">{highlightMatch(prettyPath(r.path), query)}</span>
+      </span>
+      <span
+        className="popover__item-remove"
+        title="Remove from recents"
+        onClick={(e) => {
+          e.stopPropagation()
+          removeRecent(r.path)
+        }}
+      >
+        <Icon.Close size={13} />
+      </span>
+    </button>
+  )
+
   return (
     <>
       <button
         ref={anchor}
         className="pill"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => (open ? close() : setOpen(true))}
         onContextMenu={repo ? (e) => openMenu(e, repo, false) : undefined}
       >
         <span className="pill__icon">
@@ -134,46 +191,42 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
         </span>
       </button>
 
-      <Popover anchor={anchor.current} open={open} onClose={() => setOpen(false)} width={340}>
-        <div className="popover__list">
-          {recents.length > 0 && <div className="popover__group-label">Recent</div>}
-          {recents.map((r) => (
-            <button
-              key={r.path}
-              className={`popover__item${repo?.path === r.path ? ' is-active' : ''}`}
-              onClick={() => {
-                setOpen(false)
-                onOpenRepo(r.path)
-              }}
-              onContextMenu={(e) => openMenu(e, r, true)}
-            >
-              <span className="icon-muted">
-                <Icon.Repo size={15} />
-              </span>
-              <span className="popover__item-main">
-                <span className="popover__item-title">{r.name}</span>
-                <span className="popover__item-sub">{prettyPath(r.path)}</span>
-              </span>
-              <span
-                className="popover__item-remove"
-                title="Remove from recents"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  removeRecent(r.path)
-                }}
-              >
-                <Icon.Close size={13} />
-              </span>
-            </button>
-          ))}
-          {recents.length === 0 && <div className="popover__empty">No recent repositories</div>}
+      <Popover anchor={anchor.current} open={open} onClose={close} width={340}>
+        {grouped && (
+          <div className="popover__search">
+            <input
+              autoFocus
+              placeholder="Filter repositories…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        )}
+        <div className="repo-list">
+          {recents.length === 0 ? (
+            <div className="popover__empty">No recent repositories</div>
+          ) : matches.length === 0 ? (
+            <div className="popover__empty">No matching repositories</div>
+          ) : !grouped || q ? (
+            <>
+              {!q && <div className="popover__group-label">Recent</div>}
+              {matches.map(renderRow)}
+            </>
+          ) : (
+            <>
+              <div className="popover__group-label">Recent</div>
+              {recents.slice(0, RECENT_TOP).map(renderRow)}
+              <div className="popover__group-label">All</div>
+              {allSorted.map(renderRow)}
+            </>
+          )}
         </div>
         <div className="popover__footer">
           <button
             className="btn-ghost"
             style={{ width: '100%', justifyContent: 'center' }}
             onClick={() => {
-              setOpen(false)
+              close()
               onPickRepo()
             }}
           >

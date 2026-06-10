@@ -44,6 +44,7 @@ export function HistoryView({
   // history has no untracked entries). Cleared when another commit is picked.
   const {
     filtered: visibleFiles,
+    query: filterQuery,
     active: filterActive,
     bar: filterBar,
     reset: resetFilter
@@ -167,6 +168,7 @@ export function HistoryView({
                   selectedPath={selectedFilePath}
                   // Read-only list: deselecting everything keeps the last diff.
                   onSelect={(path) => path !== null && onSelectFile(path)}
+                  highlight={filterQuery}
                   contextMenuFor={(selected) => [
                     {
                       label: selected.length > 1 ? 'Copy Paths' : 'Copy Path',
