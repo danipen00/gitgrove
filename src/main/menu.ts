@@ -16,7 +16,7 @@ import {
 } from 'electron'
 import { IPC, type MenuCommand } from '@shared/ipc'
 import { REPO_URL } from './app-info'
-import { getRemoteWebUrl } from './git'
+import { getRemoteWebUrl } from './git/read'
 import { checkForUpdates } from './updater'
 
 /** What the menu needs from the app: the live window and the open repo path. */

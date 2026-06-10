@@ -37,25 +37,29 @@ capability touches, in order: `shared/types.ts` → `shared/ipc.ts` (channel + `
 method) → `preload/index.ts` (forward the invoke) → `main/ipc.ts` (`ipcMain.handle`) →
 renderer. Don't bypass it.
 
-**Git layer (`src/main/`)** — no wrapper library; a single `execFile`/`spawn` entry point
-with exact control over args and exit codes (the GitHub Desktop approach). Read it before
-adding git calls — its conventions are load-bearing:
-- `git.ts` (read side): `GIT_OPTIONAL_LOCKS=0` so reads never take the index lock; all
+**Git layer (`src/main/git/`)** — no wrapper library; a single `execFile`/`spawn` entry
+point with exact control over args and exit codes (the GitHub Desktop approach). Read it
+before adding git calls — its conventions are load-bearing:
+- `read.ts` (read side): `GIT_OPTIONAL_LOCKS=0` so reads never take the index lock; all
   path/text output is **NUL-delimited** (`-z`/`%x00`).
-- `git-exec.ts` (write runner): mutating ops **serialized per repo** via a single shared
+- `exec.ts` (write runner): mutating ops **serialized per repo** via a single shared
   write queue + lock retry ladder; never prompt (`GIT_TERMINAL_PROMPT` off). The
-  operations live in `git-write.ts` (staging, commits, branches, stash, worktrees, …;
-  signing inherited from the user's git config), `git-sync.ts` (fetch/pull/push/clone —
-  off the queue: they never take the index lock) and `git-rebase.ts` (interactive rebase
-  scripted via editor shims — **no terminal editor opens**).
-- `git-bin.ts` locates git (PATH, then GitHub Desktop's copy); `git-status.ts` snapshots;
-  `watcher.ts` pushes `repo:changed`; `ipc.ts` registers the handlers; `menu.ts`,
-  `updater.ts`, `store.ts`.
+  operations live in `write.ts` (staging, commits, branches, stash, worktrees, …;
+  signing inherited from the user's git config), `sync.ts` (fetch/pull/push/clone — off
+  the queue: they never take the index lock) and `rebase.ts` (interactive rebase scripted
+  via editor shims — **no terminal editor opens**).
+- `bin.ts` locates git (PATH, then GitHub Desktop's copy); `status.ts` snapshots.
 
-**Renderer (`src/renderer/src/`)** — `App.tsx` (state, the two tabs, modals), `components/`
-(one per file, UI only), `lib/staging.ts` (**heart of hunk-level staging**: checkboxes are
-pure renderer state, git touched only at commit time; the change block is rendered to a
-unified patch and `git apply --cached`'d), `styles/global.css` (two themes, one layout).
+**App shell (`src/main/`)** — `index.ts` (lifecycle + window), `ipc.ts` (registers the
+handlers), `menu.ts`, `watcher.ts` (pushes `repo:changed`), `updater.ts`, `store.ts`.
+
+**Renderer (`src/renderer/src/`)** — `App.tsx` (state and the two tabs); `components/`
+(one per file, UI only) grouped by feature: `changes/`, `history/`, `toolbar/`, `app/`
+(shell screens + app-level dialogs) and `common/` (shared widgets and primitives — same-
+folder imports stay relative, cross-folder go through `@/`); `lib/` (pure logic + hooks —
+`lib/staging.ts` is the **heart of hunk-level staging**: checkboxes are pure renderer
+state, git touched only at commit time; the change block is rendered to a unified patch
+and `git apply --cached`'d); `styles/global.css` (two themes, one layout).
 
 ## Commands
 

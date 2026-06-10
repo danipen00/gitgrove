@@ -29,11 +29,11 @@ import {
   getLog,
   getRemoteWebUrl,
   getWorkingDiff
-} from './git'
-import { rebaseInteractive } from './git-rebase'
-import { getRepoSnapshot } from './git-status'
-import * as gitSync from './git-sync'
-import * as gitWrite from './git-write'
+} from './git/read'
+import { rebaseInteractive } from './git/rebase'
+import { getRepoSnapshot } from './git/status'
+import * as gitSync from './git/sync'
+import * as gitWrite from './git/write'
 import { openTerminal } from './menu'
 import { getRecentRepos, rememberRepo, removeRecentRepo } from './store'
 import { checkForUpdates, quitAndInstall } from './updater'
