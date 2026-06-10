@@ -904,6 +904,7 @@ button {
   border-right: none;
   border-top: none;
   color: var(--fg);
+  cursor: default;
 }
 .commit:hover {
   background: var(--bg-hover);
