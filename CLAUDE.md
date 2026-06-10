@@ -72,9 +72,10 @@ CI. (`bun` may not be on PATH in tool shells — prefix `export PATH="$HOME/.bun
 
 **Validate visually with Playwright.** For anything complex or that needs to be seen —
 UI, layout, diff rendering, themes, multi-step flows — drive the real app, don't just
-trust types and tests: `bun run dev:debug`, then `playwright-cli attach --cdp`, exercise
-it, screenshot it. (`scripts/verify-ui.mjs` shows the launch pattern.) Beauty and UX are
-verified on screen, not in the diff.
+trust types and tests. **Always use the `playwright-cli` skill for this** (it's
+installed) — don't hand-roll Playwright calls. The flow: `bun run dev:debug`, then attach
+over CDP and exercise/screenshot the change. (`scripts/verify-ui.mjs` shows the launch
+pattern.) Beauty and UX are verified on screen, not in the diff.
 
 ## Conventions
 
