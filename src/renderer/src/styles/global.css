@@ -2042,7 +2042,7 @@ button {
    hover events and its tooltip can explain why it's unavailable. Only this half
    dims — the caret half stays live so you can switch to a mode that IS ready. */
 .composer__commit[aria-disabled='true'] {
-  opacity: 0.55;
+  opacity: 0.7;
   cursor: default;
   filter: none;
 }
