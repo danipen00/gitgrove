@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { parseRefs, pluralize } from '../lib/format'
 import { Icon } from '../lib/icons'
 import { usePersistentState } from '../lib/persist'
+import { navTarget } from '../lib/useListKeyNav'
 import { useSpinDelay } from '../lib/useSpinDelay'
 import { Avatar } from './Avatar'
 import { RefChip } from './CommitSummary'
@@ -93,6 +94,24 @@ export function HistoryView({
   const sentinelRef = useRef<HTMLDivElement>(null)
   const onLoadMoreRef = useRef(onLoadMore)
   onLoadMoreRef.current = onLoadMore
+
+  // Keyboard navigation: arrows / PageUp / PageDown / Home / End move the
+  // selection (selection follows focus, exactly like the file lists). The
+  // handler lives on the scroll container, so it works whether focus sits on
+  // the container itself or on a clicked commit row inside it; the
+  // scrollIntoView effect above keeps the new selection on screen.
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (commits.length === 0) return
+    const list = listRef.current
+    // Rows have variable height (ref chips) — measure one for the page jump.
+    const rowH = list?.querySelector<HTMLElement>('.commit')?.offsetHeight ?? 60
+    const page = Math.max(1, Math.floor((list?.clientHeight ?? 0) / rowH) - 1)
+    const current = selectedCommit ? commits.findIndex((c) => c.hash === selectedCommit.hash) : -1
+    const target = navTarget(e.key, current, commits.length, page)
+    if (target === null) return
+    e.preventDefault()
+    if (target !== current) onSelectCommit(commits[target])
+  }
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-observing per appended page is the point — a new observer reports the current intersection immediately, which keeps paging until the sentinel leaves the margin (fills tall viewports with no scroll event at all).
   useEffect(() => {
     const root = listRef.current
@@ -130,7 +149,14 @@ export function HistoryView({
 
   return (
     <div className="history">
-      <div className="commit-list" ref={listRef}>
+      <div
+        className="commit-list"
+        ref={listRef}
+        role="listbox"
+        aria-label="Commit history"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+      >
         {commits.map((commit) => {
           const refs = parseRefs(commit.refs)
           const overflow = refs.length - MAX_LIST_REFS
@@ -140,6 +166,8 @@ export function HistoryView({
               key={commit.hash}
               ref={active ? activeRef : null}
               className={`commit${active ? ' is-active' : ''}`}
+              role="option"
+              aria-selected={active}
               onClick={() => onSelectCommit(commit)}
               onContextMenu={
                 commitMenuFor

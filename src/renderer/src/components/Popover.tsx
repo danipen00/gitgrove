@@ -20,11 +20,27 @@ interface PopoverProps {
 export function Popover({ anchor, open, onClose, align = 'left', width, children }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ top: number; left: number; minWidth: number } | null>(null)
+  // Whether this open has already focused its [data-autofocus] control.
+  const focused = useRef(false)
 
   // Reset on close so the next open re-measures fresh content.
   useEffect(() => {
-    if (!open) setPos(null)
+    if (!open) {
+      setPos(null)
+      focused.current = false
+    }
   }, [open])
+
+  // Focus the marked control (e.g. a filter input) once the panel is actually
+  // visible. React's autoFocus can't do this: it fires on mount, during the
+  // hidden measurement pass, where the browser refuses focus(). Runs once per
+  // open — re-measures (children changing while the user types) must not yank
+  // focus back.
+  useEffect(() => {
+    if (!pos || focused.current) return
+    focused.current = true
+    ref.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus()
+  }, [pos])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: children affect the measured height
   useLayoutEffect(() => {

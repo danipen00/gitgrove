@@ -1,5 +1,12 @@
 import { type GitGroveApi, IPC, type MenuCommand } from '@shared/ipc'
-import type { ChangedFile, CloneProgress, DiffArea, LogOptions, UpdateStatus } from '@shared/types'
+import type {
+  ChangedFile,
+  CloneProgress,
+  DiffArea,
+  LogOptions,
+  OpProgress,
+  UpdateStatus
+} from '@shared/types'
 import { contextBridge, ipcRenderer } from 'electron'
 
 const api: GitGroveApi = {
@@ -108,6 +115,11 @@ const api: GitGroveApi = {
     const listener = (_e: unknown, progress: CloneProgress) => handler(progress)
     ipcRenderer.on(IPC.cloneProgress, listener)
     return () => ipcRenderer.removeListener(IPC.cloneProgress, listener)
+  },
+  onOpProgress: (handler) => {
+    const listener = (_e: unknown, progress: OpProgress) => handler(progress)
+    ipcRenderer.on(IPC.opProgress, listener)
+    return () => ipcRenderer.removeListener(IPC.opProgress, listener)
   },
   onUpdateStatus: (handler) => {
     const listener = (_e: unknown, status: UpdateStatus) => handler(status)

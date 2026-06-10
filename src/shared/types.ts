@@ -129,6 +129,23 @@ export interface RebaseTodoItem {
 
 export type ResetMode = 'soft' | 'mixed' | 'hard'
 
+/** Long-running git operations that report determinate progress. */
+export type ProgressOpKind = 'checkout' | 'fetch' | 'pull' | 'push' | 'discard'
+
+/**
+ * Progress of a long-running operation (checkout / fetch / pull / push /
+ * discard), pushed from main while it runs so the UI can fill determinately
+ * instead of spinning blind.
+ */
+export interface OpProgress {
+  repoPath: string
+  kind: ProgressOpKind
+  /** Phase reported by git, e.g. "Receiving objects". */
+  phase: string
+  /** 0–100 within the current phase. */
+  percent: number
+}
+
 /** Progress of a `git clone`, pushed from main while a clone runs. */
 export interface CloneProgress {
   /** Phase reported by git, e.g. "Receiving objects". */
@@ -156,8 +173,20 @@ export interface Commit {
 export interface BranchInfo {
   current: string
   detached: boolean
+  /** Local branch names, most recently committed first. */
   local: string[]
+  /** Remote branch names, most recently committed first. */
   remote: string[]
+  /**
+   * The repository's default branch (origin/HEAD, falling back to main/master),
+   * or null when it can't be determined. Drives the switcher's DEFAULT section.
+   */
+  defaultBranch: string | null
+  /**
+   * Recently checked-out local branches (from the reflog), most recent first;
+   * excludes the current and default branch. Drives the RECENT section.
+   */
+  recent: string[]
 }
 
 export interface RepoInfo {

@@ -20,6 +20,10 @@ interface Props {
   resolvedTheme: ResolvedTheme
   sync?: SyncStatus | null
   syncRunning?: SyncAction | null
+  /** Determinate 0–100 of the running sync action, or null before git reports any. */
+  syncProgress?: number | null
+  /** The checkout in flight: target branch + determinate progress. */
+  switching?: { name: string; percent: number | null } | null
   onSyncAction?: (action: SyncAction) => void
   onBranchAction?: (action: BranchAction, branch: string) => void
   /** Lazy branch-list loader, called when the branch switcher opens. */
@@ -53,6 +57,8 @@ export function Toolbar({
   resolvedTheme,
   sync,
   syncRunning,
+  syncProgress,
+  switching,
   onSyncAction,
   onBranchAction,
   onBranchesOpen,
@@ -105,6 +111,7 @@ export function Toolbar({
           branch={branch}
           loading={branchesLoading}
           busy={busy}
+          switching={switching}
           onCheckout={onCheckout}
           onBranchAction={onBranchAction}
           onOpen={onBranchesOpen}
@@ -117,6 +124,7 @@ export function Toolbar({
           detached={branch?.detached ?? false}
           busy={busy}
           running={syncRunning ?? null}
+          progress={syncProgress}
           onAction={onSyncAction}
         />
       )}

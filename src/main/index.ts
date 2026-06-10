@@ -33,6 +33,8 @@ import type {
   DiscardItem,
   GitAvailability,
   LogOptions,
+  OpProgress,
+  ProgressOpKind,
   RebaseTodoItem,
   RepoOpenResult,
   RepoOpKind,
@@ -453,6 +455,17 @@ function openTerminal(cwd: string): boolean {
   return term ? launch(term, []) : false
 }
 
+/**
+ * Progress forwarder for a long-running op: pushes phase + percent to the
+ * renderer so the matching button can fill determinately while git works.
+ */
+function opProgressTo(repoPath: string, kind: ProgressOpKind) {
+  return (phase: string, percent: number): void => {
+    const progress: OpProgress = { repoPath, kind, phase, percent }
+    mainWindow?.webContents.send(IPC.opProgress, progress)
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle(IPC.pickRepo, async () => {
     if (!mainWindow) return null
@@ -488,7 +501,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.branches, (_e, repoPath: string) => getBranches(repoPath))
   ipcMain.handle(IPC.checkout, async (_e, repoPath: string, branch: string) => {
     // Checkout mutates HEAD/index/worktree → serialized on the write queue.
-    await gitWrite.checkoutBranch(repoPath, branch)
+    await gitWrite.checkoutBranch(repoPath, branch, opProgressTo(repoPath, 'checkout'))
     return getBranches(repoPath)
   })
   ipcMain.handle(IPC.log, (_e, repoPath: string, options?: LogOptions) => getLog(repoPath, options))
@@ -530,10 +543,19 @@ function registerIpc(): void {
           checkoutPaths.push(f.path)
         }
       }
-      for (const p of trashPaths) {
-        await shell.trashItem(join(repoPath, p)).catch(() => {})
+      // Big discards take real time (one trash call per file, then the git
+      // steps) — report determinate progress so the dialog can show a bar.
+      const progress = opProgressTo(repoPath, 'discard')
+      let lastPercent = -1
+      for (let i = 0; i < trashPaths.length; i++) {
+        await shell.trashItem(join(repoPath, trashPaths[i])).catch(() => {})
+        const percent = Math.round(((i + 1) / trashPaths.length) * 100)
+        if (percent !== lastPercent) {
+          lastPercent = percent
+          progress('Moving to trash', percent)
+        }
       }
-      await gitWrite.discardFiles(repoPath, resetPaths, checkoutPaths)
+      await gitWrite.discardFiles(repoPath, resetPaths, checkoutPaths, progress)
     }
   )
   ipcMain.handle(
@@ -550,10 +572,10 @@ function registerIpc(): void {
 
   // ── Sync ──
   ipcMain.handle(IPC.fetch, (_e, repoPath: string, remote?: string) =>
-    gitWrite.fetch(repoPath, remote)
+    gitWrite.fetch(repoPath, remote, opProgressTo(repoPath, 'fetch'))
   )
   ipcMain.handle(IPC.pull, (_e, repoPath: string, opts?: { rebase?: boolean }) =>
-    gitWrite.pull(repoPath, opts)
+    gitWrite.pull(repoPath, opts, opProgressTo(repoPath, 'pull'))
   )
   ipcMain.handle(
     IPC.push,
@@ -561,7 +583,7 @@ function registerIpc(): void {
       _e,
       repoPath: string,
       opts?: { setUpstream?: { remote: string; branch: string }; forceWithLease?: boolean }
-    ) => gitWrite.push(repoPath, opts)
+    ) => gitWrite.push(repoPath, opts, opProgressTo(repoPath, 'push'))
   )
 
   // ── Branches ──

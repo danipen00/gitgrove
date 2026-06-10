@@ -14,6 +14,7 @@ import type {
   DiscardItem,
   GitAvailability,
   LogOptions,
+  OpProgress,
   RebaseTodoItem,
   RecentRepo,
   RepoOpenResult,
@@ -111,6 +112,8 @@ export const IPC = {
   /** Generic application-menu command (payload: a MenuCommand string). */
   menuCommand: 'menu:command',
   cloneProgress: 'repo:clone-progress',
+  /** Determinate progress of a running checkout/fetch/pull/push (OpProgress). */
+  opProgress: 'repo:op-progress',
   updateStatus: 'update:status',
   windowMaximized: 'window:maximized'
 } as const
@@ -285,6 +288,8 @@ export interface GitGroveApi {
   onMenuCommand(handler: (command: MenuCommand) => void): () => void
   /** Subscribe to clone progress pushes while a clone runs. */
   onCloneProgress(handler: (progress: CloneProgress) => void): () => void
+  /** Subscribe to determinate progress of running checkout/fetch/pull/push ops. */
+  onOpProgress(handler: (progress: OpProgress) => void): () => void
   /** Subscribe to auto-update lifecycle pushes. Returns an unsubscribe fn. */
   onUpdateStatus(handler: (status: UpdateStatus) => void): () => void
 }

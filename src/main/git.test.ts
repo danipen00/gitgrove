@@ -10,6 +10,7 @@ import {
   getLog,
   getRemoteWebUrl,
   isGitRepo,
+  parseRecentBranches,
   resolveRepoRoot,
   toWebUrl
 } from './git'
@@ -103,6 +104,55 @@ describe('getBranches', () => {
     expect(branches.current).toBe('main')
     expect(branches.detached).toBe(false)
     expect(branches.local).toContain('main')
+  })
+
+  it('resolves the default branch and recent checkouts', async () => {
+    // Bounce through two branches so the reflog records the checkouts; end on
+    // main so the other tests keep seeing the expected HEAD.
+    git(['checkout', '-q', '-b', 'feature/recent-a'])
+    git(['checkout', '-q', '-b', 'feature/recent-b'])
+    git(['checkout', '-q', 'feature/recent-a'])
+    git(['checkout', '-q', 'main'])
+    try {
+      const branches = await getBranches(repo)
+      // No origin/HEAD in a local-only repo — the main/master fallback applies.
+      expect(branches.defaultBranch).toBe('main')
+      // Most recent checkout first; current (main) and default excluded.
+      expect(branches.recent).toEqual(['feature/recent-a', 'feature/recent-b'])
+    } finally {
+      git(['branch', '-q', '-D', 'feature/recent-a', 'feature/recent-b'])
+    }
+  })
+})
+
+describe('parseRecentBranches', () => {
+  // Reflog subjects arrive newest-first, exactly as `reflog --format=%gs`.
+  const reflog = [
+    'checkout: moving from feature/x to fix/y',
+    'commit: change something',
+    'checkout: moving from main to feature/x',
+    'checkout: moving from feature/x to main',
+    'checkout: moving from abc1234 to feature/x',
+    'checkout: moving from main to abc1234'
+  ].join('\n')
+
+  it('returns checkout targets newest-first, deduplicated', () => {
+    const recent = parseRecentBranches(reflog, new Set(['feature/x', 'fix/y', 'main']))
+    expect(recent).toEqual(['fix/y', 'feature/x', 'main'])
+  })
+
+  it('drops targets that are not candidates (deleted branches, detached hashes)', () => {
+    const recent = parseRecentBranches(reflog, new Set(['feature/x']))
+    expect(recent).toEqual(['feature/x'])
+  })
+
+  it('honours the limit', () => {
+    const recent = parseRecentBranches(reflog, new Set(['feature/x', 'fix/y', 'main']), 2)
+    expect(recent).toEqual(['fix/y', 'feature/x'])
+  })
+
+  it('returns nothing for an empty reflog', () => {
+    expect(parseRecentBranches('', new Set(['main']))).toEqual([])
   })
 })
 

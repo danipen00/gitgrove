@@ -5,8 +5,14 @@ import { prettyPath } from '../lib/format'
 import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
 import { isGithubUrl, remoteLabel, revealLabel } from '../lib/repo-actions'
+import { useListKeyNav } from '../lib/useListKeyNav'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { Popover } from './Popover'
+
+/** One rendered line of the popover: a section label or a repository row. */
+type Row =
+  | { kind: 'label'; key: string; text: string }
+  | { kind: 'repo'; key: string; repo: RecentRepo }
 
 interface Props {
   repo: RepoSummary | null
@@ -62,6 +68,60 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
     () => [...matches].sort((a, b) => a.name.localeCompare(b.name)),
     [matches]
   )
+
+  // Flat row model (labels + repos) so rendering and keyboard navigation share
+  // one source of truth. A repo can appear in both Recent and All — keys carry
+  // the section so React keys stay unique.
+  const rows = useMemo<Row[]>(() => {
+    const label = (text: string): Row => ({ kind: 'label', key: `label-${text}`, text })
+    const repoRow = (section: string, r: RecentRepo): Row => ({
+      kind: 'repo',
+      key: `${section}:${r.path}`,
+      repo: r
+    })
+    if (matches.length === 0) return []
+    if (grouped && !q) {
+      return [
+        label('Recent'),
+        ...recents.slice(0, RECENT_TOP).map((r) => repoRow('recent', r)),
+        label('All'),
+        ...allSorted.map((r) => repoRow('all', r))
+      ]
+    }
+    return [...(q ? [] : [label('Recent')]), ...matches.map((r) => repoRow('recent', r))]
+  }, [recents, matches, allSorted, grouped, q])
+
+  /** Indexes of repo rows (labels excluded) — the keyboard nav space. */
+  const itemRows = useMemo(() => rows.flatMap((row, i) => (row.kind === 'repo' ? [i] : [])), [rows])
+
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // Arrows/Enter work the popover without the mouse; the filter (when shown)
+  // keeps focus so typing and navigating interleave freely. Suspended while a
+  // row's context menu is up so Enter can't open a repo underneath it.
+  const nav = useListKeyNav({
+    enabled: open && !menu,
+    count: itemRows.length,
+    onActivate: (i) => {
+      const row = rows[itemRows[i]]
+      if (row?.kind === 'repo') {
+        close()
+        onOpenRepo(row.repo.path)
+      }
+    },
+    onHighlight: (i) => {
+      // Rows are natively scrolled (no virtualization) — nudge the highlighted
+      // one into view. Labels aren't .popover__item, so nth-of-item matches i.
+      listRef.current
+        ?.querySelectorAll('.popover__item')
+        [i]?.scrollIntoView({ block: 'nearest' })
+    }
+  })
+  const kbdRow = itemRows[nav.index] ?? -1
+
+  // Typing a new filter restarts the highlight at the first match.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: query is the intentional trigger; setIndex is stable.
+  useEffect(() => nav.setIndex(0), [q])
 
   useEffect(() => () => clearTimeout(noticeTimer.current), [])
 
@@ -144,10 +204,10 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
     return items
   }
 
-  const renderRow = (r: RecentRepo) => (
+  const renderRow = (key: string, r: RecentRepo, kbd: boolean) => (
     <button
-      key={r.path}
-      className={`popover__item${repo?.path === r.path ? ' is-active' : ''}`}
+      key={key}
+      className={`popover__item${repo?.path === r.path ? ' is-active' : ''}${kbd ? ' is-kbd' : ''}`}
       onClick={() => {
         close()
         onOpenRepo(r.path)
@@ -195,30 +255,28 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
         {grouped && (
           <div className="popover__search">
             <input
-              autoFocus
+              data-autofocus=""
               placeholder="Filter repositories…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
         )}
-        <div className="repo-list">
+        <div className="repo-list" ref={listRef}>
           {recents.length === 0 ? (
             <div className="popover__empty">No recent repositories</div>
-          ) : matches.length === 0 ? (
+          ) : rows.length === 0 ? (
             <div className="popover__empty">No matching repositories</div>
-          ) : !grouped || q ? (
-            <>
-              {!q && <div className="popover__group-label">Recent</div>}
-              {matches.map(renderRow)}
-            </>
           ) : (
-            <>
-              <div className="popover__group-label">Recent</div>
-              {recents.slice(0, RECENT_TOP).map(renderRow)}
-              <div className="popover__group-label">All</div>
-              {allSorted.map(renderRow)}
-            </>
+            rows.map((row, i) =>
+              row.kind === 'label' ? (
+                <div key={row.key} className="popover__group-label">
+                  {row.text}
+                </div>
+              ) : (
+                renderRow(row.key, row.repo, i === kbdRow)
+              )
+            )
           )}
         </div>
         <div className="popover__footer">

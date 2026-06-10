@@ -161,15 +161,66 @@ async function resolveHead(repoPath: string): Promise<{ current: string; detache
   }
 }
 
+/** How many recently checked-out branches the switcher's RECENT section shows. */
+const RECENT_BRANCH_LIMIT = 5
+
+/**
+ * Extract recently checked-out branches from reflog subjects (`%gs` lines like
+ * "checkout: moving from feature/x to main"): the checkout *targets*, newest
+ * first, deduplicated, kept only when still in `candidates` (so deleted
+ * branches and detached-HEAD hashes drop out). Pure + exported for tests.
+ */
+export function parseRecentBranches(
+  reflog: string,
+  candidates: ReadonlySet<string>,
+  limit = RECENT_BRANCH_LIMIT
+): string[] {
+  const recent: string[] = []
+  for (const line of reflog.split('\n')) {
+    // Refnames can never contain spaces, so the trailing token is exact.
+    const target = line.match(/^checkout: moving from \S+ to (\S+)$/)?.[1]
+    if (!target || !candidates.has(target) || recent.includes(target)) continue
+    recent.push(target)
+    if (recent.length >= limit) break
+  }
+  return recent
+}
+
+/**
+ * The repo's default branch: what origin/HEAD points at, falling back to a
+ * local/remote main or master. Null when nothing matches (e.g. a fresh repo
+ * with a custom unborn branch).
+ */
+async function getDefaultBranch(
+  repoPath: string,
+  local: string[],
+  remote: string[]
+): Promise<string | null> {
+  try {
+    const ref = (
+      await runGit(repoPath, ['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD'], [1])
+    ).trim()
+    if (ref) return ref.replace(/^origin\//, '')
+  } catch {
+    /* origin/HEAD not set locally — fall through to the name probe */
+  }
+  return (
+    ['main', 'master'].find((name) => local.includes(name) || remote.includes(`origin/${name}`)) ??
+    null
+  )
+}
+
 export async function getBranches(repoPath: string): Promise<BranchInfo> {
   // One `for-each-ref` enumerates local + remote branches AND marks the
   // checked-out one (`*`). `git branch -v` (what a wrapper library would
   // run) additionally computes ahead/behind for every tracked branch, a rev
   // walk per branch that costs seconds on remote-heavy repos. Fields are
   // NUL-separated; refnames cannot contain NUL or newline, so line-based
-  // parsing is exact.
+  // parsing is exact. `--sort=-committerdate` puts freshly committed branches
+  // first — the ordering the switcher wants — at no extra cost.
   const out = await runGit(repoPath, [
     'for-each-ref',
+    '--sort=-committerdate',
     '--format=%(HEAD)%00%(refname)%00%(refname:short)%00%(symref)',
     'refs/heads',
     'refs/remotes'
@@ -188,10 +239,27 @@ export async function getBranches(repoPath: string): Promise<BranchInfo> {
       remote.push(short)
     }
   }
-  if (current) return { current, detached: false, local, remote }
   // No starred local ref: HEAD is unborn (first commit pending) or detached.
-  const head = await resolveHead(repoPath)
-  return { current: head.current, detached: head.detached, local, remote }
+  const head = current ? { current, detached: false } : await resolveHead(repoPath)
+  const defaultBranch = await getDefaultBranch(repoPath, local, remote)
+  const recent = await getRecentBranches(repoPath, local, head.current, defaultBranch)
+  return { ...head, local, remote, defaultBranch, recent }
+}
+
+/** Recently checked-out local branches, excluding current/default (shown elsewhere). */
+async function getRecentBranches(
+  repoPath: string,
+  local: string[],
+  current: string,
+  defaultBranch: string | null
+): Promise<string[]> {
+  // The HEAD reflog records every checkout; 400 entries is weeks of work on an
+  // active repo and still a single cheap local read.
+  const reflog = await runGit(repoPath, ['reflog', '--format=%gs', '-n', '400']).catch(() => '')
+  const candidates = new Set(local)
+  candidates.delete(current)
+  if (defaultBranch) candidates.delete(defaultBranch)
+  return parseRecentBranches(reflog, candidates)
 }
 
 /**
@@ -206,7 +274,7 @@ export async function getQuickSummary(repoPath: string): Promise<RepoSummary> {
   return {
     path: repoPath,
     name: basename(repoPath),
-    branch: { current, detached, local: [], remote: [] },
+    branch: { current, detached, local: [], remote: [], defaultBranch: null, recent: [] },
     changeCount: 0,
     ahead: 0,
     behind: 0

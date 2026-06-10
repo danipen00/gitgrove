@@ -2,6 +2,7 @@ import type { BranchInfo } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
+import { useListKeyNav } from '../lib/useListKeyNav'
 import { ContextMenu } from './ContextMenu'
 import { Popover } from './Popover'
 import { useVirtualScroll, VScrollbar } from './VirtualScroll'
@@ -14,6 +15,9 @@ interface Props {
   /** True while the full branch list is being fetched after a repo open. */
   loading?: boolean
   busy: boolean
+  /** The checkout in flight: target branch + determinate progress (null while
+   *  git hasn't reported any — fast switches never do). */
+  switching?: { name: string; percent: number | null } | null
   onCheckout: (branch: string) => void
   /** When provided, enables the "New branch" footer and per-row context menu. */
   onBranchAction?: (action: BranchAction, branch: string) => void
@@ -25,15 +29,72 @@ interface Props {
 const ROW_H = 32
 /** Empty space kept below the last row so it never sits flush against the edge. */
 const PAD_BOTTOM = 8
+/** Rows shown per popover viewport — also the PageUp/PageDown jump. */
+const VIEW_ROWS = 12
 
 type Row =
   | { kind: 'label'; key: string; text: string }
   | { kind: 'item'; key: string; name: string; current: boolean; local: boolean }
 
+/**
+ * The section model: DEFAULT and RECENT first (the branches you're most
+ * likely heading to), then the remaining locals and remotes, each already
+ * sorted most-recently-committed first by the main process. A branch in
+ * DEFAULT/RECENT never repeats in LOCAL.
+ */
+function buildRows(branch: BranchInfo | null, query: string): Row[] {
+  if (!branch) return []
+  const q = query.trim().toLowerCase()
+  const match = (n: string) => n.toLowerCase().includes(q)
+  const item = (prefix: string, name: string, local: boolean): Row => ({
+    kind: 'item',
+    key: `${prefix}:${name}`,
+    name,
+    current: local && name === branch.current,
+    local
+  })
+
+  const elsewhere = new Set(branch.recent)
+  if (branch.defaultBranch) elsewhere.add(branch.defaultBranch)
+
+  const sections: Array<{ text: string; rows: Row[] }> = [
+    {
+      text: 'Default branch',
+      rows:
+        branch.defaultBranch && branch.local.includes(branch.defaultBranch)
+          ? [branch.defaultBranch].filter(match).map((n) => item('d', n, true))
+          : []
+    },
+    {
+      text: 'Recent branches',
+      rows: branch.recent.filter(match).map((n) => item('rec', n, true))
+    },
+    {
+      text: 'Local',
+      rows: branch.local
+        .filter((n) => !elsewhere.has(n) && match(n))
+        .map((n) => item('l', n, true))
+    },
+    {
+      text: 'Remote',
+      rows: branch.remote.filter(match).map((n) => item('r', n, false))
+    }
+  ]
+
+  const out: Row[] = []
+  for (const { text, rows } of sections) {
+    if (rows.length === 0) continue
+    out.push({ kind: 'label', key: `label-${text}`, text })
+    out.push(...rows)
+  }
+  return out
+}
+
 export function BranchSwitcher({
   branch,
   loading = false,
   busy,
+  switching = null,
   onCheckout,
   onBranchAction,
   onOpen
@@ -41,35 +102,23 @@ export function BranchSwitcher({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const anchor = useRef<HTMLButtonElement>(null)
-  // Right-clicked local branch row: cursor position + branch name.
-  const [menu, setMenu] = useState<{ x: number; y: number; name: string } | null>(null)
+  // Right-clicked branch row: cursor position + branch name. Local rows get
+  // the full menu; remote rows just Copy (merge/rename/delete are local ops).
+  const [menu, setMenu] = useState<{ x: number; y: number; name: string; local: boolean } | null>(
+    null
+  )
+  // Right-click on the trigger pill: actions for the *current* branch.
+  const [headMenu, setHeadMenu] = useState<{ x: number; y: number } | null>(null)
 
   // Flat row model (group labels interleaved with branch items) so a single
-  // virtualized scroller can window both groups together.
-  const rows = useMemo<Row[]>(() => {
-    const q = query.trim().toLowerCase()
-    const match = (n: string) => n.toLowerCase().includes(q)
-    const out: Row[] = []
-    const locals = (branch?.local ?? []).filter(match)
-    const remotes = (branch?.remote ?? []).filter(match)
-    if (locals.length > 0) {
-      out.push({ kind: 'label', key: 'label-local', text: 'Local' })
-      for (const name of locals)
-        out.push({
-          kind: 'item',
-          key: `l:${name}`,
-          name,
-          current: name === branch?.current,
-          local: true
-        })
-    }
-    if (remotes.length > 0) {
-      out.push({ kind: 'label', key: 'label-remote', text: 'Remote' })
-      for (const name of remotes)
-        out.push({ kind: 'item', key: `r:${name}`, name, current: false, local: false })
-    }
-    return out
-  }, [branch, query])
+  // virtualized scroller can window all groups together.
+  const rows = useMemo<Row[]>(() => buildRows(branch, query), [branch, query])
+
+  // Indexes of selectable rows (labels excluded) — the keyboard nav space.
+  const itemRows = useMemo(
+    () => rows.flatMap((row, i) => (row.kind === 'item' ? [i] : [])),
+    [rows]
+  )
 
   // Main-thread scrolling via the shared scroller (see VirtualScroll.tsx for
   // the full rationale): native compositor scrolling would outrun the windowed
@@ -78,22 +127,8 @@ export function BranchSwitcher({
     count: rows.length,
     rowHeight: ROW_H,
     padBottom: PAD_BOTTOM,
-    initialViewportH: ROW_H * 12
+    initialViewportH: ROW_H * VIEW_ROWS
   })
-
-  // Reset scroll position when the result set changes or the popover opens.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: query/open are intentional triggers; scrollTo is stable.
-  useEffect(() => {
-    vs.scrollTo(0)
-  }, [query, open])
-
-  const visible = rows.slice(vs.start, vs.end)
-
-  const label = branch
-    ? branch.detached
-      ? `detached @ ${branch.current.slice(0, 7)}`
-      : branch.current
-    : '—'
 
   const select = (name: string) => {
     setOpen(false)
@@ -101,33 +136,156 @@ export function BranchSwitcher({
     if (name !== branch?.current) onCheckout(name)
   }
 
+  // Arrows/Enter work the popover without touching the mouse: the filter
+  // keeps focus (it autofocuses on open) while the highlight moves through
+  // the virtualized rows. Suspended while a row's context menu is up so Enter
+  // can't checkout underneath it.
+  const nav = useListKeyNav({
+    enabled: open && !menu,
+    count: itemRows.length,
+    page: VIEW_ROWS - 1,
+    onActivate: (i) => {
+      const row = rows[itemRows[i]]
+      if (row?.kind === 'item') select(row.name)
+    },
+    // Enter on "No matching branches" runs the footer: create the typed name.
+    onActivateEmpty: () => {
+      const name = query.trim()
+      if (!name || !onBranchAction) return
+      setOpen(false)
+      setQuery('')
+      onBranchAction('new', name)
+    },
+    onHighlight: (i) => vs.ensureVisible(itemRows[i])
+  })
+  const kbdRow = itemRows[nav.index] ?? -1
+
+  // Reset scroll + highlight when the result set changes or the popover opens.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: query/open are intentional triggers; scrollTo/setIndex are stable.
+  useEffect(() => {
+    vs.scrollTo(0)
+    nav.setIndex(0)
+  }, [query, open])
+
+  const visible = rows.slice(vs.start, vs.end)
+
+  /** The full context menu for a local branch row. */
+  const localBranchMenuItems = (name: string) => {
+    if (!onBranchAction) return []
+    return [
+      {
+        label: 'Checkout',
+        icon: <Icon.Check size={15} />,
+        disabled: name === branch?.current,
+        onClick: () => {
+          setOpen(false)
+          select(name)
+        }
+      },
+      {},
+      {
+        label: `Merge into ${branch?.current ?? 'current'}…`,
+        icon: <Icon.Merge size={15} />,
+        disabled: name === branch?.current,
+        onClick: () => {
+          setOpen(false)
+          onBranchAction('merge', name)
+        }
+      },
+      {
+        label: `Rebase ${branch?.current ?? 'current'} onto this…`,
+        icon: <Icon.Branch size={15} />,
+        disabled: name === branch?.current,
+        onClick: () => {
+          setOpen(false)
+          onBranchAction('rebase', name)
+        }
+      },
+      {},
+      {
+        label: 'Rename…',
+        icon: <Icon.Pencil size={15} />,
+        onClick: () => {
+          setOpen(false)
+          onBranchAction('rename', name)
+        }
+      },
+      {
+        label: 'Delete…',
+        icon: <Icon.Trash size={15} />,
+        danger: true,
+        disabled: name === branch?.current,
+        onClick: () => {
+          setOpen(false)
+          onBranchAction('delete', name)
+        }
+      },
+      {},
+      {
+        label: 'Copy Branch Name',
+        icon: <Icon.Copy size={15} />,
+        onClick: () => window.gitgrove.clipboardWrite(name)
+      }
+    ]
+  }
+
+  const label = switching
+    ? switching.name
+    : branch
+      ? branch.detached
+        ? `detached @ ${branch.current.slice(0, 7)}`
+        : branch.current
+      : '—'
+
   return (
     <>
       <button
         ref={anchor}
         className="pill"
         disabled={!branch || busy || loading}
-        title={loading ? 'Loading branches…' : undefined}
+        title={
+          loading
+            ? 'Loading branches…'
+            : switching
+              ? `Switching to ${switching.name}…`
+              : undefined
+        }
         onClick={() => {
           setOpen((v) => {
             if (!v) onOpen?.()
             return !v
           })
         }}
+        onContextMenu={
+          branch && !branch.detached && onBranchAction && !switching
+            ? (e) => {
+                e.preventDefault()
+                setHeadMenu({ x: e.clientX, y: e.clientY })
+              }
+            : undefined
+        }
       >
+        {/* Determinate fill while a checkout updates the working tree. */}
+        {switching && switching.percent !== null && (
+          <span
+            className="pill__fill"
+            style={{ width: `${switching.percent}%` }}
+            aria-hidden="true"
+          />
+        )}
         <span className="pill__icon">
           <Icon.Branch size={16} />
         </span>
         <span className="pill__label">{label}</span>
-        <span className={`pill__chev${loading ? ' is-spinning' : ''}`}>
-          {loading ? <Icon.Refresh size={14} /> : <Icon.Chevron size={14} />}
+        <span className={`pill__chev${loading || switching ? ' is-spinning' : ''}`}>
+          {loading || switching ? <Icon.Refresh size={14} /> : <Icon.Chevron size={14} />}
         </span>
       </button>
 
       <Popover anchor={anchor.current} open={open} onClose={() => setOpen(false)} width={300}>
         <div className="popover__search">
           <input
-            autoFocus
+            data-autofocus=""
             placeholder="Switch branch…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -159,16 +317,23 @@ export function BranchSwitcher({
                 return (
                   <button
                     key={row.key}
-                    className={`popover__item${row.current ? ' is-active' : ''}`}
+                    className={`popover__item${row.current ? ' is-active' : ''}${
+                      index === kbdRow ? ' is-kbd' : ''
+                    }`}
                     style={rowStyle}
                     data-tip={row.name}
                     data-tip-overflow=""
                     onClick={() => select(row.name)}
                     onContextMenu={
-                      onBranchAction && row.local
+                      onBranchAction
                         ? (e) => {
                             e.preventDefault()
-                            setMenu({ x: e.clientX, y: e.clientY, name: row.name })
+                            setMenu({
+                              x: e.clientX,
+                              y: e.clientY,
+                              name: row.name,
+                              local: row.local
+                            })
                           }
                         : undefined
                     }
@@ -188,7 +353,10 @@ export function BranchSwitcher({
         {onBranchAction && (
           <div className="popover__footer">
             <button
-              className="popover__item popover__item--footer"
+              // Highlighted when the list is empty — Enter runs this footer.
+              className={`popover__item popover__item--footer${
+                rows.length === 0 && query.trim() ? ' is-kbd' : ''
+              }`}
               onClick={() => {
                 setOpen(false)
                 setQuery('')
@@ -208,60 +376,48 @@ export function BranchSwitcher({
         )}
       </Popover>
 
+      {headMenu && branch && onBranchAction && (
+        <ContextMenu
+          x={headMenu.x}
+          y={headMenu.y}
+          onClose={() => setHeadMenu(null)}
+          items={[
+            {
+              label: 'Copy Branch Name',
+              icon: <Icon.Copy size={15} />,
+              onClick: () => window.gitgrove.clipboardWrite(branch.current)
+            },
+            {},
+            {
+              label: 'New Branch…',
+              icon: <Icon.Plus size={15} />,
+              onClick: () => onBranchAction('new', '')
+            },
+            {
+              label: 'Rename…',
+              icon: <Icon.Pencil size={15} />,
+              onClick: () => onBranchAction('rename', branch.current)
+            }
+          ]}
+        />
+      )}
+
       {menu && onBranchAction && (
         <ContextMenu
           x={menu.x}
           y={menu.y}
           onClose={() => setMenu(null)}
-          items={[
-            {
-              label: 'Checkout',
-              icon: <Icon.Check size={15} />,
-              disabled: menu.name === branch?.current,
-              onClick: () => {
-                setOpen(false)
-                select(menu.name)
-              }
-            },
-            {},
-            {
-              label: `Merge into ${branch?.current ?? 'current'}…`,
-              icon: <Icon.Merge size={15} />,
-              disabled: menu.name === branch?.current,
-              onClick: () => {
-                setOpen(false)
-                onBranchAction('merge', menu.name)
-              }
-            },
-            {
-              label: `Rebase ${branch?.current ?? 'current'} onto this…`,
-              icon: <Icon.Branch size={15} />,
-              disabled: menu.name === branch?.current,
-              onClick: () => {
-                setOpen(false)
-                onBranchAction('rebase', menu.name)
-              }
-            },
-            {},
-            {
-              label: 'Rename…',
-              icon: <Icon.Pencil size={15} />,
-              onClick: () => {
-                setOpen(false)
-                onBranchAction('rename', menu.name)
-              }
-            },
-            {
-              label: 'Delete…',
-              icon: <Icon.Trash size={15} />,
-              danger: true,
-              disabled: menu.name === branch?.current,
-              onClick: () => {
-                setOpen(false)
-                onBranchAction('delete', menu.name)
-              }
-            }
-          ]}
+          items={
+            menu.local
+              ? localBranchMenuItems(menu.name)
+              : [
+                  {
+                    label: 'Copy Branch Name',
+                    icon: <Icon.Copy size={15} />,
+                    onClick: () => window.gitgrove.clipboardWrite(menu.name)
+                  }
+                ]
+          }
         />
       )}
     </>

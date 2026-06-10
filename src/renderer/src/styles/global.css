@@ -373,6 +373,8 @@ button {
 
 /* ── Pill / dropdown trigger ─────────────────────────────────────────────── */
 .pill {
+  position: relative;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -384,6 +386,21 @@ button {
   background: var(--bg-elevated);
   color: var(--fg);
   transition: background 0.12s, border-color 0.12s;
+}
+/* Determinate progress fill behind a pill's content (checkout / sync ops).
+   The pill's other children are lifted with position:relative so the
+   absolutely-positioned fill paints underneath them. */
+.pill > :not(.pill__fill) {
+  position: relative;
+}
+.pill__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--accent-soft);
+  transition: width 0.15s ease-out;
+  pointer-events: none;
 }
 .pill:hover {
   background: var(--bg-hover);
@@ -588,6 +605,16 @@ button {
   background: var(--bg-hover);
 }
 .popover__item.is-active {
+  background: var(--accent-soft);
+}
+/* Keyboard highlight (arrows in the switcher popovers): hover's background
+   plus a hairline ring so it also reads on rows that are is-active. */
+.popover__item.is-kbd,
+.stash-item.is-kbd {
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.popover__item.is-active.is-kbd {
   background: var(--accent-soft);
 }
 .popover__item-main {
@@ -849,6 +876,11 @@ button {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+}
+/* The list is a focusable listbox (keyboard navigation); the active row's
+   accent already marks where you are, so no focus ring on the container. */
+.commit-list:focus {
+  outline: none;
 }
 /* Infinite-scroll sentinel row: observed by HistoryView to page in older
    commits; shows a compact spinner while the next page is fetched. */
@@ -2121,6 +2153,36 @@ button {
 }
 .sync-badge--ahead {
   color: var(--st-added);
+}
+
+/* ── Discard confirmation file list ──────────────────────────────────────── */
+/* Shows exactly what a (bulk) discard will touch, GH-Desktop style: a capped,
+   scrollable list with the same status letters as the changes list. */
+.discard-list {
+  margin: 10px 0;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 0;
+}
+.discard-list__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 10px;
+  font-size: 12px;
+  min-width: 0;
+}
+.discard-list__path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.discard-list__more {
+  padding: 4px 10px 2px;
+  color: var(--fg-faint);
+  font-size: 11.5px;
 }
 
 /* ── Dialog form bits (PromptDialog & friends) ───────────────────────────── */

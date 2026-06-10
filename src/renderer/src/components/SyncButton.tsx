@@ -18,10 +18,20 @@ interface Props {
   busy: boolean
   /** The action currently running, to spin the right glyph. */
   running: SyncAction | null
+  /** Determinate 0–100 of the running action, or null before git reports any. */
+  progress?: number | null
   onAction: (action: SyncAction) => void
 }
 
-export function SyncButton({ sync, branch, detached, busy, running, onAction }: Props) {
+export function SyncButton({
+  sync,
+  branch,
+  detached,
+  busy,
+  running,
+  progress = null,
+  onAction
+}: Props) {
   const [open, setOpen] = useState(false)
   const [confirmForce, setConfirmForce] = useState(false)
   const anchor = useRef<HTMLButtonElement>(null)
@@ -37,14 +47,25 @@ export function SyncButton({ sync, branch, detached, busy, running, onAction }: 
         ? 'push'
         : 'fetch'
 
+  const RUNNING_LABEL: Record<SyncAction, string> = {
+    fetch: 'Fetching…',
+    pull: 'Pulling…',
+    'pull-rebase': 'Pulling…',
+    push: 'Pushing…',
+    'force-push': 'Pushing…',
+    publish: 'Publishing…'
+  }
+
   const label =
-    primary === 'publish'
-      ? 'Publish branch'
-      : primary === 'pull'
-        ? 'Pull'
-        : primary === 'push'
-          ? 'Push'
-          : 'Fetch'
+    running !== null
+      ? RUNNING_LABEL[running]
+      : primary === 'publish'
+        ? 'Publish branch'
+        : primary === 'pull'
+          ? 'Pull'
+          : primary === 'push'
+            ? 'Push'
+            : 'Fetch'
 
   const glyph =
     running !== null ? (
@@ -90,6 +111,10 @@ export function SyncButton({ sync, branch, detached, busy, running, onAction }: 
           }
           onClick={() => onAction(primary)}
         >
+          {/* Determinate fill while the running action reports progress. */}
+          {running !== null && progress !== null && (
+            <span className="pill__fill" style={{ width: `${progress}%` }} aria-hidden="true" />
+          )}
           <span className="pill__icon">{glyph}</span>
           <span className="pill__label">{label}</span>
           {sync.behind > 0 && <span className="sync-badge sync-badge--behind">{sync.behind}↓</span>}

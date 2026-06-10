@@ -7,11 +7,12 @@
 
 import type { ChangedFile, RepoState, StashEntry } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { pluralize } from '../lib/format'
+import { pluralize, statusLetter } from '../lib/format'
 import { highlightMatch } from '../lib/highlight'
 import { Icon } from '../lib/icons'
 import { usePersistentState } from '../lib/persist'
 import type { ResolvedTheme } from '../lib/theme'
+import { useListKeyNav } from '../lib/useListKeyNav'
 import { CommitComposer, type CommitMode } from './CommitComposer'
 import type { ContextMenuItem } from './ContextMenu'
 import { copyPathItems } from './copyPathItems'
@@ -45,6 +46,8 @@ interface Props {
   onSetAllIncluded: (included: boolean, paths?: string[]) => void
   /** On-disk size of the included files (bytes), or null while unknown. */
   commitSize: number | null
+  /** Determinate 0–100 of a running discard, or null before/without one. */
+  discardProgress: number | null
   /** Resolved theme, for the stash review dialog's diff. */
   theme: ResolvedTheme
   /** Run a mutating op (serialized, auto-refresh, errors → toast). True on success. */
@@ -59,6 +62,66 @@ const OP_LABEL: Record<NonNullable<RepoState['op']>, string> = {
   rebasing: 'Rebase in progress',
   'cherry-picking': 'Cherry-pick in progress',
   reverting: 'Revert in progress'
+}
+
+/** Rows shown in the discard confirmation before collapsing to "+N more". */
+const DISCARD_LIST_MAX = 250
+
+/**
+ * Discard confirmation body: exactly which files are about to be discarded
+ * (scrollable, status-tinted), so a bulk discard is never a leap of faith —
+ * and, once confirmed, a determinate bar while the discard runs.
+ */
+function DiscardSummary({
+  files,
+  all,
+  progress
+}: {
+  files: ChangedFile[]
+  all: boolean
+  /** 0–100 while the discard runs; null before confirmation. */
+  progress: number | null
+}) {
+  const untracked = files.filter((f) => f.status === 'untracked').length
+  const overflow = files.length - DISCARD_LIST_MAX
+  return (
+    <>
+      This will discard the {all ? 'unstaged ' : ''}changes in{' '}
+      {files.length === 1 ? <code>{files[0].path}</code> : pluralize(files.length, 'file')}.
+      <div className="discard-list" role="list">
+        {files.slice(0, DISCARD_LIST_MAX).map((f) => (
+          <div key={f.path} className="discard-list__row" role="listitem">
+            <span className={`wfl__status st-${f.status}`}>{statusLetter(f.status)}</span>
+            <span className="discard-list__path" title={f.path}>
+              {f.path}
+            </span>
+          </div>
+        ))}
+        {overflow > 0 && (
+          <div className="discard-list__more">…and {pluralize(overflow, 'more file')}</div>
+        )}
+      </div>
+      {progress !== null ? (
+        <div className="clone-progress" role="status">
+          <div className="clone-progress__bar">
+            <div
+              className="clone-progress__fill"
+              style={{ width: `${Math.max(2, progress)}%` }}
+            />
+          </div>
+          <span className="clone-progress__label">Discarding… {progress}%</span>
+        </div>
+      ) : untracked > 0 ? (
+        `Tracked files are restored from the last commit; ${
+          untracked === files.length
+            ? 'untracked files move'
+            : `the ${pluralize(untracked, 'untracked file')} moves`
+        } to the system trash, so this is recoverable.`
+      ) : (
+        'Files are restored to their state in the last commit.'
+      )}
+    </>
+  )
 }
 
 export function ChangesView({
@@ -76,6 +139,7 @@ export function ChangesView({
   onToggleFile,
   onSetAllIncluded,
   commitSize,
+  discardProgress,
   theme,
   runOp,
   onCommit,
@@ -134,6 +198,23 @@ export function ChangesView({
     return stashes.filter((s) => (s.message || `stash@{${s.index}}`).toLowerCase().includes(q))
   }, [stashes, stashQuery])
 
+  // Arrows move through the stashes, Enter opens the highlighted one's review.
+  const stashListRef = useRef<HTMLDivElement>(null)
+  const stashNav = useListKeyNav({
+    enabled: stashOpen,
+    count: visibleStashes.length,
+    onActivate: (i) => {
+      const s = visibleStashes[i]
+      if (!s) return
+      setStashOpen(false)
+      setReviewStash(s)
+    },
+    onHighlight: (i) =>
+      stashListRef.current?.querySelectorAll('.stash-item')[i]?.scrollIntoView({ block: 'nearest' })
+  })
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the filter change is the intentional trigger; setIndex is stable.
+  useEffect(() => stashNav.setIndex(0), [stashQuery])
+
   // Composer mode (Commit | Amend | Stash): the action button is a split
   // button whose caret half opens this popover to switch modes.
   const [mode, setMode] = useState<CommitMode>('commit')
@@ -157,6 +238,10 @@ export function ChangesView({
   const descHeight = Math.min(300, Math.max(30, storedDescHeight))
   const descEl = useRef<HTMLTextAreaElement | null>(null)
 
+  // True while a confirmed discard runs — the dialog stays open showing the
+  // determinate progress bar instead of vanishing into a frozen list.
+  const [discarding, setDiscarding] = useState(false)
+
   const discard = async () => {
     if (!confirmDiscard) return
     // Tracked files carry oldPath/status so the main process can restore
@@ -167,8 +252,13 @@ export function ChangesView({
     const untracked = confirmDiscard.files
       .filter((f) => f.status === 'untracked')
       .map((f) => f.path)
-    setConfirmDiscard(null)
-    await runOp(() => gg.discardFiles(repoPath, tracked, untracked))
+    setDiscarding(true)
+    try {
+      await runOp(() => gg.discardFiles(repoPath, tracked, untracked))
+    } finally {
+      setDiscarding(false)
+      setConfirmDiscard(null)
+    }
   }
 
   const confirmDiscardAll = () =>
@@ -497,7 +587,7 @@ export function ChangesView({
         {stashFilterable ? (
           <div className="popover__search">
             <input
-              autoFocus
+              data-autofocus=""
               placeholder="Filter stashes…"
               value={stashQuery}
               onChange={(e) => setStashQuery(e.target.value)}
@@ -508,12 +598,12 @@ export function ChangesView({
             Stashes
           </div>
         )}
-        <div className="stash-list">
+        <div className="stash-list" ref={stashListRef}>
           {visibleStashes.length === 0 ? (
             <div className="popover__empty">No matching stashes</div>
           ) : (
-            visibleStashes.map((s) => (
-              <div key={s.index} className="stash-item">
+            visibleStashes.map((s, i) => (
+              <div key={s.index} className={`stash-item${i === stashNav.index ? ' is-kbd' : ''}`}>
                 <button
                   type="button"
                   className="stash-item__main"
@@ -587,20 +677,13 @@ export function ChangesView({
         <ConfirmDialog
           title={confirmDiscard.all ? 'Discard all changes?' : 'Discard changes?'}
           danger
+          busy={discarding}
           body={
-            <>
-              {confirmDiscard.all || confirmDiscard.files.length > 1 ? (
-                <>
-                  This will discard the {confirmDiscard.all ? 'unstaged ' : ''}changes in{' '}
-                  {pluralize(confirmDiscard.files.length, 'file')}.{' '}
-                </>
-              ) : (
-                <>
-                  This will discard the changes in <code>{confirmDiscard.files[0]?.path}</code>.{' '}
-                </>
-              )}
-              Tracked files are restored from the index; untracked files move to the system trash.
-            </>
+            <DiscardSummary
+              files={confirmDiscard.files}
+              all={confirmDiscard.all}
+              progress={discarding ? (discardProgress ?? 0) : null}
+            />
           }
           confirmLabel="Discard"
           onConfirm={discard}

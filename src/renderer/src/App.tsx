@@ -6,6 +6,7 @@ import type {
   Commit,
   DiffPayload,
   GitAvailability,
+  ProgressOpKind,
   RepoOpenResult,
   RepoSnapshot,
   RepoState,
@@ -38,6 +39,7 @@ import { UpdateBanner } from './components/UpdateBanner'
 import { Welcome } from './components/Welcome'
 import { WorktreesDialog } from './components/WorktreesDialog'
 import { Icon } from './lib/icons'
+import { overallPercent } from './lib/progress'
 import { useTheme } from './lib/theme'
 
 type Tab = 'changes' | 'history'
@@ -122,6 +124,14 @@ export function App() {
   const [sync, setSync] = useState<SyncStatus | null>(null)
   const [stashes, setStashes] = useState<StashEntry[]>([])
   const [syncRunning, setSyncRunning] = useState<SyncAction | null>(null)
+  // Determinate progress of the op this window started (checkout/fetch/pull/
+  // push), already mapped onto one 0–100 scale; null while idle or before git
+  // reports anything.
+  const [opProgress, setOpProgress] = useState<{ kind: ProgressOpKind; percent: number } | null>(
+    null
+  )
+  // Branch a checkout is switching to, for the switcher's progress display.
+  const [checkingOut, setCheckingOut] = useState<string | null>(null)
   const [modal, setModal] = useState<Modal | null>(null)
   const [modalBusy, setModalBusy] = useState(false)
 
@@ -229,7 +239,14 @@ export function App() {
     setBranch((prev) =>
       prev
         ? { ...prev, current: snap.branch, detached: snap.detached }
-        : { current: snap.branch, detached: snap.detached, local: [], remote: [] }
+        : {
+            current: snap.branch,
+            detached: snap.detached,
+            local: [],
+            remote: [],
+            defaultBranch: null,
+            recent: []
+          }
     )
     return snap.files
   }, [])
@@ -382,6 +399,13 @@ export function App() {
       const first = files[0]
       if (!first) {
         setChangeSel(null)
+        // The list went empty (last change committed/discarded) — clear the
+        // pane too, but only when it's showing a working diff; in History it
+        // holds a commit diff the user may be reading.
+        if (applyDiff) {
+          setDiff(null)
+          diffReq.current++
+        }
         return
       }
       if (applyDiff) selectWorkingFile(first.path, files)
@@ -654,6 +678,7 @@ export function App() {
       const repoPath = repoRef.current?.path
       if (!repoPath) return
       setBusy(true)
+      setCheckingOut(name)
       try {
         const updated = await window.gitgrove.checkout(repoPath, name)
         setBranch(updated)
@@ -676,6 +701,7 @@ export function App() {
         fail(e)
       } finally {
         setBusy(false)
+        setCheckingOut(null)
       }
     },
     [loadSnapshot, loadLog, autoSelect, fail]
@@ -1053,6 +1079,32 @@ export function App() {
     [doSync]
   )
 
+  // Every op that reports progress runs under `busy`; when it ends, so does
+  // the fill — one clearing point instead of one per operation.
+  useEffect(() => {
+    if (!busy) setOpProgress(null)
+  }, [busy])
+
+  // Determinate progress pushes for checkout/fetch/pull/push/discard. Only
+  // ops this window started count (`busy` is set around them) — the quiet
+  // background auto-fetch reports too and must never flash the buttons.
+  useEffect(
+    () =>
+      window.gitgrove.onOpProgress((p) => {
+        if (!busyRef.current || p.repoPath !== repoRef.current?.path) return
+        const percent = overallPercent(p.kind, p.phase, p.percent)
+        if (percent === null) return
+        // Phases overlap on the wire (local and remote report concurrently) —
+        // never let the fill move backwards.
+        setOpProgress((prev) =>
+          prev && prev.kind === p.kind
+            ? { kind: p.kind, percent: Math.max(prev.percent, percent) }
+            : { kind: p.kind, percent }
+        )
+      }),
+    []
+  )
+
   useEffect(() => {
     return window.gitgrove.onRepoChanged((changedPath) => {
       // Skip watcher-driven refreshes while one of our own ops runs — runOp
@@ -1166,6 +1218,25 @@ export function App() {
       setUpdateFeedbackDismissed(true)
     }
   }
+
+  // What the toolbar shows of the running op: the sync button's fill (only
+  // when the progress kind matches the running action) and the branch
+  // switcher's "switching to X" fill.
+  const syncKind: ProgressOpKind | null =
+    syncRunning === null
+      ? null
+      : syncRunning === 'fetch'
+        ? 'fetch'
+        : syncRunning.startsWith('pull')
+          ? 'pull'
+          : 'push'
+  const syncProgress = opProgress && opProgress.kind === syncKind ? opProgress.percent : null
+  const switching = checkingOut
+    ? {
+        name: checkingOut,
+        percent: opProgress?.kind === 'checkout' ? opProgress.percent : null
+      }
+    : null
 
   // ── App-level modals ───────────────────────────────────────────────────────
   const repoPath = repo?.path
@@ -1494,6 +1565,8 @@ export function App() {
         resolvedTheme={theme}
         sync={sync}
         syncRunning={syncRunning}
+        syncProgress={syncProgress}
+        switching={switching}
         onSyncAction={doSync}
         onBranchAction={onBranchAction}
         onBranchesOpen={reloadBranches}
@@ -1546,6 +1619,7 @@ export function App() {
                 onToggleFile={toggleFileIncluded}
                 onSetAllIncluded={setAllIncluded}
                 commitSize={commitSize}
+                discardProgress={opProgress?.kind === 'discard' ? opProgress.percent : null}
                 theme={theme}
                 runOp={runOp}
                 onCommit={doCommit}

@@ -33,6 +33,26 @@ interface RunOptions {
   env?: Record<string, string>
   /** Exit codes (besides 0) treated as success; stdout is still returned. */
   tolerateExitCodes?: number[]
+  /**
+   * Receives phase + percent parsed from git's stderr progress stream while
+   * the command runs. The caller must also pass `--progress` — git suppresses
+   * progress when stderr is not a terminal.
+   */
+  onProgress?: ProgressHandler
+}
+
+type ProgressHandler = (phase: string, percent: number) => void
+
+/**
+ * Extract progress reports from a chunk of git stderr. git updates a phase in
+ * place with \r-separated lines like "Receiving objects:  42% (1234/2934)"
+ * (server-side phases prefixed with "remote: "). Pure + exported for tests.
+ */
+export function parseProgressText(text: string, onProgress: ProgressHandler): void {
+  for (const line of text.split(/[\r\n]/)) {
+    const m = line.match(/^(?:remote: )?([A-Za-z- ]+):\s+(\d+)%/)
+    if (m) onProgress(m[1], Number(m[2]))
+  }
 }
 
 /**
@@ -55,6 +75,11 @@ function enqueue<T>(repoPath: string, task: () => Promise<T>): Promise<T> {
 
 /** Lock-contention retry schedule (ms). Covers a terminal/editor briefly holding the lock. */
 const LOCK_RETRY_DELAYS = [150, 400, 900]
+
+/** Files restored per checkout-index spawn during a discard — small enough
+ *  that each batch completes quickly (a progress report), large enough to
+ *  stay a handful of spawns even on ten-thousand-file discards. */
+const DISCARD_RESTORE_CHUNK = 1000
 
 const isLockError = (message: string) =>
   /index\.lock|\.lock['"]?: File exists|Another git process/i.test(message)
@@ -117,7 +142,9 @@ async function runOnce(repoPath: string, args: string[], opts: RunOptions = {}):
       stdout += d.toString('utf8')
     })
     child.stderr.on('data', (d: Buffer) => {
-      stderr += d.toString('utf8')
+      const text = d.toString('utf8')
+      stderr += text
+      if (opts.onProgress) parseProgressText(text, opts.onProgress)
     })
     child.on('error', reject)
     child.on('close', (code) => {
@@ -125,7 +152,15 @@ async function runOnce(repoPath: string, args: string[], opts: RunOptions = {}):
       if (code === 0 || (code !== null && opts.tolerateExitCodes?.includes(code))) {
         resolve(stdout)
       } else {
-        reject(new Error(stderr.trim() || stdout.trim() || `git ${args[0]} failed (${code})`))
+        // With --progress the failure reason shares stderr with hundreds of
+        // in-place percent updates; drop those so the toast shows the reason.
+        const reason = opts.onProgress
+          ? stderr
+              .split(/[\r\n]/)
+              .filter((l) => l.trim() && !/\d+%/.test(l))
+              .join('\n')
+          : stderr
+        reject(new Error(reason.trim() || stdout.trim() || `git ${args[0]} failed (${code})`))
       }
     })
     if (opts.input !== undefined) {
@@ -195,11 +230,13 @@ export async function unstageAll(repoPath: string): Promise<void> {
 export async function discardFiles(
   repoPath: string,
   resetPaths: string[],
-  checkoutPaths: string[]
+  checkoutPaths: string[],
+  onProgress?: ProgressHandler
 ): Promise<void> {
   if (resetPaths.length === 0 && checkoutPaths.length === 0) return
   await enqueue(repoPath, async () => {
     if (resetPaths.length > 0) {
+      onProgress?.('Resetting index', 0)
       const input = resetPaths.join('\0')
       try {
         await runOnce(
@@ -217,13 +254,21 @@ export async function discardFiles(
           { input }
         )
       }
+      onProgress?.('Resetting index', 100)
     }
-    if (checkoutPaths.length > 0) {
-      // -f overwrites modified worktree files, -u refreshes the index's stat
-      // cache so the very next status doesn't re-examine these paths.
+    // -f overwrites modified worktree files, -u refreshes the index's stat
+    // cache so the very next status doesn't re-examine these paths. Restored
+    // in chunks so a huge discard reports determinate progress between spawns
+    // (checkout-index itself is silent).
+    for (let i = 0; i < checkoutPaths.length; i += DISCARD_RESTORE_CHUNK) {
+      const chunk = checkoutPaths.slice(i, i + DISCARD_RESTORE_CHUNK)
       await runOnce(repoPath, ['checkout-index', '-f', '-u', '--stdin', '-z'], {
-        input: checkoutPaths.join('\0')
+        input: chunk.join('\0')
       })
+      onProgress?.(
+        'Restoring files',
+        Math.round(Math.min(100, ((i + chunk.length) / checkoutPaths.length) * 100))
+      )
     }
   })
 }
@@ -343,30 +388,39 @@ export async function getSyncStatus(repoPath: string): Promise<SyncStatus> {
   return { upstream, ahead, behind, remotes }
 }
 
-export async function fetch(repoPath: string, remote?: string): Promise<void> {
+export async function fetch(
+  repoPath: string,
+  remote?: string,
+  onProgress?: ProgressHandler
+): Promise<void> {
   // Fetch never touches the index, so it must NOT ride the write queue — a
   // slow network fetch would otherwise make a one-file stage wait behind it.
-  const args = ['fetch', '--prune']
+  const args = ['fetch', '--prune', '--progress']
   if (remote) args.push(remote)
-  await runOnce(repoPath, args)
+  await runOnce(repoPath, args, { onProgress })
 }
 
-export async function pull(repoPath: string, opts: { rebase?: boolean } = {}): Promise<void> {
-  const args = ['-c', 'core.editor=true', 'pull']
+export async function pull(
+  repoPath: string,
+  opts: { rebase?: boolean } = {},
+  onProgress?: ProgressHandler
+): Promise<void> {
+  const args = ['-c', 'core.editor=true', 'pull', '--progress']
   if (opts.rebase) args.push('--rebase')
-  await run(repoPath, args)
+  await run(repoPath, args, { onProgress })
 }
 
 export async function push(
   repoPath: string,
-  opts: { setUpstream?: { remote: string; branch: string }; forceWithLease?: boolean } = {}
+  opts: { setUpstream?: { remote: string; branch: string }; forceWithLease?: boolean } = {},
+  onProgress?: ProgressHandler
 ): Promise<void> {
   // Push reads refs and talks to the network — no index lock; keep it off the
   // write queue for the same reason as fetch.
-  const args = ['push']
+  const args = ['push', '--progress']
   if (opts.forceWithLease) args.push('--force-with-lease')
   if (opts.setUpstream) args.push('-u', opts.setUpstream.remote, opts.setUpstream.branch)
-  await runOnce(repoPath, args)
+  await runOnce(repoPath, args, { onProgress })
 }
 
 // ── Branches ────────────────────────────────────────────────────────────────
@@ -399,10 +453,15 @@ export async function renameBranch(repoPath: string, from: string, to: string): 
 /**
  * Switch branches. Checkout rewrites HEAD, the index and the working tree, so
  * it MUST ride the write queue — running it concurrently with a stage/commit
- * is exactly the index.lock race the queue exists to prevent.
+ * is exactly the index.lock race the queue exists to prevent. Progress comes
+ * from git's "Updating files: N%" stream (emitted only on non-trivial switches).
  */
-export async function checkoutBranch(repoPath: string, branch: string): Promise<void> {
-  await run(repoPath, ['checkout', branch])
+export async function checkoutBranch(
+  repoPath: string,
+  branch: string,
+  onProgress?: ProgressHandler
+): Promise<void> {
+  await run(repoPath, ['checkout', '--progress', branch], { onProgress })
 }
 
 /** Check out a commit directly, leaving HEAD detached. */
@@ -853,11 +912,7 @@ export async function clone(
     child.stderr.on('data', (d: Buffer) => {
       const text = d.toString('utf8')
       stderrTail = (stderrTail + text).slice(-4000)
-      // Progress lines are \r-separated while a phase updates in place.
-      for (const line of text.split(/[\r\n]/)) {
-        const m = line.match(/^(remote: )?([A-Za-z- ]+):\s+(\d+)%/)
-        if (m) onProgress(m[2], Number(m[3]))
-      }
+      parseProgressText(text, onProgress)
     })
     child.on('error', reject)
     child.on('close', (code) => {
