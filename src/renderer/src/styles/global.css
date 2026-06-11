@@ -581,6 +581,7 @@ button {
 }
 .popover__list:hover .vlist__thumb,
 .wfl:hover .vlist__thumb,
+.commit-list:hover .vlist__thumb,
 .vlist__thumb:active {
   opacity: 0.7;
 }
@@ -909,8 +910,12 @@ button {
   min-height: 0;
   flex: 1;
 }
+/* Windowed list viewport: owns its scroll on the main thread (see
+   VirtualScroll.tsx) — overflow hidden + a translated content layer, never
+   native scrolling, so a deep history never flashes blank or fills the DOM. */
 .commit-list {
-  overflow-y: auto;
+  overflow: hidden;
+  position: relative;
   flex: 1;
   min-height: 0;
 }
