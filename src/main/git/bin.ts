@@ -1,4 +1,4 @@
-// Locating a usable `git` executable.
+// Locating usable `git` and `git-lfs` executables.
 //
 // GitGrove shells out to git for every operation (via execFile and spawn),
 // which assumes `git` is discoverable on PATH. That assumption breaks for a
@@ -12,6 +12,14 @@
 // otherwise misreport it as "not a git repository". This module finds a working
 // git: it trusts PATH first, then probes well-known install locations, and
 // caches the answer for the lifetime of the process.
+//
+// `git-lfs` needs the *same* probe. `git lfs <cmd>` works by git searching PATH
+// for a separate `git-lfs` helper executable, and the login-PATH gap bites even
+// harder there: `/usr/bin/git` is on the minimal login PATH, so the git probe
+// below trusts PATH and returns `'git'` early — it never prepends Homebrew's
+// `bin`, leaving `/opt/homebrew/bin/git-lfs` invisible and the LFS banner wrong.
+// So we probe `git-lfs` independently and prepend its dir to PATH too, sharing
+// one resolver between both binaries.
 
 import { execFile } from 'node:child_process'
 import { readdir } from 'node:fs/promises'
@@ -69,22 +77,68 @@ export async function gitVersion(): Promise<string> {
   return stdout.trim().replace(/^git version\s*/i, '')
 }
 
-async function resolve(): Promise<string> {
-  // Trust PATH first: it respects the user's chosen git and is the common case.
-  if (await canRun('git')) return 'git'
+let cachedLfs: Promise<boolean> | null = null
 
-  for (const candidate of await knownLocations()) {
+/**
+ * Resolve the `git-lfs` helper, caching only success. Returns whether it was
+ * found; on success its directory is prepended to `process.env.PATH` so the
+ * `git lfs <cmd>` subcommands fired elsewhere (LFS health probe, `git lfs
+ * install`) can spawn the helper. A failed probe is *not* cached so the LFS
+ * banner's "Check Again" works the moment the user installs git-lfs.
+ */
+export function locateGitLfs(): Promise<boolean> {
+  if (!cachedLfs) {
+    const probe = resolveOnPath('git-lfs', lfsBinaryLocations(), canRun).then(
+      (found) => found != null
+    )
+    cachedLfs = probe
+    probe.then((found) => {
+      // Only a positive result is sticky; drop a negative so the next call retries.
+      if (cachedLfs === probe && !found) cachedLfs = null
+    })
+  }
+  return cachedLfs
+}
+
+/** Forget a previously resolved git-lfs, forcing the next lookup to probe afresh. */
+export function resetGitLfsLocation(): void {
+  cachedLfs = null
+}
+
+async function resolve(): Promise<string> {
+  const found = await resolveOnPath('git', await knownLocations(), canRun)
+  if (found == null) throw new GitNotFoundError()
+  return found
+}
+
+/**
+ * Shared "trust PATH, else probe absolute candidates, else prepend to PATH"
+ * resolver. Trusts PATH first via `canRun(name)` (respects the user's chosen
+ * binary, the common case); otherwise tries each absolute candidate and, on the
+ * first hit, prepends its directory to `env.PATH` so the binary's own child
+ * processes (and sibling subcommands) can find it too. Returns the runnable
+ * name/path, or null when nothing works. `canRun` and `env` are injected so
+ * tests can use fakes — no global mutation, no dependence on what's installed.
+ */
+export async function resolveOnPath(
+  name: string,
+  candidates: string[],
+  canRun: (bin: string) => Promise<boolean>,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<string | null> {
+  if (await canRun(name)) return name
+
+  for (const candidate of candidates) {
     if (await canRun(candidate)) {
-      // Put it on PATH so git's own child processes can find git too.
       const dir = dirname(candidate)
-      if (!process.env.PATH?.split(delimiter).includes(dir)) {
-        process.env.PATH = `${dir}${delimiter}${process.env.PATH ?? ''}`
+      if (!env.PATH?.split(delimiter).includes(dir)) {
+        env.PATH = `${dir}${delimiter}${env.PATH ?? ''}`
       }
       return candidate
     }
   }
 
-  throw new GitNotFoundError()
+  return null
 }
 
 /** Whether `<bin> --version` runs successfully. */
@@ -111,6 +165,19 @@ function knownLocations(): Promise<string[]> {
   return Promise.resolve(['/usr/bin/git', '/usr/local/bin/git', '/bin/git'])
 }
 
+/**
+ * Absolute `git-lfs` paths to probe, most-preferred first, for the given OS.
+ * Mirrors {@link knownLocations} for git. Pure + exported, with `platform`
+ * injectable, so tests are deterministic and don't depend on the real OS.
+ */
+export function lfsBinaryLocations(platform: NodeJS.Platform = process.platform): string[] {
+  if (platform === 'win32') return windowsLfsLocations()
+  if (platform === 'darwin') {
+    return ['/opt/homebrew/bin/git-lfs', '/usr/local/bin/git-lfs', '/usr/bin/git-lfs']
+  }
+  return ['/usr/bin/git-lfs', '/usr/local/bin/git-lfs', '/bin/git-lfs']
+}
+
 async function windowsLocations(): Promise<string[]> {
   const out: string[] = []
   const pf = process.env.ProgramFiles
@@ -122,6 +189,28 @@ async function windowsLocations(): Promise<string[]> {
     out.push(join(local, 'Programs', 'Git', 'cmd', 'git.exe'))
     // GitHub Desktop is the only git many users have; add its bundled copy.
     out.push(...(await githubDesktopGits(local)))
+  }
+  return out
+}
+
+/**
+ * Absolute `git-lfs` paths to probe on Windows, most-preferred first. The Git
+ * for Windows installer drops `git-lfs.exe` next to git under `cmd`, and the
+ * standalone Git LFS installer adds a `Git LFS` Program Files dir. We cover the
+ * common Program Files cases; deeper enumeration (e.g. GitHub Desktop's bundled
+ * copy) isn't worth the complexity here.
+ */
+function windowsLfsLocations(): string[] {
+  const out: string[] = []
+  const pf = process.env.ProgramFiles
+  const pf86 = process.env['ProgramFiles(x86)']
+  if (pf) {
+    out.push(join(pf, 'Git', 'cmd', 'git-lfs.exe'))
+    out.push(join(pf, 'Git LFS', 'git-lfs.exe'))
+  }
+  if (pf86) {
+    out.push(join(pf86, 'Git', 'cmd', 'git-lfs.exe'))
+    out.push(join(pf86, 'Git LFS', 'git-lfs.exe'))
   }
   return out
 }
