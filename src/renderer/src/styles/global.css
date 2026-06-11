@@ -33,6 +33,10 @@
   --fg: #e7e9ee;
   --fg-muted: #9aa0ad;
   --fg-faint: #6b707c;
+  /* Directory prefix on a file path: softer than the filename, but legible.
+     Tuned per theme — dark needs more lift to stay readable on the dark panel;
+     light needs to stay faint enough to read clearly softer than the name. */
+  --fg-path-dir: #9aa0ad;
 
   /* Accents */
   --accent: #5b8cff;
@@ -100,6 +104,7 @@
   --fg: #1b1e25;
   --fg-muted: #586070;
   --fg-faint: #8a909c;
+  --fg-path-dir: #8a909c;
 
   /* Accents */
   --accent: #2f6df6;
@@ -3093,7 +3098,7 @@ button {
   color: var(--fg-faint);
 }
 .wfl__dir {
-  color: var(--fg-faint);
+  color: var(--fg-path-dir);
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 0 1 auto;
