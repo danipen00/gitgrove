@@ -44,9 +44,18 @@ function withHost(kind: 'username' | 'password', url: string): CredentialPrompt 
  * A cancelled in-app prompt makes the askpass helper exit non-zero, which git
  * reports as "could not read Username/Password …" — distinguish that from a
  * genuine rejection so the user isn't told their valid credentials failed.
+ *
+ * `askpassActive` is whether an in-app prompt was actually wired up for this
+ * op. git emits the very same "could not read … terminal prompts disabled"
+ * when no askpass helper exists at all (setup failed, or a quiet fetch), so
+ * that text only means "the user cancelled" when a prompt could have shown —
+ * otherwise it's an environment failure and the raw git error is more honest.
  */
-export function friendlyAuthError(stderr: string): string | null {
-  if (/could not read (Username|Password) for|terminal prompts disabled/i.test(stderr)) {
+export function friendlyAuthError(stderr: string, askpassActive = true): string | null {
+  if (
+    askpassActive &&
+    /could not read (Username|Password) for|terminal prompts disabled/i.test(stderr)
+  ) {
     return 'Sign-in was cancelled, so the operation was stopped.'
   }
   const rejected = /authentication failed|invalid username or password|HTTP Basic: Access denied/i

@@ -1175,7 +1175,11 @@ export function App() {
           onCancel={() => setModal(null)}
         />
       )}
-      {modal?.kind === 'identity' && (
+      {/* Credentials win when both are pending: a credential prompt holds a
+          live git process on a 10-minute timeout that must not expire unseen,
+          while the identity dialog has no timer and simply reappears (its modal
+          state persists) once the prompt is answered. */}
+      {modal?.kind === 'identity' && credentialPrompts.length === 0 && (
         <IdentityDialog
           busy={modalBusy}
           onSubmit={completeIdentitySetup}

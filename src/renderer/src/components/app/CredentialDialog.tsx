@@ -20,8 +20,7 @@ export function CredentialDialog({ request, onRespond }: Props) {
   const [value, setValue] = useState('')
   const { requestId, kind, host, keyPath } = request
 
-  const title =
-    kind === 'passphrase' ? 'Unlock SSH key' : host ? `Sign in to ${host}` : 'Sign in'
+  const title = kind === 'passphrase' ? 'Unlock SSH key' : host ? `Sign in to ${host}` : 'Sign in'
   const label =
     kind === 'username'
       ? 'Username'
@@ -33,9 +32,14 @@ export function CredentialDialog({ request, onRespond }: Props) {
     setValue('')
     onRespond(requestId, answer)
   }
+  // An empty answer is never a real credential — git would treat '' as a failed
+  // username/password and re-prompt, a confusing dead end (an unencrypted key
+  // never reaches this dialog). Block submitting nothing (Enter included);
+  // Cancel is the way out.
+  const canSubmit = value.length > 0
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    respond(value)
+    if (canSubmit) respond(value)
   }
 
   return (
@@ -70,7 +74,7 @@ export function CredentialDialog({ request, onRespond }: Props) {
           <button type="button" className="btn-ghost btn-ghost--sm" onClick={() => respond(null)}>
             Cancel
           </button>
-          <button type="submit" className="btn-primary btn-primary--sm">
+          <button type="submit" className="btn-primary btn-primary--sm" disabled={!canSubmit}>
             {kind === 'passphrase' ? 'Unlock' : 'Sign in'}
           </button>
         </div>

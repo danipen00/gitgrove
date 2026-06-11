@@ -54,6 +54,14 @@ describe('friendlyAuthError', () => {
     expect(friendlyAuthError(stderr)).toContain('cancelled')
   })
 
+  test('the same message with no askpass wired up is not read as cancelled', () => {
+    // Identical stderr, but askpassActive=false (setup failed / quiet fetch):
+    // nothing was cancelled, so the raw git error must surface instead.
+    const stderr =
+      "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+    expect(friendlyAuthError(stderr, false)).toBe(null)
+  })
+
   test('rejected credentials read as an authentication failure', () => {
     const stderr = "fatal: Authentication failed for 'https://github.com/x/y.git/'"
     expect(friendlyAuthError(stderr)).toContain('Authentication failed')

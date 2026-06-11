@@ -158,8 +158,7 @@ export function askpassEnv(): Promise<Record<string, string>> {
 
 async function createAskpassEnv(): Promise<Record<string, string>> {
   const server = new AskpassServer({
-    responder: (prompt, signal) =>
-      responder ? responder(prompt, signal) : Promise.resolve(null)
+    responder: (prompt, signal) => (responder ? responder(prompt, signal) : Promise.resolve(null))
   })
   await server.listen()
   const wrapper = await writeWrapperScript()

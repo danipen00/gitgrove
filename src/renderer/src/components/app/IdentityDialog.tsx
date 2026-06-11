@@ -43,8 +43,8 @@ export function IdentityDialog({ busy, onSubmit, onCancel }: Props) {
       ]}
       note={
         <>
-          Every commit records an author name and email. They are saved to your git config, so
-          you will only be asked once.
+          Every commit records an author name and email. They are saved to your git config, so you
+          will only be asked once.
         </>
       }
       onSubmit={(values, checks) =>

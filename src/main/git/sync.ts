@@ -28,7 +28,7 @@ export async function fetch(
   // GIT_ASKPASS the disabled terminal prompt makes git fail fast and silent —
   // a timer must never pop a credential dialog under the user.
   const env = opts.quiet ? {} : await askpassEnv()
-  await runOnce(repoPath, args, { onProgress, env }).catch(rethrowFriendly)
+  await runOnce(repoPath, args, { onProgress, env }).catch(rethrowFriendly(env))
 }
 
 export async function pull(
@@ -38,7 +38,8 @@ export async function pull(
 ): Promise<void> {
   const args = ['-c', 'core.editor=true', 'pull', '--progress']
   if (opts.rebase) args.push('--rebase')
-  await run(repoPath, args, { onProgress, env: await askpassEnv() }).catch(rethrowFriendly)
+  const env = await askpassEnv()
+  await run(repoPath, args, { onProgress, env }).catch(rethrowFriendly(env))
 }
 
 export async function push(
@@ -49,13 +50,22 @@ export async function push(
   const args = ['push', '--progress']
   if (opts.forceWithLease) args.push('--force-with-lease')
   if (opts.setUpstream) args.push('-u', opts.setUpstream.remote, opts.setUpstream.branch)
-  await runOnce(repoPath, args, { onProgress, env: await askpassEnv() }).catch(rethrowFriendly)
+  const env = await askpassEnv()
+  await runOnce(repoPath, args, { onProgress, env }).catch(rethrowFriendly(env))
 }
 
-/** Re-throw with a human auth message when the failure is credential-related. */
-function rethrowFriendly(e: unknown): never {
-  const message = e instanceof Error ? e.message : String(e)
-  throw new Error(friendlyAuthError(message) ?? message)
+/**
+ * Re-throw with a human auth message when the failure is credential-related.
+ * `env` is the askpass environment that was applied — empty when setup failed
+ * or the op was quiet, which tells friendlyAuthError not to read git's
+ * "terminal prompts disabled" as a user cancellation.
+ */
+function rethrowFriendly(env: Record<string, string>): (e: unknown) => never {
+  const askpassActive = Object.keys(env).length > 0
+  return (e) => {
+    const message = e instanceof Error ? e.message : String(e)
+    throw new Error(friendlyAuthError(message, askpassActive) ?? message)
+  }
 }
 
 /**
@@ -90,7 +100,8 @@ export async function clone(
         // The tail of stderr holds the human-readable failure (auth, 404, …).
         const lines = stderrTail.split('\n').filter((l) => l.trim() && !/\d+%/.test(l))
         const reason = lines.slice(-3).join('\n') || 'git clone failed'
-        reject(new Error(friendlyAuthError(stderrTail) ?? reason))
+        const askpassActive = Object.keys(credentialEnv).length > 0
+        reject(new Error(friendlyAuthError(stderrTail, askpassActive) ?? reason))
       }
     })
   })
