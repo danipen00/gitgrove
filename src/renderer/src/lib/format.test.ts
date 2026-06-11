@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'bun:test'
-import type { FileStatus } from '@shared/types'
+import type { FileStatus, StashEntry } from '@shared/types'
 import {
   formatBytes,
   parseRefs,
   pluralize,
   prettyPath,
   splitPath,
+  stashLabel,
   statusLabel,
   statusLetter
 } from './format'
@@ -71,6 +72,34 @@ describe('parseRefs', () => {
       { name: 'origin/main', isTag: false },
       { name: 'v1.2.3', isTag: true }
     ])
+  })
+})
+
+describe('stashLabel', () => {
+  const stash = (over: Partial<StashEntry>): StashEntry => ({
+    index: 2,
+    sha: 'abc123',
+    message: '',
+    branchName: null,
+    auto: false,
+    relativeDate: 'just now',
+    ...over
+  })
+
+  it('shows the user message when there is one', () => {
+    expect(stashLabel(stash({ message: 'wip on the parser' }))).toBe('wip on the parser')
+  })
+
+  it('falls back to the bare ref for a message-less manual stash', () => {
+    expect(stashLabel(stash({}))).toBe('stash@{2}')
+  })
+
+  it('names auto-stashes after the branch the changes were left on', () => {
+    expect(stashLabel(stash({ auto: true, branchName: 'main' }))).toBe('Changes left on main')
+  })
+
+  it('still labels an auto-stash whose branch is unknown', () => {
+    expect(stashLabel(stash({ auto: true }))).toBe('Changes left behind')
   })
 })
 

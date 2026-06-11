@@ -4,6 +4,7 @@ import type {
   BranchInfo,
   ChangedFile,
   Commit,
+  CreateBranchOutcome,
   CredentialPromptRequest,
   GitAvailability,
   IdentityScope,
@@ -22,6 +23,7 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from 're
 import { AboutDialog } from './components/app/AboutDialog'
 import { AppModals, type Modal } from './components/app/AppModals'
 import { CloneDialog } from './components/app/CloneDialog'
+import type { CreateBranchRequest } from './components/app/CreateBranchDialog'
 import { CredentialDialog } from './components/app/CredentialDialog'
 import { GitSetup } from './components/app/GitSetup'
 import { IdentityDialog } from './components/app/IdentityDialog'
@@ -935,26 +937,71 @@ export function App() {
     }
   }, [])
 
-  const onBranchAction = useCallback((action: BranchAction, name: string) => {
-    const repoPath = repoRef.current?.path
-    if (!repoPath) return
-    switch (action) {
-      case 'new':
-        setModal({ kind: 'new-branch', initialName: name })
-        break
-      case 'merge':
-        // Never merge blind: the dialog dry-runs the merge (conflicts known up
-        // front) and offers merge / squash / rebase before anything happens.
-        setModal({ kind: 'merge', name })
-        break
-      case 'rename':
-        setModal({ kind: 'rename-branch', name })
-        break
-      case 'delete':
-        setModal({ kind: 'delete-branch', name, force: false })
-        break
-    }
-  }, [])
+  /**
+   * Create a branch from the dialog and narrate the outcome: where the changes
+   * went, or that a few files need resolving ('conflicts' is data, not an
+   * error). Checking out a new branch invalidates the log, same as checkout.
+   */
+  const performCreateBranch = useCallback(
+    async (name: string, request: CreateBranchRequest) => {
+      const repoPath = repoRef.current?.path
+      if (!repoPath) return
+      const previous = branchRef.current?.current ?? 'the previous branch'
+      setModalBusy(true)
+      try {
+        let outcome: CreateBranchOutcome | null = null
+        const ok = await runOpRef.current(async () => {
+          outcome = await window.gitgrove.createBranch(repoPath, name, request)
+        })
+        if (!ok) return
+        if (request.checkout) {
+          setLogLoaded(false)
+          if (tabRef.current === 'history') loadLog(repoPath).catch(fail)
+        }
+        if (outcome === 'conflicts') {
+          setNotice(
+            `Created ${name} and brought your changes along — a few files need a quick ` +
+              'conflict resolution.'
+          )
+        } else if (request.changes === 'leave') {
+          setNotice(`Created ${name} — your changes stayed on ${previous}, ready for your return.`)
+        } else if (request.changes === 'bring') {
+          setNotice(`Created ${name} — your changes came along.`)
+        }
+      } finally {
+        setModalBusy(false)
+        setModal(null)
+      }
+    },
+    [loadLog, fail]
+  )
+
+  const onBranchAction = useCallback(
+    (action: BranchAction, name: string) => {
+      const repoPath = repoRef.current?.path
+      if (!repoPath) return
+      switch (action) {
+        case 'new':
+          // The dialog's "start from the default branch" option needs a fresh
+          // branch enumeration (defaultBranch is loaded lazily).
+          reloadBranches()
+          setModal({ kind: 'new-branch', initialName: name })
+          break
+        case 'merge':
+          // Never merge blind: the dialog dry-runs the merge (conflicts known up
+          // front) and offers merge / squash / rebase before anything happens.
+          setModal({ kind: 'merge', name })
+          break
+        case 'rename':
+          setModal({ kind: 'rename-branch', name })
+          break
+        case 'delete':
+          setModal({ kind: 'delete-branch', name, force: false })
+          break
+      }
+    },
+    [reloadBranches]
+  )
 
   /** Right-click menu for a history commit. */
   const commitMenuFor = useCallback(
@@ -1067,7 +1114,11 @@ export function App() {
             if (hasRepo) doSync(command)
             break
           case 'new-branch':
-            if (hasRepo) setModal({ kind: 'new-branch' })
+            if (hasRepo) {
+              // Fresh enumeration for the dialog's default-branch option.
+              reloadBranches()
+              setModal({ kind: 'new-branch' })
+            }
             break
           case 'stash':
             if (hasRepo) setModal({ kind: 'stash' })
@@ -1086,7 +1137,7 @@ export function App() {
             break
         }
       }),
-    [doSync]
+    [doSync, reloadBranches]
   )
 
   // Every op that reports progress runs under `busy`; when it ends, so does
@@ -1301,9 +1352,12 @@ export function App() {
         modal={modal}
         repoPath={repoPath}
         branch={branch}
+        dirtyCount={changes.length}
+        opInFlight={!!repoState?.op}
         busy={modalBusy}
         runModalOp={runModalOp}
         onMerge={performMerge}
+        onCreateBranch={performCreateBranch}
         onDeleteBranch={deleteBranch}
         onCheckoutCommit={checkoutCommit}
         onOpenRepo={openRepoByPath}

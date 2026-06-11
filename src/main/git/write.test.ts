@@ -1,13 +1,16 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   appendIgnoreEntries,
+  AUTO_STASH_MARKER,
   commitMerge,
+  createBranch,
   discardFiles,
   ignorePatterns,
+  listStashes,
   merge,
   mergeMessage,
   parseStashList,
@@ -72,7 +75,7 @@ describe('planDiscard', () => {
 })
 
 describe('parseStashList', () => {
-  test('parses indexes, strips WIP prefixes, keeps dates', () => {
+  test('parses indexes, strips WIP prefixes, keeps dates and branch names', () => {
     // `git stash list -z --format=%gd%x00%H%x00%gs%x00%cr`: a flat NUL stream,
     // each record NUL-terminated (so the output ends with a NUL too).
     const out = [
@@ -85,10 +88,31 @@ describe('parseStashList', () => {
       index: 0,
       sha: 'aaa111',
       message: '1234abc Fix the thing',
+      branchName: 'main',
+      auto: false,
       relativeDate: '2 hours ago'
     })
     expect(entries[1].index).toBe(1)
     expect(entries[1].message).toBe('my named stash')
+    expect(entries[1].branchName).toBe('feature/x')
+  })
+
+  test('recognizes GitGrove auto-stashes and hides their marker message', () => {
+    const out = `stash@{0}\0ddd444\0On topic: ${AUTO_STASH_MARKER}\0just now\0`
+    expect(parseStashList(out)[0]).toMatchObject({ auto: true, message: '', branchName: 'topic' })
+  })
+
+  test('a user message merely containing the marker is not an auto-stash', () => {
+    const out = `stash@{0}\0eee555\0On main: about ${AUTO_STASH_MARKER} stashes\0just now\0`
+    expect(parseStashList(out)[0]).toMatchObject({
+      auto: false,
+      message: `about ${AUTO_STASH_MARKER} stashes`
+    })
+  })
+
+  test('a detached-HEAD stash has no branch to remember', () => {
+    const out = 'stash@{0}\0fff666\0WIP on (no branch): 1234abc Subject\0just now\0'
+    expect(parseStashList(out)[0].branchName).toBeNull()
   })
 
   test('survives messages containing the old field separators', () => {
@@ -480,5 +504,102 @@ describe('rebase outcomes', () => {
     expect(await rebase(repo, 'main')).toBe('conflicts')
     expect(git(['ls-files', '-u'])).not.toBe('')
     git(['rebase', '--abort'])
+  })
+})
+
+// Integration: the create-branch stash choreography — leaving changes behind
+// (auto-stash that drives the welcome-back reminder) and bringing them along
+// (free when git can carry them, ferried via a transient stash when the base
+// diverges, parked as conflicts data when the ferry collides). A fresh repo
+// per test: every scenario mutates branches, stashes and the working tree.
+describe('createBranch with uncommitted changes', () => {
+  let repo: string
+  const git = gitRunner(() => repo)
+
+  beforeEach(() => {
+    repo = mkdtempSync(join(tmpdir(), 'gitgrove-branch-'))
+    git(['init', '-q', '-b', 'main'])
+    git(['config', 'commit.gpgsign', 'false'])
+    git(['config', 'core.autocrlf', 'false'])
+    // The library functions spawn git themselves (no env override), so the
+    // committer identity must live in the repo config, not just our env.
+    git(['config', 'user.name', 'Test'])
+    git(['config', 'user.email', 't@example.com'])
+    writeFileSync(join(repo, 'f.txt'), 'line a\nline b\nline c\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'base'])
+  })
+
+  afterEach(() => {
+    rmSync(repo, { recursive: true, force: true })
+  })
+
+  /** A topic branch whose committed f.txt differs from main's, plus a dirty
+   *  working-tree edit — the setup where branching from main must ferry. */
+  const divergeOnTopic = (dirtyContent: string) => {
+    git(['checkout', '-q', '-b', 'topic'])
+    writeFileSync(join(repo, 'f.txt'), 'line a\nline b\nline c (topic)\n')
+    git(['commit', '-q', '-am', 'topic edit'])
+    writeFileSync(join(repo, 'f.txt'), dirtyContent)
+  }
+
+  test('leave: changes auto-stash on the source branch, the new branch starts clean', async () => {
+    writeFileSync(join(repo, 'f.txt'), 'edited\n')
+    writeFileSync(join(repo, 'extra.txt'), 'untracked too\n')
+    expect(await createBranch(repo, 'feature', { changes: 'leave' })).toBe('completed')
+    expect(git(['branch', '--show-current'])).toBe('feature')
+    expect(git(['status', '--porcelain'])).toBe('')
+    // The stash is marked as GitGrove's and remembers the branch it belongs
+    // to — exactly what the welcome-back reminder keys on.
+    const stashes = await listStashes(repo)
+    expect(stashes).toHaveLength(1)
+    expect(stashes[0]).toMatchObject({ auto: true, branchName: 'main', message: '' })
+  })
+
+  test('leave with a clean tree just creates the branch (nothing to stash)', async () => {
+    expect(await createBranch(repo, 'feature', { changes: 'leave' })).toBe('completed')
+    expect(git(['branch', '--show-current'])).toBe('feature')
+    expect(await listStashes(repo)).toHaveLength(0)
+  })
+
+  test('bring: a branch from HEAD carries the tree for free, staged state intact', async () => {
+    writeFileSync(join(repo, 'f.txt'), 'staged edit\n')
+    git(['add', 'f.txt'])
+    writeFileSync(join(repo, 'extra.txt'), 'untracked too\n')
+    expect(await createBranch(repo, 'feature', { changes: 'bring' })).toBe('completed')
+    expect(git(['branch', '--show-current'])).toBe('feature')
+    // No stash round-trip happened — staged stays staged, untracked untouched.
+    expect(git(['diff', '--cached', '--name-only'])).toBe('f.txt')
+    expect(readFileSync(join(repo, 'extra.txt'), 'utf8')).toBe('untracked too\n')
+    expect(await listStashes(repo)).toHaveLength(0)
+  })
+
+  test('bring: a diverging base ferries the changes across via a transient stash', async () => {
+    // Dirty edit on a line that's identical in main → the ferry lands cleanly.
+    divergeOnTopic('line a (wip)\nline b\nline c (topic)\n')
+    expect(await createBranch(repo, 'fresh', { from: 'main', changes: 'bring' })).toBe('completed')
+    expect(git(['branch', '--show-current'])).toBe('fresh')
+    expect(git(['rev-parse', 'HEAD'])).toBe(git(['rev-parse', 'main'])) // started from main
+    // The dirty edit followed; topic's committed edit did not.
+    expect(readFileSync(join(repo, 'f.txt'), 'utf8')).toBe('line a (wip)\nline b\nline c\n')
+    expect(await listStashes(repo)).toHaveLength(0)
+  })
+
+  test('bring: a colliding ferry parks as conflicts data, keeping the stash', async () => {
+    // Dirty edit on the very line that differs from main → the pop conflicts.
+    divergeOnTopic('line a\nline b\nline c (wip)\n')
+    expect(await createBranch(repo, 'fresh', { from: 'main', changes: 'bring' })).toBe('conflicts')
+    expect(git(['branch', '--show-current'])).toBe('fresh')
+    expect(git(['ls-files', '-u'])).not.toBe('')
+    expect(await listStashes(repo)).toHaveLength(1)
+  })
+
+  test('a dirty diverging base without a changes choice still surfaces the error', async () => {
+    divergeOnTopic('line a\nline b\nline c (wip)\n')
+    // No `changes` opt (e.g. an op was in flight) — git's refusal must come
+    // through, never a silent stash dance the user didn't ask for.
+    await expect(createBranch(repo, 'fresh', { from: 'main' })).rejects.toThrow()
+    expect(git(['branch', '--show-current'])).toBe('topic')
+    expect(await listStashes(repo)).toHaveLength(0)
   })
 })

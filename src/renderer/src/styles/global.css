@@ -2056,6 +2056,47 @@ button {
   align-items: center;
 }
 
+/* ── Welcome-back stash reminder (changes left behind while branching) ───── */
+/* Same calm banner shape as .op-banner, accent-tinted: returning to changes
+   you set aside is good news, not a warning. */
+.stash-reminder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--accent-soft);
+}
+.stash-reminder__icon {
+  display: flex;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--accent);
+}
+.stash-reminder__text {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.stash-reminder__text strong {
+  font-size: 12.5px;
+  color: var(--fg);
+}
+.stash-reminder__text span {
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+.stash-reminder__actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
 /* ── Merge dialog: dry-run preview + strategy picker ─────────────────────── */
 .merge-preview {
   display: flex;
@@ -2117,13 +2158,24 @@ button {
 .merge-preview--unknown > svg {
   color: var(--fg-faint);
 }
-.merge-strategies {
+/* Radio cards: the dialogs' "pick one of a few explained choices" widget,
+   shared by the merge strategy picker and the create-branch options. */
+.option-cards {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-bottom: 16px;
 }
-.merge-strategy {
+.option-cards__label {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  text-align: left;
+}
+.option-card {
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -2134,31 +2186,39 @@ button {
   cursor: pointer;
   text-align: left;
 }
-.merge-strategy:hover {
+.option-card:hover {
   border-color: var(--border-strong);
 }
-.merge-strategy.is-active {
+.option-card.is-active {
   border-color: var(--accent-border);
   background: var(--accent-soft);
 }
-.merge-strategy input {
+.option-card input {
   margin: 2px 0 0;
   accent-color: var(--accent);
 }
-.merge-strategy__text {
+.option-card__text {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.merge-strategy__title {
+.option-card__title {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--fg);
 }
-.merge-strategy__sub {
+.option-card__title code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.option-card__sub {
   font-size: 11.5px;
   line-height: 1.45;
   color: var(--fg-muted);
+}
+.option-card__sub code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
 }
 
 /* ── Conflict-resolution panel (replaces the diff pane for conflicts) ────── */

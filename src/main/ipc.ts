@@ -8,7 +8,9 @@ import { join } from 'node:path'
 import { normalizeHost } from '@shared/git-hosts'
 import { IPC } from '@shared/ipc'
 import type {
+  BranchChangesAction,
   ChangedFile,
+  CheckoutResult,
   CommitSelection,
   CredentialPrompt,
   CredentialPromptRequest,
@@ -110,11 +112,24 @@ export function registerIpc(ctx: IpcContext): void {
     JSON.stringify(await getRepoSnapshot(repoPath))
   )
   ipcMain.handle(IPC.branches, (_e, repoPath: string) => getBranches(repoPath))
-  ipcMain.handle(IPC.checkout, async (_e, repoPath: string, branch: string) => {
-    // Checkout mutates HEAD/index/worktree → serialized on the write queue.
-    await gitWrite.checkoutBranch(repoPath, branch, opProgressTo(repoPath, 'checkout'))
-    return getBranches(repoPath)
-  })
+  ipcMain.handle(
+    IPC.checkout,
+    async (
+      _e,
+      repoPath: string,
+      branch: string,
+      opts?: { changes?: BranchChangesAction }
+    ): Promise<CheckoutResult> => {
+      // Checkout mutates HEAD/index/worktree → serialized on the write queue.
+      const outcome = await gitWrite.checkoutBranch(
+        repoPath,
+        branch,
+        opts,
+        opProgressTo(repoPath, 'checkout')
+      )
+      return { branch: await getBranches(repoPath), outcome }
+    }
+  )
   ipcMain.handle(IPC.log, (_e, repoPath: string, options?: LogOptions) => getLog(repoPath, options))
   ipcMain.handle(IPC.commitFiles, (_e, repoPath: string, hash: string) =>
     getCommitFiles(repoPath, hash)
@@ -298,8 +313,12 @@ export function registerIpc(ctx: IpcContext): void {
   // ── Branches ──
   ipcMain.handle(
     IPC.createBranch,
-    (_e, repoPath: string, name: string, opts?: { from?: string; checkout?: boolean }) =>
-      gitWrite.createBranch(repoPath, name, opts)
+    (
+      _e,
+      repoPath: string,
+      name: string,
+      opts?: { from?: string; checkout?: boolean; changes?: BranchChangesAction }
+    ) => gitWrite.createBranch(repoPath, name, opts)
   )
   ipcMain.handle(
     IPC.deleteBranch,

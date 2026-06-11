@@ -98,7 +98,20 @@ export interface StashEntry {
    * the commit-diff machinery.
    */
   sha: string
+  /** User-visible message. Empty for auto-stashes (the UI labels those itself). */
   message: string
+  /**
+   * Branch the stash was taken on, parsed from the subject git records
+   * ("WIP on x: …" / "On x: …"); null when detached or unparseable. Lets the
+   * UI say "these changes belong to this branch" without extra bookkeeping.
+   */
+  branchName: string | null
+  /**
+   * True when GitGrove created this stash itself to leave changes behind
+   * while creating a branch — drives the welcome-back reminder shown when
+   * the user returns to that branch.
+   */
+  auto: boolean
   relativeDate: string
 }
 
@@ -133,6 +146,28 @@ export interface SubmoduleInfo {
   path: string
   shaShort: string
   state: 'clean' | 'modified' | 'uninitialized' | 'conflict'
+}
+
+/**
+ * What to do with uncommitted changes when switching branches (checking out
+ * an existing branch, or creating and checking out a new one): bring them
+ * along to the destination, or leave them behind on the current branch
+ * (auto-stashed, restorable when the user returns).
+ */
+export type BranchChangesAction = 'bring' | 'leave'
+
+/**
+ * How a branch switch (checkout or create-and-checkout) ended. Same
+ * conflicts-as-data contract as merges: 'conflicts' means the switch happened
+ * and the brought-along changes mostly followed, but a few files need
+ * resolving — a normal step, never presented as an error.
+ */
+export type CheckoutOutcome = 'completed' | 'conflicts'
+
+/** What a checkout hands back: the refreshed branch state plus how it went. */
+export interface CheckoutResult {
+  branch: BranchInfo
+  outcome: CheckoutOutcome
 }
 
 /** How a "merge branch into current" request should be performed. */

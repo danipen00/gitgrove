@@ -6,7 +6,7 @@
 import type { StashEntry } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Popover } from '@/components/common/Popover'
-import { pluralize } from '@/lib/format'
+import { pluralize, stashLabel } from '@/lib/format'
 import { highlightMatch } from '@/lib/highlight'
 import { Icon } from '@/lib/icons'
 import type { ResolvedTheme } from '@/lib/theme'
@@ -37,7 +37,7 @@ export function StashPanel({ repoPath, stashes, busy, theme, runOp }: Props) {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return stashes
-    return stashes.filter((s) => (s.message || `stash@{${s.index}}`).toLowerCase().includes(q))
+    return stashes.filter((s) => stashLabel(s).toLowerCase().includes(q))
   }, [stashes, query])
 
   // Arrows move through the stashes, Enter opens the highlighted one's review.
@@ -113,7 +113,7 @@ export function StashPanel({ repoPath, stashes, busy, theme, runOp }: Props) {
                   }}
                 >
                   <span className="stash-item__msg" data-tip-overflow="">
-                    {highlightMatch(s.message || `stash@{${s.index}}`, query)}
+                    {highlightMatch(stashLabel(s), query)}
                   </span>
                   <span className="stash-item__date">{s.relativeDate}</span>
                 </button>

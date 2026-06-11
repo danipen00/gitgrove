@@ -14,7 +14,7 @@ import { type DiffMode, DiffViewer } from '@/components/common/DiffViewer'
 import { useFileFilter } from '@/components/common/FileFilter'
 import { Resizer } from '@/components/common/Resizer'
 import { WorkingFileList } from '@/components/common/WorkingFileList'
-import { pluralize } from '@/lib/format'
+import { pluralize, stashLabel } from '@/lib/format'
 import { Icon } from '@/lib/icons'
 import { usePersistentState } from '@/lib/persist'
 import type { ResolvedTheme } from '@/lib/theme'
@@ -105,7 +105,7 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
             <Icon.Stash size={20} />
           </span>
           <div className="stash-review__title">
-            <h2>{stash.message || `stash@{${stash.index}}`}</h2>
+            <h2>{stashLabel(stash)}</h2>
             <span>
               {stash.relativeDate}
               {files

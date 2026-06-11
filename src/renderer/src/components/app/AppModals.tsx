@@ -9,6 +9,7 @@
 import type { BranchInfo, Commit, MergeKind, ResetMode } from '@shared/types'
 import { ConfirmDialog, PromptDialog, validateRefName } from '@/components/common/Dialog'
 import { InteractiveRebaseDialog } from '@/components/history/InteractiveRebaseDialog'
+import { CreateBranchDialog, type CreateBranchRequest } from './CreateBranchDialog'
 import { MergeDialog } from './MergeDialog'
 import { SubmodulesDialog } from './SubmodulesDialog'
 import { WorktreesDialog } from './WorktreesDialog'
@@ -39,11 +40,17 @@ interface Props {
   modal: Exclude<Modal, { kind: 'settings' } | { kind: 'clone' } | { kind: 'identity' }>
   repoPath: string
   branch: BranchInfo | null
+  /** Uncommitted changes in the working tree, for the create-branch options. */
+  dirtyCount: number
+  /** True while a merge/rebase/… owns the working tree. */
+  opInFlight: boolean
   busy: boolean
   /** Run a modal-confirmed op: spinner, close, errors → toast. */
   runModalOp: (fn: () => Promise<unknown>) => Promise<void>
   /** Merge/squash/rebase a branch; owns the outcome notice + conflict flow. */
   onMerge: (name: string, kind: MergeKind) => void
+  /** Create a branch; owns the outcome notice + the log invalidation. */
+  onCreateBranch: (name: string, request: CreateBranchRequest) => void
   /** Delete a branch; owns the "not fully merged" force escalation. */
   onDeleteBranch: (name: string, force: boolean) => Promise<void>
   /** Detached checkout; owns the follow-up log reload. */
@@ -57,9 +64,12 @@ export function AppModals({
   modal,
   repoPath,
   branch,
+  dirtyCount,
+  opInFlight,
   busy,
   runModalOp,
   onMerge,
+  onCreateBranch,
   onDeleteBranch,
   onCheckoutCommit,
   onOpenRepo,
@@ -81,33 +91,17 @@ export function AppModals({
       )
     case 'new-branch':
       return (
-        <PromptDialog
-          title={modal.from ? `New branch at ${modal.fromLabel}` : 'New branch'}
-          confirmLabel="Create branch"
+        <CreateBranchDialog
+          current={branch?.current ?? ''}
+          detached={branch?.detached ?? false}
+          defaultBranch={branch?.defaultBranch ?? null}
+          from={modal.from}
+          fromLabel={modal.fromLabel}
+          initialName={modal.initialName}
+          dirtyCount={dirtyCount}
+          opInFlight={opInFlight}
           busy={busy}
-          fields={[
-            {
-              key: 'name',
-              label: 'Branch name',
-              placeholder: 'feature/my-change',
-              initial: modal.initialName,
-              validate: validateRefName
-            },
-            {
-              key: 'checkout',
-              label: 'Check out the new branch',
-              checkbox: true,
-              initialChecked: true
-            }
-          ]}
-          onSubmit={(values, checks) =>
-            runModalOp(() =>
-              gg.createBranch(repoPath, values.name.trim(), {
-                from: modal.from,
-                checkout: checks.checkout
-              })
-            )
-          }
+          onSubmit={onCreateBranch}
           onCancel={onClose}
         />
       )
