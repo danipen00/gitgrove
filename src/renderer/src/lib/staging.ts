@@ -176,3 +176,48 @@ export function buildBlockPatch(
 
   return `${lines.join('\n')}\n`
 }
+
+/**
+ * CSS for @pierre/diffs' `unsafeCSS` option that repaints the changed lines of
+ * *excluded* blocks (checkbox off) in a neutral gray — so an excluded change is
+ * still clearly a change, just visibly not going into the commit.
+ *
+ * Rather than set a final color, we override pierre's per-line *mix target*
+ * (`--diffs-bg-*-override`, the documented extension points it tints additions
+ * and deletions from). That makes excluded lines tint at the exact same strength
+ * as a real addition/deletion — only gray — and track the active theme for free.
+ * Each changed line is keyed by its line number on its own side, scoped to the
+ * line type so old/new numbers never collide; both the content row
+ * (`[data-line]`) and its gutter number cell (`[data-column-number]`) are grayed.
+ *
+ * Returns '' when nothing is excluded, so the common "all included" case injects
+ * no styles at all.
+ */
+export function buildExcludedDiffCss(
+  blocks: ChangeBlock[],
+  isExcluded: (blockIndex: number) => boolean
+): string {
+  const selectors: string[] = []
+  const addLines = (type: 'change-addition' | 'change-deletion', start: number, count: number) => {
+    for (let n = start; n < start + count; n++) {
+      selectors.push(
+        `[data-line-type="${type}"]:is([data-line="${n}"],[data-column-number="${n}"])`
+      )
+    }
+  }
+  for (const block of blocks) {
+    if (!isExcluded(block.index)) continue
+    addLines('change-addition', block.newStart, block.newLines)
+    addLines('change-deletion', block.oldStart, block.oldLines)
+  }
+  if (selectors.length === 0) return ''
+  return (
+    `:is(${selectors.join(',')}){` +
+    '--diffs-bg-addition-override:var(--gg-diff-excluded);' +
+    '--diffs-bg-deletion-override:var(--gg-diff-excluded);' +
+    '--diffs-bg-addition-number-override:var(--gg-diff-excluded);' +
+    '--diffs-bg-deletion-number-override:var(--gg-diff-excluded);' +
+    '--diffs-fg-number-addition-override:var(--fg-muted);' +
+    '--diffs-fg-number-deletion-override:var(--fg-muted)}'
+  )
+}

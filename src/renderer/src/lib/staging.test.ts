@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { buildBlockPatch, type DisplayMeta, listChangeBlocks } from './staging'
+import {
+  buildBlockPatch,
+  buildExcludedDiffCss,
+  type DisplayMeta,
+  listChangeBlocks
+} from './staging'
 
 /** 10-line file with two edits close enough that the differ merges the hunk. */
 const META: DisplayMeta = {
@@ -120,5 +125,97 @@ describe('buildBlockPatch', () => {
     const patch = buildBlockPatch('x.txt', meta, b, 0)
     expect(patch).toContain('-b\n\\ No newline at end of file')
     expect(patch).toContain('+B\n\\ No newline at end of file')
+  })
+})
+
+describe('buildExcludedDiffCss', () => {
+  const blocks = listChangeBlocks(META) // block 0: lines 1↔1, block 1: lines 4↔4
+
+  test('returns empty string when nothing is excluded', () => {
+    expect(buildExcludedDiffCss(blocks, () => false)).toBe('')
+    expect(buildExcludedDiffCss([], () => true)).toBe('')
+  })
+
+  test('keys an excluded block by its changed line numbers on each side', () => {
+    const css = buildExcludedDiffCss(blocks, (i) => i === 1)
+    // Block 1 edits old line 4 and new line 4, scoped to each line type.
+    expect(css).toContain(
+      '[data-line-type="change-addition"]:is([data-line="4"],[data-column-number="4"])'
+    )
+    expect(css).toContain(
+      '[data-line-type="change-deletion"]:is([data-line="4"],[data-column-number="4"])'
+    )
+    // Block 0 (line 1) is included, so it must not be targeted.
+    expect(css).not.toContain('[data-line="1"]')
+    // Recolors via pierre's documented per-line override variables.
+    expect(css).toContain('--diffs-bg-addition-override:var(--gg-diff-excluded)')
+    expect(css).toContain('--diffs-bg-deletion-override:var(--gg-diff-excluded)')
+  })
+
+  test('a pure addition block emits no deletion selectors (and vice versa)', () => {
+    const meta: DisplayMeta = {
+      deletionLines: ['a\n'],
+      additionLines: ['a\n', 'NEW\n'],
+      hunks: [
+        {
+          deletionStart: 1,
+          deletionCount: 1,
+          additionStart: 1,
+          additionCount: 2,
+          hunkContent: [
+            { type: 'context', lines: 1 },
+            {
+              type: 'change',
+              deletions: 0,
+              deletionLineIndex: 1,
+              additions: 1,
+              additionLineIndex: 1
+            }
+          ]
+        }
+      ]
+    }
+    const css = buildExcludedDiffCss(listChangeBlocks(meta), () => true)
+    expect(css).toContain(
+      '[data-line-type="change-addition"]:is([data-line="2"],[data-column-number="2"])'
+    )
+    expect(css).not.toContain('change-deletion')
+  })
+
+  test('emits one selector per changed line across a multi-line block', () => {
+    const meta: DisplayMeta = {
+      deletionLines: ['x\n', 'y\n'],
+      additionLines: ['X\n', 'Y\n'],
+      hunks: [
+        {
+          deletionStart: 1,
+          deletionCount: 2,
+          additionStart: 1,
+          additionCount: 2,
+          hunkContent: [
+            {
+              type: 'change',
+              deletions: 2,
+              deletionLineIndex: 0,
+              additions: 2,
+              additionLineIndex: 0
+            }
+          ]
+        }
+      ]
+    }
+    const css = buildExcludedDiffCss(listChangeBlocks(meta), () => true)
+    expect(css).toContain(
+      '[data-line-type="change-addition"]:is([data-line="1"],[data-column-number="1"])'
+    )
+    expect(css).toContain(
+      '[data-line-type="change-addition"]:is([data-line="2"],[data-column-number="2"])'
+    )
+    expect(css).toContain(
+      '[data-line-type="change-deletion"]:is([data-line="1"],[data-column-number="1"])'
+    )
+    expect(css).toContain(
+      '[data-line-type="change-deletion"]:is([data-line="2"],[data-column-number="2"])'
+    )
   })
 })
