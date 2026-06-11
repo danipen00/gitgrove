@@ -7,6 +7,7 @@ import type { SyncStatus } from '@shared/types'
 import { useRef, useState } from 'react'
 import { ConfirmDialog } from '@/components/common/Dialog'
 import { Popover } from '@/components/common/Popover'
+import { pluralize } from '@/lib/format'
 import { Icon } from '@/lib/icons'
 
 export type SyncAction = 'fetch' | 'pull' | 'pull-rebase' | 'push' | 'force-push' | 'publish'
@@ -78,10 +79,19 @@ export function SyncButton({
       <Icon.Download size={15} />
     )
 
-  const item = (action: SyncAction, icon: React.ReactNode, text: string, tip?: string) => (
+  // Each item carries a one-line explanation under its label — the same
+  // title+sub pattern as the conflict-resolve menu — so the choice is clear
+  // without reaching for the git docs. The `tip` keeps the exact command on
+  // hover for users who want it.
+  const item = (
+    action: SyncAction,
+    icon: React.ReactNode,
+    text: string,
+    sub: string,
+    tip?: string
+  ) => (
     <button
       className="popover__item"
-      style={{ position: 'static', height: 32 }}
       data-tip={tip}
       onClick={() => {
         setOpen(false)
@@ -94,6 +104,7 @@ export function SyncButton({
       </span>
       <span className="popover__item-main">
         <span className="popover__item-title">{text}</span>
+        <span className="popover__item-sub">{sub}</span>
       </span>
     </button>
   )
@@ -136,33 +147,64 @@ export function SyncButton({
         open={open}
         onClose={() => setOpen(false)}
         align="right"
-        width={230}
+        width={290}
       >
-        <div style={{ padding: '6px 0' }}>
-          {item('fetch', <Icon.Refresh size={15} />, 'Fetch', 'git fetch --prune')}
-          {sync.upstream && item('pull', <Icon.Download size={15} />, 'Pull', 'git pull')}
+        <div className="popover__list">
+          <div className="popover__group-label">Sync with {sync.remotes[0]}</div>
+          {item(
+            'fetch',
+            <Icon.Refresh size={15} />,
+            'Fetch',
+            'Check the remote for new commits — nothing is merged',
+            'git fetch --prune'
+          )}
+          {sync.upstream &&
+            item(
+              'pull',
+              <Icon.Download size={15} />,
+              'Pull',
+              sync.behind > 0
+                ? `Merge ${pluralize(sync.behind, 'incoming commit')} into ${branch}`
+                : `Merge ${sync.upstream}'s changes into ${branch}`,
+              'git pull'
+            )}
           {sync.upstream &&
             item(
               'pull-rebase',
               <Icon.Download size={15} />,
               'Pull with rebase',
+              'Replay your commits on top — no merge commit',
               'git pull --rebase'
             )}
           {sync.upstream
-            ? item('push', <Icon.Upload size={15} />, 'Push', 'git push')
+            ? item(
+                'push',
+                <Icon.Upload size={15} />,
+                'Push',
+                sync.ahead > 0
+                  ? `Send ${pluralize(sync.ahead, 'commit')} to ${sync.upstream}`
+                  : `Upload your local commits to ${sync.upstream}`,
+                'git push'
+              )
             : item(
                 'publish',
                 <Icon.Upload size={15} />,
                 'Publish branch',
+                `Create ${branch} on ${sync.remotes[0]} and start tracking it`,
                 `push -u ${sync.remotes[0]} ${branch}`
               )}
-          {sync.upstream &&
-            item(
-              'force-push',
-              <Icon.Alert size={15} />,
-              'Force push…',
-              'git push --force-with-lease'
-            )}
+          {sync.upstream && (
+            <>
+              <div className="popover__sep" role="separator" />
+              {item(
+                'force-push',
+                <Icon.Alert size={15} />,
+                'Force push…',
+                `Careful — overwrites ${sync.upstream} with your history`,
+                'git push --force-with-lease'
+              )}
+            </>
+          )}
         </div>
       </Popover>
 
