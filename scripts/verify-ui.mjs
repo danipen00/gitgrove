@@ -79,7 +79,7 @@ console.log('diff text sample:', JSON.stringify(diffText))
 await win.click('button.tab:has-text("History")')
 await win.waitForSelector('.commit', { timeout: 10000 })
 await win.click('.commit')
-await win.waitForSelector('.commit-files .tree-wrap', { timeout: 10000 })
+await win.waitForSelector('.history-pane--files .tree-wrap', { timeout: 10000 })
 await win.waitForTimeout(2500)
 await win.screenshot({ path: join(shots, '3-history.png') })
 const historyDiffName = await win.evaluate(

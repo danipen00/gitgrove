@@ -1,5 +1,5 @@
 import type { ChangedFile, Commit } from '@shared/types'
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { ContextMenu, type ContextMenuItem } from '@/components/common/ContextMenu'
 import { copyPathItems } from '@/components/common/copyPathItems'
 import { useFileFilter } from '@/components/common/FileFilter'
@@ -11,10 +11,12 @@ import { usePersistentState } from '@/lib/persist'
 import { navTarget } from '@/lib/useListKeyNav'
 import { useSpinDelay } from '@/lib/useSpinDelay'
 import { Avatar } from './Avatar'
-import { RefChip } from './CommitSummary'
+import { CommitSummary, RefChip } from './CommitSummary'
 
 interface Props {
   repoPath: string
+  /** The Changes/History tab switcher, rendered atop the commit-list pane. */
+  tabs: ReactNode
   commits: Commit[]
   loading: boolean
   selectedCommit: Commit | null
@@ -39,8 +41,13 @@ interface Props {
 /** How many ref chips to show inline in the list before collapsing to "+N". */
 const MAX_LIST_REFS = 2
 
+// The History tab's top row: three side-by-side panes — the commit list, the
+// selected commit's info, and its changed files — over the full-width diff
+// (rendered by the parent). The commit-list and files panes have resizable
+// widths; the info pane fills the space between them.
 export function HistoryView({
   repoPath,
+  tabs,
   commits,
   loading,
   selectedCommit,
@@ -55,7 +62,8 @@ export function HistoryView({
   loadingMore,
   onLoadMore
 }: Props) {
-  const [filesHeight, setFilesHeight] = usePersistentState('gg.historyFilesHeight', 360)
+  const [commitsWidth, setCommitsWidth] = usePersistentState('gg.historyCommitsWidth', 340)
+  const [filesWidth, setFilesWidth] = usePersistentState('gg.historyFilesWidth', 300)
   // Commit files usually load in a few ms — render a quiet blank panel during
   // that window instead of flashing a spinner; the spinner is for slow loads.
   const filesSpin = useSpinDelay(commitFilesLoading)
@@ -72,18 +80,19 @@ export function HistoryView({
   } = useFileFilter(commitFiles, ['added', 'modified', 'deleted', 'renamed'])
   // biome-ignore lint/correctness/useExhaustiveDependencies: the commit switch is the intentional trigger
   useEffect(() => resetFilter(), [selectedCommit?.hash])
-  // Height is applied to this node directly while dragging (see Resizer.onPreview)
-  // so resizing the commit-files panel never re-renders the history list.
+  // Widths are applied to the pane nodes directly while dragging (see
+  // Resizer.onPreview) so resizing never re-renders the history list.
+  const commitsRef = useRef<HTMLDivElement>(null)
   const filesRef = useRef<HTMLDivElement>(null)
-  // Selecting a commit reveals the files panel below the list, which shrinks the
-  // scroll viewport — a bottom row can end up below the fold. Pull the active row
-  // back into view (block:'nearest' leaves already-visible rows untouched).
+  // Selecting a commit reveals the info/files panes, which can change the
+  // commit-list viewport — pull the active row back into view (block:'nearest'
+  // leaves already-visible rows untouched).
   const activeRef = useRef<HTMLButtonElement>(null)
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: these are intentional triggers; the body only reads a ref.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: this is an intentional trigger; the body only reads a ref.
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [selectedCommit?.hash, filesHeight])
+  }, [selectedCommit?.hash])
 
   // Infinite scroll: an IntersectionObserver on a sentinel row instead of an
   // onScroll handler — zero work per scrolled frame, fires once when the
@@ -127,16 +136,17 @@ export function HistoryView({
     return () => io.disconnect()
   }, [hasMore, commits.length])
 
+  // The commit-list pane (tabs + list) is always present so the user can switch
+  // back to Changes even while history is loading or empty.
+  let listBody: ReactNode
   if (loading && commits.length === 0) {
-    return (
+    listBody = (
       <div className="center-state">
         <div className="spinner" />
       </div>
     )
-  }
-
-  if (commits.length === 0) {
-    return (
+  } else if (commits.length === 0) {
+    listBody = (
       <div className="center-state">
         <div className="icon-ring">
           <Icon.History size={22} />
@@ -145,10 +155,8 @@ export function HistoryView({
         <p>This branch doesn’t have any commits yet.</p>
       </div>
     )
-  }
-
-  return (
-    <div className="history">
+  } else {
+    listBody = (
       <div
         className="commit-list"
         ref={listRef}
@@ -206,26 +214,64 @@ export function HistoryView({
           </div>
         )}
       </div>
+    )
+  }
+
+  return (
+    <>
+      <div
+        className="history-pane history-pane--commits"
+        ref={commitsRef}
+        style={{ width: commitsWidth }}
+      >
+        {tabs}
+        {listBody}
+      </div>
 
       {selectedCommit && (
         <>
           <Resizer
-            orientation="y"
-            invert
-            size={filesHeight}
-            min={140}
-            max={640}
-            onPreview={(h) => {
-              if (filesRef.current) filesRef.current.style.height = `${h}px`
+            orientation="x"
+            size={commitsWidth}
+            min={220}
+            max={560}
+            onPreview={(w) => {
+              if (commitsRef.current) commitsRef.current.style.width = `${w}px`
             }}
-            onCommit={setFilesHeight}
+            onCommit={setCommitsWidth}
           />
-          <div className="commit-files" ref={filesRef} style={{ height: filesHeight }}>
+
+          <div className="history-pane history-pane--info">
+            <CommitSummary
+              key={selectedCommit.hash}
+              commit={selectedCommit}
+              files={commitFiles}
+              filesLoading={commitFilesLoading}
+            />
+          </div>
+
+          <Resizer
+            orientation="x"
+            invert
+            size={filesWidth}
+            min={200}
+            max={560}
+            onPreview={(w) => {
+              if (filesRef.current) filesRef.current.style.width = `${w}px`
+            }}
+            onCommit={setFilesWidth}
+          />
+
+          <div
+            className="history-pane history-pane--files"
+            ref={filesRef}
+            style={{ width: filesWidth }}
+          >
             <div className="section-head commit-files__head">
               {commitFilesLoading
                 ? filesSpin
                   ? 'Loading…'
-                  : ' '
+                  : ' '
                 : filterActive
                   ? `${visibleFiles.length} of ${commitFiles.length}`
                   : pluralize(commitFiles.length, 'file')}
@@ -262,6 +308,6 @@ export function HistoryView({
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
       )}
-    </div>
+    </>
   )
 }

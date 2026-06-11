@@ -26,7 +26,6 @@ import type { ContextMenuItem } from './components/common/ContextMenu'
 import { type DiffMode, DiffViewer } from './components/common/DiffViewer'
 import { Resizer } from './components/common/Resizer'
 import { TooltipLayer } from './components/common/TooltipLayer'
-import { CommitSummary } from './components/history/CommitSummary'
 import { commitMenuItems } from './components/history/commitMenuItems'
 import { HistoryView } from './components/history/HistoryView'
 import type { BranchAction } from './components/toolbar/BranchSwitcher'
@@ -117,6 +116,9 @@ export function App() {
 
   const [sidebarWidth, setSidebarWidth] = usePersistentState('gg.sidebarWidth', 340)
   const bodyRef = useRef<HTMLDivElement>(null)
+  // History tab: height of the top row (commits | info | files) above the diff.
+  const [historyTopHeight, setHistoryTopHeight] = usePersistentState('gg.historyTopHeight', 300)
+  const historyTopRef = useRef<HTMLDivElement>(null)
   const [diffMode, setDiffMode] = usePersistentState<DiffMode>('gg.diffMode', 'split')
   const [diffWrap, setDiffWrap] = usePersistentState('gg.diffWrap', false)
   const { pref: themePref, resolved: theme, setPref: setThemePref } = useTheme()
@@ -1123,6 +1125,51 @@ export function App() {
     )
   }
 
+  // The Changes/History tab switcher — shared by both layouts (atop the Changes
+  // sidebar, atop the History commit-list pane).
+  const tabsBar = (
+    <div className="sidebar__tabs">
+      <button
+        className={`tab${tab === 'changes' ? ' is-active' : ''}`}
+        onClick={() => switchTab('changes')}
+      >
+        <Icon.Changes size={15} /> Changes
+        {changes.length > 0 && <span className="tab__count">{changes.length}</span>}
+      </button>
+      <button
+        className={`tab${tab === 'history' ? ' is-active' : ''}`}
+        onClick={() => switchTab('history')}
+      >
+        <Icon.History size={15} /> History
+      </button>
+    </div>
+  )
+
+  // The diff pane — full-width bottom row in History, right-hand column in
+  // Changes. Hunk-selection actions only apply to working changes.
+  const diffViewer = (
+    <DiffViewer
+      diff={diff}
+      loading={diffLoading}
+      mode={diffMode}
+      wrap={diffWrap}
+      theme={theme}
+      selectedCount={tab === 'changes' ? changeSelCount : commitSelCount}
+      onModeChange={setDiffMode}
+      onWrapChange={setDiffWrap}
+      selectionActions={
+        tab === 'changes' && changeSel
+          ? {
+              selection: selections.get(changeSel) ?? 'all',
+              onChange: (selected, total) => setHunkSelection(changeSel, selected, total),
+              onDiscard: discardHunk,
+              busy
+            }
+          : undefined
+      }
+    />
+  )
+
   return (
     <div className="app">
       <Toolbar
@@ -1147,29 +1194,15 @@ export function App() {
         onThemeChange={setThemePref}
         onAbout={() => setAboutOpen(true)}
       />
-      <div
-        className="app__body"
-        ref={bodyRef}
-        style={{ '--sidebar-w': `${sidebarWidth}px` } as CSSProperties}
-      >
-        <aside className="sidebar">
-          <div className="sidebar__tabs">
-            <button
-              className={`tab${tab === 'changes' ? ' is-active' : ''}`}
-              onClick={() => switchTab('changes')}
-            >
-              <Icon.Changes size={15} /> Changes
-              {changes.length > 0 && <span className="tab__count">{changes.length}</span>}
-            </button>
-            <button
-              className={`tab${tab === 'history' ? ' is-active' : ''}`}
-              onClick={() => switchTab('history')}
-            >
-              <Icon.History size={15} /> History
-            </button>
-          </div>
-          <div className="sidebar__body">
-            {tab === 'changes' ? (
+      {tab === 'changes' ? (
+        <div
+          className="app__body"
+          ref={bodyRef}
+          style={{ '--sidebar-w': `${sidebarWidth}px` } as CSSProperties}
+        >
+          <aside className="sidebar">
+            {tabsBar}
+            <div className="sidebar__body">
               <ChangesView
                 repoPath={repo.path}
                 branch={
@@ -1195,67 +1228,56 @@ export function App() {
                 onCommit={doCommit}
                 onStash={doStash}
               />
-            ) : (
-              <HistoryView
-                repoPath={repo.path}
-                commits={commits}
-                loading={commitsLoading}
-                hasMore={logHasMore}
-                loadingMore={commitsLoadingMore}
-                onLoadMore={loadMoreLog}
-                selectedCommit={selectedCommit}
-                onSelectCommit={selectCommit}
-                commitFiles={commitFiles}
-                commitFilesLoading={commitFilesLoading}
-                selectedFilePath={commitSelPath}
-                onSelectFile={(p) => selectedCommit && selectCommitFile(p, selectedCommit.hash)}
-                onFileSelectionChange={setCommitSelCount}
-                commitMenuFor={commitMenuFor}
-              />
-            )}
-          </div>
-        </aside>
+            </div>
+          </aside>
 
-        <Resizer
-          orientation="x"
-          size={sidebarWidth}
-          min={220}
-          max={620}
-          onPreview={(w) => bodyRef.current?.style.setProperty('--sidebar-w', `${w}px`)}
-          onCommit={setSidebarWidth}
-        />
-
-        <div className="workspace">
-          {tab === 'history' && selectedCommit && (
-            <CommitSummary
-              key={selectedCommit.hash}
-              commit={selectedCommit}
-              files={commitFiles}
-              filesLoading={commitFilesLoading}
-            />
-          )}
-          <DiffViewer
-            diff={diff}
-            loading={diffLoading}
-            mode={diffMode}
-            wrap={diffWrap}
-            theme={theme}
-            selectedCount={tab === 'changes' ? changeSelCount : commitSelCount}
-            onModeChange={setDiffMode}
-            onWrapChange={setDiffWrap}
-            selectionActions={
-              tab === 'changes' && changeSel
-                ? {
-                    selection: selections.get(changeSel) ?? 'all',
-                    onChange: (selected, total) => setHunkSelection(changeSel, selected, total),
-                    onDiscard: discardHunk,
-                    busy
-                  }
-                : undefined
-            }
+          <Resizer
+            orientation="x"
+            size={sidebarWidth}
+            min={220}
+            max={620}
+            onPreview={(w) => bodyRef.current?.style.setProperty('--sidebar-w', `${w}px`)}
+            onCommit={setSidebarWidth}
           />
+
+          <div className="workspace">{diffViewer}</div>
         </div>
-      </div>
+      ) : (
+        <div className="app__body history-layout">
+          <div className="history-top" ref={historyTopRef} style={{ height: historyTopHeight }}>
+            <HistoryView
+              repoPath={repo.path}
+              tabs={tabsBar}
+              commits={commits}
+              loading={commitsLoading}
+              hasMore={logHasMore}
+              loadingMore={commitsLoadingMore}
+              onLoadMore={loadMoreLog}
+              selectedCommit={selectedCommit}
+              onSelectCommit={selectCommit}
+              commitFiles={commitFiles}
+              commitFilesLoading={commitFilesLoading}
+              selectedFilePath={commitSelPath}
+              onSelectFile={(p) => selectedCommit && selectCommitFile(p, selectedCommit.hash)}
+              onFileSelectionChange={setCommitSelCount}
+              commitMenuFor={commitMenuFor}
+            />
+          </div>
+
+          <Resizer
+            orientation="y"
+            size={historyTopHeight}
+            min={160}
+            max={720}
+            onPreview={(h) => {
+              if (historyTopRef.current) historyTopRef.current.style.height = `${h}px`
+            }}
+            onCommit={setHistoryTopHeight}
+          />
+
+          <div className="workspace">{diffViewer}</div>
+        </div>
+      )}
 
       {error && <ErrorToast message={error} onClose={() => setError(null)} />}
       {overlays}

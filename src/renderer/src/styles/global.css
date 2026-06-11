@@ -875,13 +875,52 @@ button {
   height: 100%;
 }
 
-/* ── History list ────────────────────────────────────────────────────────── */
-.history {
+/* ── History layout ──────────────────────────────────────────────────────── */
+/* History is a two-row layout: a top row of three panes (commit list | commit
+   info | changed files) over a full-width diff. The diff fills the rest. */
+.history-layout {
+  flex-direction: column;
+}
+/* The top row's height is driven inline (the splitter writes it during a drag,
+   so resizing never re-renders the panes). */
+.history-top {
+  flex: 0 0 auto;
+  display: flex;
+  min-height: 0;
+}
+/* Each top-row pane is a vertical stack; commit-list and files panes have an
+   inline width (resizable), the info pane fills the gap between them. */
+.history-pane {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
-  flex: 1;
+  height: 100%;
 }
+.history-pane--commits {
+  flex: 0 0 auto;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+}
+.history-pane--info {
+  flex: 1 1 0;
+  overflow-y: auto;
+  background: var(--bg-panel);
+}
+/* The info pane scrolls as a whole; drop the summary's own banner border so it
+   reads as the pane's content rather than a stacked header. */
+.history-pane--info .commit-summary {
+  border-bottom: none;
+}
+.history-pane--files {
+  flex: 0 0 auto;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  /* This tree sits on --bg, not --bg-panel; keep the truncation marker's mask
+     color matched to the surface behind it. */
+  --trees-bg-override: var(--bg);
+}
+
 .commit-list {
   overflow-y: auto;
   flex: 1;
@@ -1007,18 +1046,7 @@ button {
   flex: 0 0 auto;
 }
 
-/* Sidebar panel (under the commit list) holding the selected commit's files. */
-.commit-files {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-  /* This tree sits on --bg, not --bg-panel; keep the truncation marker's mask
-     color matched to the surface behind it. */
-  --trees-bg-override: var(--bg);
-}
+/* Header of the changed-files pane (history top row). */
 .commit-files__head {
   text-transform: none;
   letter-spacing: 0;
@@ -1026,7 +1054,7 @@ button {
   color: var(--fg-muted);
 }
 
-/* ── Commit summary (banner at the top of the diff pane in History) ───────── */
+/* ── Commit summary (fills the info pane in the History top row) ──────────── */
 .commit-summary {
   flex: 0 0 auto;
   display: flex;
@@ -1206,10 +1234,15 @@ button {
 }
 
 /* ── Diff area ───────────────────────────────────────────────────────────── */
-/* Right-hand column: optional commit summary banner stacked over the diff. */
+/* Holds the diff pane — the right-hand column in Changes, the full-width bottom
+   row in History. */
 .workspace {
   flex: 1;
+  /* Both axes must be allowed to shrink below content size: min-width:0 for the
+     Changes row layout, min-height:0 for the History column layout — otherwise
+     a tall diff grows the pane instead of scrolling inside .diff-body. */
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
