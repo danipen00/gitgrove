@@ -6,7 +6,7 @@ import type { ChangedFile, FileStatus } from '@shared/types'
 import { useCallback, useMemo, useState } from 'react'
 import { statusLabel } from '@/lib/format'
 
-const DEFAULT_TYPES: readonly FileStatus[] = [
+export const DEFAULT_FILTER_TYPES: readonly FileStatus[] = [
   'added',
   'modified',
   'deleted',
@@ -30,10 +30,18 @@ interface FileFilterResult {
 /** Filter state + bar for a ChangedFile list. `types` picks the chips shown. */
 export function useFileFilter(
   files: ChangedFile[],
-  types: readonly FileStatus[] = DEFAULT_TYPES
+  types: readonly FileStatus[] = DEFAULT_FILTER_TYPES
 ): FileFilterResult {
   const [query, setQuery] = useState('')
-  const [typeFilter, setTypeFilter] = useState<ReadonlySet<FileStatus>>(new Set())
+  const [rawTypeFilter, setTypeFilter] = useState<ReadonlySet<FileStatus>>(new Set())
+
+  // A chip can disappear while selected (e.g. the Conflicted chip once the
+  // last conflict is resolved) — drop hidden selections so the list never
+  // stays filtered by something the user can no longer see or unselect.
+  const typeFilter = useMemo(
+    () => new Set([...rawTypeFilter].filter((t) => types.includes(t))),
+    [rawTypeFilter, types]
+  )
 
   const toggleType = (t: FileStatus) =>
     setTypeFilter((prev) => {

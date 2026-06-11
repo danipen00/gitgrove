@@ -5,12 +5,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   appendIgnoreEntries,
+  commitMerge,
   discardFiles,
   ignorePatterns,
+  merge,
+  mergeMessage,
   parseStashList,
   parseSubmodules,
   parseWorktrees,
-  planDiscard
+  planDiscard,
+  rebase,
+  resolveConflict
 } from './write'
 
 describe('planDiscard', () => {
@@ -248,5 +253,209 @@ describe('parseSubmodules', () => {
     expect(mods[1].state).toBe('modified')
     expect(mods[2].state).toBe('uninitialized')
     expect(mods[3].state).toBe('conflict')
+  })
+})
+
+/** Per-suite scratch-repo runner with a pinned committer identity. */
+function gitRunner(repo: () => string) {
+  return (args: string[]): string =>
+    execFileSync('git', args, {
+      cwd: repo(),
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'Test',
+        GIT_AUTHOR_EMAIL: 't@example.com',
+        GIT_COMMITTER_NAME: 'Test',
+        GIT_COMMITTER_EMAIL: 't@example.com'
+      }
+    }).trim()
+}
+
+describe('merge outcomes', () => {
+  let repo: string
+  const git = gitRunner(() => repo)
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), 'gitgrove-merge-'))
+    git(['init', '-q', '-b', 'main'])
+    git(['config', 'commit.gpgsign', 'false'])
+    // The library functions spawn git themselves (no env override), so the
+    // committer identity must live in the repo config, not just our env.
+    git(['config', 'user.name', 'Test'])
+    git(['config', 'user.email', 't@example.com'])
+    writeFileSync(join(repo, 'shared.txt'), 'base\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'base'])
+    // A branch already contained in main → merging it is a no-op.
+    git(['branch', 'past'])
+    // A branch whose change can't collide with main's → merges clean.
+    git(['checkout', '-q', '-b', 'clean-add'])
+    writeFileSync(join(repo, 'clean.txt'), 'clean\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'add clean file'])
+    // Another non-colliding branch, kept for the squash test.
+    git(['checkout', '-q', '-b', 'squash-add', 'main'])
+    writeFileSync(join(repo, 'squashed.txt'), 'squashed\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'add squashed file'])
+    // A branch editing the same line main edits → guaranteed conflict.
+    git(['checkout', '-q', '-b', 'collide', 'main'])
+    writeFileSync(join(repo, 'shared.txt'), 'theirs\n')
+    git(['commit', '-q', '-am', 'theirs edit'])
+    git(['checkout', '-q', 'main'])
+    writeFileSync(join(repo, 'shared.txt'), 'ours\n')
+    git(['commit', '-q', '-am', 'ours edit'])
+  })
+
+  afterAll(() => {
+    rmSync(repo, { recursive: true, force: true })
+  })
+
+  test('an already-contained branch reports up-to-date without running merge', async () => {
+    expect(await merge(repo, 'past')).toBe('up-to-date')
+    expect(git(['status', '--porcelain'])).toBe('')
+  })
+
+  test('a non-colliding branch merges to completion', async () => {
+    expect(await merge(repo, 'clean-add')).toBe('completed')
+    expect(existsSync(join(repo, 'clean.txt'))).toBe(true)
+    expect(git(['status', '--porcelain'])).toBe('')
+  })
+
+  test('squash stages the result without committing', async () => {
+    const before = git(['rev-parse', 'HEAD'])
+    expect(await merge(repo, 'squash-add', { squash: true })).toBe('completed')
+    expect(git(['rev-parse', 'HEAD'])).toBe(before)
+    expect(git(['status', '--porcelain'])).toContain('A  squashed.txt')
+    // Leave the tree clean for the next test.
+    git(['reset', '-q', '--hard', 'HEAD'])
+  })
+
+  test('conflicts come back as data, then resolve + commitMerge concludes the merge', async () => {
+    expect(await merge(repo, 'collide')).toBe('conflicts')
+    // The merge is parked, not failed: MERGE_HEAD exists and the prepared
+    // message is available for the composer.
+    expect(git(['rev-parse', '--verify', 'MERGE_HEAD'])).not.toBe('')
+    expect(await mergeMessage(repo)).toContain("Merge branch 'collide'")
+    await resolveConflict(repo, 'shared.txt', 'theirs')
+    await commitMerge(repo, 'Merge collide my way')
+    expect(git(['log', '-1', '--format=%s'])).toBe('Merge collide my way')
+    // Two parents = a real merge commit.
+    expect(git(['log', '-1', '--format=%P']).split(' ')).toHaveLength(2)
+    expect(readFileSync(join(repo, 'shared.txt'), 'utf8')).toBe('theirs\n')
+    expect(git(['status', '--porcelain'])).toBe('')
+  })
+
+  test('a genuine failure (dirty tree in the way) still throws', async () => {
+    // A fresh colliding branch — 'collide' is already merged by now, so
+    // re-merging it would just report up-to-date.
+    git(['checkout', '-q', '-b', 'collide2', 'main'])
+    writeFileSync(join(repo, 'shared.txt'), 'collide2 edit\n')
+    git(['commit', '-q', '-am', 'collide2 edit'])
+    git(['checkout', '-q', 'main'])
+    writeFileSync(join(repo, 'shared.txt'), 'uncommitted local edit\n')
+    await expect(merge(repo, 'collide2')).rejects.toThrow()
+    git(['checkout', '-q', '--', 'shared.txt'])
+  })
+})
+
+describe('resolveConflict on modify/delete conflicts', () => {
+  let repo: string
+  const git = gitRunner(() => repo)
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), 'gitgrove-md-conflict-'))
+    git(['init', '-q', '-b', 'main'])
+    git(['config', 'commit.gpgsign', 'false'])
+    // The library functions spawn git themselves (no env override), so the
+    // committer identity must live in the repo config, not just our env.
+    git(['config', 'user.name', 'Test'])
+    git(['config', 'user.email', 't@example.com'])
+    writeFileSync(join(repo, 'd.txt'), 'base\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'base'])
+    git(['checkout', '-q', '-b', 'deleter'])
+    git(['rm', '-q', 'd.txt'])
+    git(['commit', '-q', '-m', 'delete d'])
+    git(['checkout', '-q', 'main'])
+    writeFileSync(join(repo, 'd.txt'), 'modified\n')
+    git(['commit', '-q', '-am', 'modify d'])
+  })
+
+  afterAll(() => {
+    rmSync(repo, { recursive: true, force: true })
+  })
+
+  test('taking the deleting side resolves as a deletion', async () => {
+    expect(await merge(repo, 'deleter')).toBe('conflicts')
+    // "theirs" deleted the file — checkout --theirs has no version to give,
+    // so resolving must fall back to removing it.
+    await resolveConflict(repo, 'd.txt', 'theirs')
+    expect(git(['ls-files', '-u'])).toBe('')
+    expect(existsSync(join(repo, 'd.txt'))).toBe(false)
+    git(['merge', '--abort'])
+  })
+
+  test('taking the modifying side keeps the file and stages it', async () => {
+    expect(await merge(repo, 'deleter')).toBe('conflicts')
+    await resolveConflict(repo, 'd.txt', 'ours')
+    expect(git(['ls-files', '-u'])).toBe('')
+    expect(readFileSync(join(repo, 'd.txt'), 'utf8')).toBe('modified\n')
+    git(['merge', '--abort'])
+  })
+})
+
+describe('rebase outcomes', () => {
+  let repo: string
+  const git = gitRunner(() => repo)
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), 'gitgrove-rebase-'))
+    git(['init', '-q', '-b', 'main'])
+    git(['config', 'commit.gpgsign', 'false'])
+    // The library functions spawn git themselves (no env override), so the
+    // committer identity must live in the repo config, not just our env.
+    git(['config', 'user.name', 'Test'])
+    git(['config', 'user.email', 't@example.com'])
+    writeFileSync(join(repo, 'r.txt'), 'base\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'base'])
+    git(['branch', 'past'])
+    git(['checkout', '-q', '-b', 'feature'])
+    writeFileSync(join(repo, 'feature.txt'), 'feature\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'feature work'])
+    git(['checkout', '-q', 'main'])
+    writeFileSync(join(repo, 'r.txt'), 'main edit\n')
+    git(['commit', '-q', '-am', 'main edit'])
+  })
+
+  afterAll(() => {
+    rmSync(repo, { recursive: true, force: true })
+  })
+
+  test('rebasing onto an ancestor reports up-to-date', async () => {
+    expect(await rebase(repo, 'past')).toBe('up-to-date')
+  })
+
+  test('a clean rebase completes and linearizes history', async () => {
+    git(['checkout', '-q', 'feature'])
+    expect(await rebase(repo, 'main')).toBe('completed')
+    // feature's commit now sits on top of main — exactly one parent chain.
+    expect(git(['merge-base', 'HEAD', 'main'])).toBe(git(['rev-parse', 'main']))
+  })
+
+  test('a colliding rebase parks on conflicts instead of throwing', async () => {
+    git(['checkout', '-q', '-b', 'collide', 'main'])
+    writeFileSync(join(repo, 'r.txt'), 'collide edit\n')
+    git(['commit', '-q', '-am', 'collide edit'])
+    git(['checkout', '-q', 'main'])
+    writeFileSync(join(repo, 'r.txt'), 'main second edit\n')
+    git(['commit', '-q', '-am', 'main second edit'])
+    git(['checkout', '-q', 'collide'])
+    expect(await rebase(repo, 'main')).toBe('conflicts')
+    expect(git(['ls-files', '-u'])).not.toBe('')
+    git(['rebase', '--abort'])
   })
 })

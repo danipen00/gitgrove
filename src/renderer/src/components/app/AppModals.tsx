@@ -6,9 +6,10 @@
 // surface as the standard toast) unless a modal needs custom flow (delete's
 // force escalation, checkout's log reload) — those come in as callbacks.
 
-import type { BranchInfo, Commit, ResetMode } from '@shared/types'
+import type { BranchInfo, Commit, MergeKind, ResetMode } from '@shared/types'
 import { ConfirmDialog, PromptDialog, validateRefName } from '@/components/common/Dialog'
 import { InteractiveRebaseDialog } from '@/components/history/InteractiveRebaseDialog'
+import { MergeDialog } from './MergeDialog'
 import { SubmodulesDialog } from './SubmodulesDialog'
 import { WorktreesDialog } from './WorktreesDialog'
 
@@ -17,6 +18,7 @@ export type Modal =
   | { kind: 'settings' }
   | { kind: 'clone' }
   | { kind: 'identity' }
+  | { kind: 'merge'; name: string }
   | { kind: 'new-branch'; from?: string; fromLabel?: string; initialName?: string }
   | { kind: 'rename-branch'; name: string }
   | { kind: 'delete-branch'; name: string; force: boolean }
@@ -40,6 +42,8 @@ interface Props {
   busy: boolean
   /** Run a modal-confirmed op: spinner, close, errors → toast. */
   runModalOp: (fn: () => Promise<unknown>) => Promise<void>
+  /** Merge/squash/rebase a branch; owns the outcome notice + conflict flow. */
+  onMerge: (name: string, kind: MergeKind) => void
   /** Delete a branch; owns the "not fully merged" force escalation. */
   onDeleteBranch: (name: string, force: boolean) => Promise<void>
   /** Detached checkout; owns the follow-up log reload. */
@@ -55,6 +59,7 @@ export function AppModals({
   branch,
   busy,
   runModalOp,
+  onMerge,
   onDeleteBranch,
   onCheckoutCommit,
   onOpenRepo,
@@ -63,6 +68,17 @@ export function AppModals({
 }: Props) {
   const gg = window.gitgrove
   switch (modal.kind) {
+    case 'merge':
+      return (
+        <MergeDialog
+          repoPath={repoPath}
+          name={modal.name}
+          current={branch?.current ?? 'the current branch'}
+          busy={busy}
+          onConfirm={(kind) => onMerge(modal.name, kind)}
+          onCancel={onClose}
+        />
+      )
     case 'new-branch':
       return (
         <PromptDialog

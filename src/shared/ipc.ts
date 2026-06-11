@@ -10,6 +10,7 @@ import type {
   CloneProgress,
   Commit,
   CommitSelection,
+  ConflictSides,
   ConnectedAccount,
   CredentialPromptRequest,
   DeviceCodeInfo,
@@ -21,6 +22,8 @@ import type {
   GlobalIdentity,
   IdentityScope,
   LogOptions,
+  MergeOutcome,
+  MergePreview,
   OpProgress,
   RebaseTodoItem,
   RecentRepo,
@@ -80,6 +83,9 @@ export const IPC = {
   checkoutDetached: 'repo:checkout-detached',
   // merge / rebase / history surgery
   merge: 'repo:merge',
+  mergePreview: 'repo:merge-preview',
+  commitMerge: 'repo:merge-commit',
+  mergeMessage: 'repo:merge-message',
   rebase: 'repo:rebase',
   rebaseInteractive: 'repo:rebase-interactive',
   cherryPick: 'repo:cherry-pick',
@@ -90,6 +96,9 @@ export const IPC = {
   skipRebaseCommit: 'repo:op:skip',
   resolveConflict: 'repo:conflict:resolve',
   markResolved: 'repo:conflict:mark-resolved',
+  conflictSides: 'repo:conflict:sides',
+  openMergeTool: 'repo:conflict:merge-tool',
+  mergeToolName: 'repo:conflict:merge-tool-name',
   openFileInEditor: 'repo:open-file',
   // stash
   stashList: 'repo:stash:list',
@@ -267,8 +276,18 @@ export interface GitGroveApi {
   renameBranch(repoPath: string, from: string, to: string): Promise<void>
   checkoutDetached(repoPath: string, hash: string): Promise<void>
   // ── Merge / rebase / history surgery ──
-  merge(repoPath: string, branch: string): Promise<void>
-  rebase(repoPath: string, onto: string): Promise<void>
+  /**
+   * Merge `branch` into the current branch. Conflicts come back as data
+   * ('conflicts'), never as a rejection — they're a normal step, not an error.
+   */
+  merge(repoPath: string, branch: string, opts?: { squash?: boolean }): Promise<MergeOutcome>
+  /** Dry-run prediction of merging `branch` — see git/read.ts getMergePreview. */
+  mergePreview(repoPath: string, branch: string): Promise<MergePreview>
+  /** Conclude an in-progress merge as a regular commit with `message`. */
+  commitMerge(repoPath: string, message: string): Promise<void>
+  /** Git's prepared merge message (MERGE_MSG, comments stripped); '' when not merging. */
+  mergeMessage(repoPath: string): Promise<string>
+  rebase(repoPath: string, onto: string): Promise<MergeOutcome>
   rebaseInteractive(repoPath: string, base: string, items: RebaseTodoItem[]): Promise<void>
   cherryPick(repoPath: string, hash: string): Promise<void>
   revertCommit(repoPath: string, hash: string): Promise<void>
@@ -278,6 +297,12 @@ export interface GitGroveApi {
   skipRebaseCommit(repoPath: string): Promise<void>
   resolveConflict(repoPath: string, path: string, side: 'ours' | 'theirs'): Promise<void>
   markResolved(repoPath: string, path: string): Promise<void>
+  /** Both sides of a conflicted path, for the conflict-resolution panel. */
+  conflictSides(repoPath: string, path: string): Promise<ConflictSides>
+  /** Launch the user's configured merge tool for a conflicted path. */
+  openMergeTool(repoPath: string, path: string): Promise<void>
+  /** The configured `merge.tool` name, or null when git will auto-pick one. */
+  mergeToolName(repoPath: string): Promise<string | null>
   /** Open a repo file with the OS default application. */
   openFileInEditor(repoPath: string, path: string): Promise<void>
   // ── Stash ──

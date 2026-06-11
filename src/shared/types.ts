@@ -117,6 +117,51 @@ export interface SubmoduleInfo {
   state: 'clean' | 'modified' | 'uninitialized' | 'conflict'
 }
 
+/** How a "merge branch into current" request should be performed. */
+export type MergeKind = 'merge' | 'squash' | 'rebase'
+
+/**
+ * How a merge/rebase ended. Conflicts are modelled as data (not thrown) —
+ * stopping to resolve conflicts is a normal step of the workflow, not an
+ * error, and the renderer must never present it as one.
+ */
+export type MergeOutcome = 'completed' | 'up-to-date' | 'conflicts'
+
+/**
+ * Dry-run prediction of a merge, computed without touching the working tree
+ * (`git merge-tree`). Shown before the user commits to the operation so a
+ * merge is never a leap of faith. `unknown` = the running git predates
+ * merge-tree --write-tree (< 2.38); the merge itself still works.
+ */
+export interface MergePreview {
+  outcome: 'clean' | 'conflicts' | 'up-to-date' | 'unknown'
+  /** Paths that would conflict (outcome 'conflicts'). */
+  conflictedPaths: string[]
+  /** Commits the source branch would bring in. */
+  commitCount: number
+}
+
+/**
+ * The three versions of a conflicted file, for the conflict-resolution panel:
+ * full contents from the index's conflict stages — `base` (stage 1, the
+ * common ancestor), `ours` (stage 2, HEAD) and `theirs` (stage 3, the branch
+ * being merged). A side is null when it doesn't exist there (added on both
+ * sides has no base; modify/delete has one side missing), or when the file
+ * is binary or too large to ship.
+ */
+export interface ConflictSides {
+  base: string | null
+  ours: string | null
+  theirs: string | null
+  /** True when that side has no version of the file (modify/delete conflict).
+   *  Distinct from a null content, which can also mean binary or too large. */
+  oursDeleted: boolean
+  theirsDeleted: boolean
+  /** Number of `<<<<<<<` conflict regions left in the working-tree file. */
+  markerCount: number
+  binary: boolean
+}
+
 /** Per-commit instruction for an interactive rebase. */
 export type RebaseAction = 'pick' | 'reword' | 'squash' | 'fixup' | 'drop'
 

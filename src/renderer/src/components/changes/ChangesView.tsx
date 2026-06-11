@@ -5,12 +5,12 @@
 // touched at commit time. Destructive actions still go through `runOp`
 // (serialized, auto-refresh, errors → toast).
 
-import type { ChangedFile, RepoState, StashEntry } from '@shared/types'
+import type { ChangedFile, FileStatus, RepoState, StashEntry } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ContextMenuItem } from '@/components/common/ContextMenu'
 import { copyPathItems } from '@/components/common/copyPathItems'
 import { ConfirmDialog } from '@/components/common/Dialog'
-import { useFileFilter } from '@/components/common/FileFilter'
+import { DEFAULT_FILTER_TYPES, useFileFilter } from '@/components/common/FileFilter'
 import { Popover } from '@/components/common/Popover'
 import { Resizer } from '@/components/common/Resizer'
 import { WorkingFileList } from '@/components/common/WorkingFileList'
@@ -18,6 +18,7 @@ import type { FileSelection } from '@/lib/commit-selection'
 import { pluralize, statusLetter } from '@/lib/format'
 import { Icon } from '@/lib/icons'
 import { ignoreOptionsFor, ignoreSelectionOption } from '@/lib/ignore'
+import { conflictActionLabels, mergeSourceFromDetail } from '@/lib/merge'
 import { usePersistentState } from '@/lib/persist'
 import type { ResolvedTheme } from '@/lib/theme'
 import { CommitComposer, type CommitMode } from './CommitComposer'
@@ -51,6 +52,8 @@ interface Props {
   theme: ResolvedTheme
   /** Run a mutating op (serialized, auto-refresh, errors → toast). True on success. */
   runOp: (fn: () => Promise<unknown>) => Promise<boolean>
+  /** Surface an error from a fire-and-forget action (e.g. no merge tool). */
+  onError: (e: unknown) => void
   onCommit: (message: string, amend: boolean) => Promise<boolean>
   /** Stash the checked files (optional message). True on success. */
   onStash: (message: string) => Promise<boolean>
@@ -138,21 +141,56 @@ export function ChangesView({
   discardProgress,
   theme,
   runOp,
+  onError,
   onCommit,
   onStash
 }: Props) {
   const gg = window.gitgrove
 
+  // What state the working tree is in: any in-flight op suspends the checkbox
+  // commit model (the op owns what gets committed) and the discard actions
+  // (discarding mid-merge half-destroys the merge in confusing ways).
+  const op = repoState?.op ?? null
+  const merging = op === 'merging'
+  const conflicts = repoState?.conflictedCount ?? 0
+  const mergeSource = merging ? mergeSourceFromDetail(repoState?.detail) : null
+
   // ── Filter (name substring + status types, shared with History) ───────────
   // The snapshot arrives path-sorted from the main process. Filtering and the
   // header stats are each a single memoized pass, so a 90k-entry list stays
-  // cheap per refresh.
+  // cheap per refresh. A Conflicted chip joins the filter while conflicts
+  // exist, so resolving them can be the only thing on screen.
+  const hasConflictedFiles = useMemo(
+    () => changes.some((f) => f.status === 'conflicted'),
+    [changes]
+  )
+  const filterTypes = useMemo<readonly FileStatus[]>(
+    () => (hasConflictedFiles ? ['conflicted', ...DEFAULT_FILTER_TYPES] : DEFAULT_FILTER_TYPES),
+    [hasConflictedFiles]
+  )
+
+  // The configured merge.tool name, for the conflicted-file context menu —
+  // its labels must match the conflict panel's exactly. Fetched only when
+  // conflicts actually exist.
+  const [mergeToolName, setMergeToolName] = useState<string | null>(null)
+  useEffect(() => {
+    if (!hasConflictedFiles) return
+    let stale = false
+    gg.mergeToolName(repoPath)
+      .then((tool) => {
+        if (!stale) setMergeToolName(tool)
+      })
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  }, [hasConflictedFiles, repoPath, gg])
   const {
     filtered: files,
     query: filterQuery,
     active: filterActive,
     bar: filterBar
-  } = useFileFilter(changes)
+  } = useFileFilter(changes, filterTypes)
 
   const stats = useMemo(() => {
     let includedCount = 0
@@ -189,6 +227,12 @@ export function ChangesView({
   const modeAnchor = useRef<HTMLButtonElement>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: repoPath is the intentional reset trigger
   useEffect(() => setMode('commit'), [repoPath])
+
+  // An in-flight op forces plain commit mode: amending or stashing mid-merge
+  // would corrupt the operation's state.
+  useEffect(() => {
+    if (op) setMode('commit')
+  }, [op])
 
   const modeMeta = {
     commit: { label: 'Commit', sub: `Create a new commit on ${branch}`, MIcon: Icon.Check },
@@ -253,12 +297,14 @@ export function ChangesView({
     }))
 
   /** Menu for the list selection: single file keeps the full menu; a
-   *  multi-selection gets bulk include/exclude, discard and copy. */
+   *  multi-selection gets bulk include/exclude, discard and copy. While an
+   *  op is in flight the commit-selection and discard entries disappear —
+   *  the op owns the working tree until it's completed or aborted. */
   const contextMenuFor = (selected: ChangedFile[]): ContextMenuItem[] => {
     if (selected.length > 1) {
       const actionable = selected.filter((f) => f.status !== 'conflicted')
       const items: ContextMenuItem[] = []
-      if (actionable.length > 0) {
+      if (actionable.length > 0 && !op) {
         const allIncluded = actionable.every((f) => (selections.get(f.path) ?? 'all') !== 'none')
         items.push(
           allIncluded
@@ -310,20 +356,38 @@ export function ChangesView({
     const file = selected[0]
     if (!file) return []
     if (file.status === 'conflicted') {
+      // Exactly the conflict panel's labels and icons — one vocabulary for
+      // resolving, wherever the user finds the action.
+      const labels = conflictActionLabels({
+        toolName: mergeToolName,
+        ours: branch || null,
+        theirs: mergeSource
+      })
       return [
         {
-          label: 'Resolve Using Ours',
-          icon: <Icon.Check size={15} />,
+          // Same hierarchy as the conflict panel: combining both sides in a
+          // merge tool is the primary path, taking a side wholesale follows.
+          // NOT through runOp — mergetool blocks until the tool closes, which
+          // would hold `busy` (and the whole UI) for minutes.
+          label: labels.tool,
+          icon: <Icon.Merge size={15} />,
+          onClick: () => gg.openMergeTool(repoPath, file.path).catch(onError)
+        },
+        {},
+        {
+          label: labels.ours,
+          icon: <Icon.SideLeft size={15} />,
           onClick: () => runOp(() => gg.resolveConflict(repoPath, file.path, 'ours'))
         },
         {
-          label: 'Resolve Using Theirs',
-          icon: <Icon.Check size={15} />,
+          label: labels.theirs,
+          icon: <Icon.SideRight size={15} />,
           onClick: () => runOp(() => gg.resolveConflict(repoPath, file.path, 'theirs'))
         },
+        {},
         {
-          label: 'Mark as Resolved',
-          icon: <Icon.Plus size={15} />,
+          label: labels.mark,
+          icon: <Icon.Check size={15} />,
           onClick: () => runOp(() => gg.markResolved(repoPath, file.path))
         },
         {},
@@ -338,24 +402,28 @@ export function ChangesView({
     }
     const included = (selections.get(file.path) ?? 'all') !== 'none'
     return [
-      included
-        ? {
-            label: 'Exclude from Commit',
-            icon: <Icon.Minus size={15} />,
-            onClick: () => onToggleFile(file.path)
-          }
-        : {
-            label: 'Include in Commit',
-            icon: <Icon.Plus size={15} />,
-            onClick: () => onToggleFile(file.path)
-          },
-      {
-        label: file.status === 'untracked' ? 'Move to Trash…' : 'Discard Changes…',
-        icon: <Icon.Undo size={15} />,
-        danger: true,
-        onClick: () => setConfirmDiscard({ files: [file], all: false })
-      },
-      {},
+      ...(op
+        ? []
+        : [
+            included
+              ? {
+                  label: 'Exclude from Commit',
+                  icon: <Icon.Minus size={15} />,
+                  onClick: () => onToggleFile(file.path)
+                }
+              : {
+                  label: 'Include in Commit',
+                  icon: <Icon.Plus size={15} />,
+                  onClick: () => onToggleFile(file.path)
+                },
+            {
+              label: file.status === 'untracked' ? 'Move to Trash…' : 'Discard Changes…',
+              icon: <Icon.Undo size={15} />,
+              danger: true,
+              onClick: () => setConfirmDiscard({ files: [file], all: false })
+            },
+            {}
+          ]),
       ...(file.status === 'untracked' ? [...ignoreItemsFor(file), {}] : []),
       {
         label: 'Open in Editor',
@@ -367,30 +435,48 @@ export function ChangesView({
     ]
   }
 
-  const op = repoState?.op
-  const conflicts = repoState?.conflictedCount ?? 0
-
   return (
     <div className="changes">
       {op && (
-        <div className="op-banner" role="status">
+        <div
+          className={`op-banner ${conflicts > 0 ? 'op-banner--working' : 'op-banner--ready'}`}
+          role="status"
+        >
+          <span className="op-banner__icon" aria-hidden>
+            {conflicts > 0 ? <Icon.Merge size={15} /> : <Icon.Check size={15} />}
+          </span>
           <div className="op-banner__text">
-            <strong>{OP_LABEL[op]}</strong>
+            <strong>
+              {merging && mergeSource ? (
+                <>
+                  Merging <code>{mergeSource}</code> into <code>{branch}</code>
+                </>
+              ) : (
+                OP_LABEL[op]
+              )}
+            </strong>
             <span>
               {conflicts > 0
-                ? `${pluralize(conflicts, 'conflicted file')} — resolve them, then continue.`
-                : (repoState?.detail ?? 'All conflicts resolved — ready to continue.')}
+                ? `${pluralize(conflicts, 'conflicted file')} to resolve — select a file marked ` +
+                  'with the alert icon to fix it.'
+                : merging
+                  ? 'All conflicts resolved — complete the merge with the commit button below.'
+                  : (repoState?.detail ?? 'All conflicts resolved — ready to continue.')}
             </span>
           </div>
           <div className="op-banner__actions">
-            <button
-              className="btn-primary btn-primary--sm"
-              disabled={busy || conflicts > 0}
-              data-tip={conflicts > 0 ? 'Resolve all conflicts first' : undefined}
-              onClick={() => runOp(() => gg.continueOp(repoPath, op))}
-            >
-              Continue
-            </button>
+            {/* A merge continues through the commit button — committing IS the
+                continue — so the banner only offers the way out. */}
+            {!merging && (
+              <button
+                className="btn-primary btn-primary--sm"
+                disabled={busy || conflicts > 0}
+                data-tip={conflicts > 0 ? 'Resolve all conflicts first' : undefined}
+                onClick={() => runOp(() => gg.continueOp(repoPath, op))}
+              >
+                Continue
+              </button>
+            )}
             {op === 'rebasing' && (
               <button
                 className="btn-ghost btn-ghost--sm"
@@ -404,6 +490,9 @@ export function ChangesView({
             <button
               className="btn-ghost btn-ghost--sm"
               disabled={busy}
+              data-tip={
+                merging ? 'Undo the merge and return to the state before it started' : undefined
+              }
               onClick={() => runOp(() => gg.abortOp(repoPath, op))}
             >
               Abort
@@ -428,31 +517,35 @@ export function ChangesView({
         ) : (
           <>
             <div className="section-head">
-              <input
-                type="checkbox"
-                className="wfl__check"
-                checked={allIncluded}
-                ref={(el) => {
-                  if (el) el.indeterminate = !allIncluded && includedCount > 0
-                }}
-                disabled={busy || !hasSelectables}
-                data-tip={allIncluded ? 'Exclude all from commit' : 'Include all in commit'}
-                onChange={() =>
-                  onSetAllIncluded(
-                    !allIncluded,
-                    filterActive
-                      ? files.filter((f) => f.status !== 'conflicted').map((f) => f.path)
-                      : undefined
-                  )
-                }
-              />
+              {/* The checkbox commit model and bulk discard are suspended
+                  while an op runs — the op owns what gets committed. */}
+              {!op && (
+                <input
+                  type="checkbox"
+                  className="wfl__check"
+                  checked={allIncluded}
+                  ref={(el) => {
+                    if (el) el.indeterminate = !allIncluded && includedCount > 0
+                  }}
+                  disabled={busy || !hasSelectables}
+                  data-tip={allIncluded ? 'Exclude all from commit' : 'Include all in commit'}
+                  onChange={() =>
+                    onSetAllIncluded(
+                      !allIncluded,
+                      filterActive
+                        ? files.filter((f) => f.status !== 'conflicted').map((f) => f.path)
+                        : undefined
+                    )
+                  }
+                />
+              )}
               <span className="section-head__label">
                 {filterActive
                   ? `${files.length} of ${changes.length}`
                   : pluralize(files.length, 'file')}
               </span>
               <span className="section-head__spacer" />
-              {stats.discardables > 0 && (
+              {stats.discardables > 0 && !op && (
                 <button
                   className="section-head__action is-danger"
                   disabled={busy}
@@ -470,11 +563,13 @@ export function ChangesView({
               <WorkingFileList
                 key={repoPath}
                 files={files}
-                selections={selections}
+                selections={op ? undefined : selections}
                 selectedPath={selectedPath}
                 onSelect={onSelectFile}
-                onToggleIncluded={onToggleFile}
-                onSetIncluded={(paths, included) => onSetAllIncluded(included, paths)}
+                onToggleIncluded={op ? undefined : onToggleFile}
+                onSetIncluded={
+                  op ? undefined : (paths, included) => onSetAllIncluded(included, paths)
+                }
                 highlight={filterQuery}
                 onSelectionChange={onFileSelectionChange}
                 contextMenuFor={contextMenuFor}
@@ -541,6 +636,9 @@ export function ChangesView({
         commitSize={commitSize}
         busy={busy}
         mode={mode}
+        repoOp={op}
+        conflicts={conflicts}
+        mergeSource={mergeSource}
         descriptionHeight={descHeight}
         descriptionRef={(el) => {
           descEl.current = el

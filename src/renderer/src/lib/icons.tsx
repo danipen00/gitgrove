@@ -69,6 +69,20 @@ export const Icon = {
       <path d="M6 8c0 4 6 4 9.6 4" />
     </Svg>
   ),
+  /** "Take the left side" — ours in a conflict (ours renders left in diffs). */
+  SideLeft: (p: IconProps) => (
+    <Svg {...p}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <rect x="5.5" y="7.5" width="5.5" height="9" rx="1" fill="currentColor" stroke="none" />
+    </Svg>
+  ),
+  /** "Take the right side" — theirs in a conflict (theirs renders right in diffs). */
+  SideRight: (p: IconProps) => (
+    <Svg {...p}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <rect x="13" y="7.5" width="5.5" height="9" rx="1" fill="currentColor" stroke="none" />
+    </Svg>
+  ),
   CherryPick: (p: IconProps) => (
     <Svg {...p}>
       <circle cx="12" cy="12" r="3" />

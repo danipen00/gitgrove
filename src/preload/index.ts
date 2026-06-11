@@ -60,7 +60,10 @@ const api: GitGroveApi = {
     ipcRenderer.invoke(IPC.deleteBranch, repoPath, name, opts),
   renameBranch: (repoPath, from, to) => ipcRenderer.invoke(IPC.renameBranch, repoPath, from, to),
   checkoutDetached: (repoPath, hash) => ipcRenderer.invoke(IPC.checkoutDetached, repoPath, hash),
-  merge: (repoPath, branch) => ipcRenderer.invoke(IPC.merge, repoPath, branch),
+  merge: (repoPath, branch, opts) => ipcRenderer.invoke(IPC.merge, repoPath, branch, opts),
+  mergePreview: (repoPath, branch) => ipcRenderer.invoke(IPC.mergePreview, repoPath, branch),
+  commitMerge: (repoPath, message) => ipcRenderer.invoke(IPC.commitMerge, repoPath, message),
+  mergeMessage: (repoPath) => ipcRenderer.invoke(IPC.mergeMessage, repoPath),
   rebase: (repoPath, onto) => ipcRenderer.invoke(IPC.rebase, repoPath, onto),
   rebaseInteractive: (repoPath, base, items) =>
     ipcRenderer.invoke(IPC.rebaseInteractive, repoPath, base, items),
@@ -73,6 +76,9 @@ const api: GitGroveApi = {
   resolveConflict: (repoPath, path, side) =>
     ipcRenderer.invoke(IPC.resolveConflict, repoPath, path, side),
   markResolved: (repoPath, path) => ipcRenderer.invoke(IPC.markResolved, repoPath, path),
+  conflictSides: (repoPath, path) => ipcRenderer.invoke(IPC.conflictSides, repoPath, path),
+  openMergeTool: (repoPath, path) => ipcRenderer.invoke(IPC.openMergeTool, repoPath, path),
+  mergeToolName: (repoPath) => ipcRenderer.invoke(IPC.mergeToolName, repoPath),
   openFileInEditor: (repoPath, path) => ipcRenderer.invoke(IPC.openFileInEditor, repoPath, path),
   stashList: (repoPath) => ipcRenderer.invoke(IPC.stashList, repoPath),
   stashFiles: (repoPath, sha) => ipcRenderer.invoke(IPC.stashFiles, repoPath, sha),
