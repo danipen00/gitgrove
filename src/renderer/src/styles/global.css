@@ -1726,6 +1726,13 @@ button {
 .toast--error {
   --toast-tint: var(--st-deleted);
 }
+/* Bottom-right, matching the update banner's spot, for feedback that follows
+   a card shown there (so the user's eye doesn't have to jump). */
+.toast--corner {
+  left: auto;
+  right: 18px;
+  transform: none;
+}
 .toast__badge {
   flex: 0 0 auto;
   display: flex;
@@ -1996,9 +2003,6 @@ button {
 .update-banner__icon {
   display: flex;
   flex: none;
-}
-.update-banner__icon--ok {
-  color: var(--st-added);
 }
 .update-banner__icon--warn {
   color: var(--st-deleted);

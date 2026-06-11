@@ -1,5 +1,7 @@
 import type { UpdateStatus } from '@shared/types'
+import { Toast } from '@/components/common/Toast'
 import { Icon } from '@/lib/icons'
+import { FEEDBACK_DURATION } from '@/lib/useUpdateBanner'
 
 interface Props {
   update: UpdateStatus | null
@@ -32,18 +34,17 @@ export function UpdateBanner({ update, onInstall, onDismiss }: Props) {
   }
 
   if (update.state === 'not-available') {
+    // A transient confirmation, so it's the standard success toast — pinned to
+    // the corner where the "checking…" card just was. Its countdown owns the
+    // auto-hide (see useUpdateBanner), so hovering holds it open.
     return (
-      <div className="update-banner" role="status">
-        <div className="update-banner__row">
-          <span className="update-banner__icon update-banner__icon--ok" aria-hidden>
-            <Icon.Check size={15} />
-          </span>
-          <span className="update-banner__title">You're on the latest version.</span>
-          <button className="update-banner__close" title="Dismiss" onClick={onDismiss}>
-            <Icon.Close size={13} />
-          </button>
-        </div>
-      </div>
+      <Toast
+        kind="success"
+        message="You're on the latest version."
+        onClose={onDismiss}
+        durationMs={FEEDBACK_DURATION}
+        corner
+      />
     )
   }
 

@@ -13,15 +13,22 @@ export function Toast({
   kind,
   message,
   onClose,
-  durationMs = 6000
+  durationMs = 6000,
+  corner = false
 }: {
   kind: ToastKind
   message: string
   onClose: () => void
   durationMs?: number
+  /** Pin bottom-right instead of bottom-center, for feedback that continues a
+   *  corner surface (e.g. the update banner's "checking…" card). */
+  corner?: boolean
 }) {
   return (
-    <div className={`toast toast--${kind}`} role={kind === 'error' ? 'alert' : 'status'}>
+    <div
+      className={`toast toast--${kind}${corner ? ' toast--corner' : ''}`}
+      role={kind === 'error' ? 'alert' : 'status'}
+    >
       <span className="toast__badge" aria-hidden="true">
         {kind === 'success' ? <Icon.Check size={12} /> : <Icon.Close size={12} />}
       </span>

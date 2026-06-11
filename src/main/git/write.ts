@@ -20,7 +20,7 @@ import type {
   SubmoduleInfo,
   WorktreeInfo
 } from '@shared/types'
-import { enqueue, type ProgressHandler, run, type RunOptions, runOnce, runRead } from './exec'
+import { enqueue, type ProgressHandler, type RunOptions, run, runOnce, runRead } from './exec'
 import { openLfsProgressChannel } from './lfs-progress'
 
 /** Files restored per checkout-index spawn during a discard — small enough
