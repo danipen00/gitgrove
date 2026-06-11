@@ -41,6 +41,27 @@ interface StoreFile {
   clientIds: Record<string, string>
 }
 
+/**
+ * A defensive shape check for entries read back from disk. The file is only
+ * ever written by this module, but a partial write or a hand-edit must never
+ * feed a malformed record into the credential path — a non-string host would
+ * throw inside the askpass responder and cancel the prompt. Malformed entries
+ * are simply dropped.
+ */
+function isStoredAccount(value: unknown): value is StoredAccount {
+  if (!value || typeof value !== 'object') return false
+  const a = value as Record<string, unknown>
+  return (
+    a.provider === 'github' &&
+    typeof a.host === 'string' &&
+    typeof a.login === 'string' &&
+    typeof a.tokenCipher === 'string' &&
+    (a.name === null || typeof a.name === 'string') &&
+    (a.email === null || typeof a.email === 'string') &&
+    Array.isArray(a.scopes)
+  )
+}
+
 export function accountId(host: string, login: string): string {
   return `${normalizeHost(host)}/${login}`
 }
@@ -153,7 +174,7 @@ export class AccountsStore {
         const parsed = JSON.parse(readFileSync(this.file, 'utf8'))
         const hasClientIds = parsed.clientIds && typeof parsed.clientIds === 'object'
         return {
-          accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
+          accounts: Array.isArray(parsed.accounts) ? parsed.accounts.filter(isStoredAccount) : [],
           clientIds: hasClientIds ? parsed.clientIds : {}
         }
       }
@@ -183,7 +204,15 @@ export function answerFromAccounts(store: AccountsStore, prompt: CredentialPromp
   if (!prompt.host) return null
   const account = store.getAccountForHost(prompt.host)
   if (!account) return null
+  // git asks the username and password halves as two separate prompts, so the
+  // token must be resolvable up front: if it isn't (e.g. an undecryptable
+  // persisted account after an OS reinstall), answer NEITHER half. Otherwise
+  // git gets a silent username with no matching password and the dialog pops
+  // asking only for a password the user never paired — a dead end. Falling
+  // through on both halves shows a normal, complete credential prompt instead.
+  const token = store.getTokenForHost(prompt.host)
+  if (token === null) return null
   if (prompt.kind === 'username') return account.login
-  if (prompt.kind === 'password') return store.getTokenForHost(prompt.host)
+  if (prompt.kind === 'password') return token
   return null
 }

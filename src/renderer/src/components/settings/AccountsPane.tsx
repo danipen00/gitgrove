@@ -5,7 +5,7 @@
 // dialog, so this pane is purely friction removal.
 
 import type { ConnectedAccount } from '@shared/types'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ConfirmDialog } from '@/components/common/Dialog'
 import { Avatar } from '@/components/history/Avatar'
 import { Icon } from '@/lib/icons'
@@ -16,11 +16,12 @@ export function AccountsPane() {
   const [adding, setAdding] = useState(false)
   const [confirmSignOut, setConfirmSignOut] = useState<ConnectedAccount | null>(null)
 
-  const reload = () => window.gitgrove.listAccounts().then(setAccounts)
+  // Stable so the subscription effect runs once, not on every render.
+  const reload = useCallback(() => window.gitgrove.listAccounts().then(setAccounts), [])
   useEffect(() => {
     reload()
     return window.gitgrove.onAccountsChanged(reload)
-  }, [])
+  }, [reload])
 
   const signOut = async () => {
     if (!confirmSignOut) return
@@ -48,11 +49,7 @@ export function AccountsPane() {
         <div className="wt-list">
           {accounts.map((account) => (
             <div key={account.id} className="wt-item">
-              <Avatar
-                name={account.name ?? account.login}
-                email={account.email ?? ''}
-                size={32}
-              />
+              <Avatar name={account.name ?? account.login} email={account.email ?? ''} size={32} />
               <div className="wt-item__main">
                 <span className="wt-item__branch">
                   {account.name ?? account.login}
@@ -93,9 +90,9 @@ export function AccountsPane() {
           title={`Sign out of ${confirmSignOut.host}?`}
           body={
             <>
-              GitGrove forgets <code>@{confirmSignOut.login}</code>’s token and removes it from
-              your system keychain. Network operations on {confirmSignOut.host} will ask for
-              credentials again.
+              GitGrove forgets <code>@{confirmSignOut.login}</code>’s token and removes it from your
+              system keychain. Network operations on {confirmSignOut.host} will ask for credentials
+              again.
             </>
           }
           confirmLabel="Sign out"

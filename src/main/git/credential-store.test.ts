@@ -21,10 +21,7 @@ beforeAll(() => {
   process.env.XDG_CONFIG_HOME = join(home, '.config')
   process.env.GIT_CONFIG_NOSYSTEM = '1'
   credsFile = join(home, 'git-credentials')
-  writeFileSync(
-    join(home, '.gitconfig'),
-    `[credential]\n\thelper = store --file=${credsFile}\n`
-  )
+  writeFileSync(join(home, '.gitconfig'), `[credential]\n\thelper = store --file=${credsFile}\n`)
 })
 
 afterAll(() => {

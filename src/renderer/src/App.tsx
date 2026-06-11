@@ -701,6 +701,7 @@ export function App() {
     async (name: string, email: string, scope: IdentityScope) => {
       const pending = pendingIdentityCommit.current
       pendingIdentityCommit.current = null
+      setIdentityPrefill(null) // consumed — never let it leak into a later repo
       const repoPath = repoRef.current?.path
       if (!pending || !repoPath) {
         setModal(null)
@@ -727,6 +728,7 @@ export function App() {
   const cancelIdentitySetup = useCallback(() => {
     pendingIdentityCommit.current?.resolve(false)
     pendingIdentityCommit.current = null
+    setIdentityPrefill(null)
     setModal(null)
   }, [])
 
@@ -1051,14 +1053,24 @@ export function App() {
   // Credential prompts: queue arrivals, drop expirations, answer via IPC.
   useEffect(
     () =>
-      window.gitgrove.onCredentialPrompt(async (request) => {
-        // Reaching here means no connected account answered silently — offer
-        // browser sign-in when the host supports it (it both rescues this
-        // prompt and connects the account for every future operation).
-        const oauth = request.host
-          ? await window.gitgrove.hasOAuthClient(request.host).catch(() => false)
-          : false
-        setCredentialPrompts((prev) => [...prev, { ...request, oauth }])
+      window.gitgrove.onCredentialPrompt((request) => {
+        // Queue in arrival order immediately — the OAuth probe is async, and
+        // awaiting it before enqueuing could reorder two prompts racing in.
+        // Reaching here means no connected account answered silently; resolve
+        // whether the host supports one-click browser sign-in and flip the flag
+        // on the queued prompt when it does (it both rescues this prompt and
+        // connects the account for every future operation).
+        setCredentialPrompts((prev) => [...prev, { ...request, oauth: false }])
+        if (!request.host) return
+        window.gitgrove
+          .hasOAuthClient(request.host)
+          .then((oauth) => {
+            if (!oauth) return
+            setCredentialPrompts((prev) =>
+              prev.map((p) => (p.requestId === request.requestId ? { ...p, oauth: true } : p))
+            )
+          })
+          .catch(() => {})
       }),
     []
   )
@@ -1156,19 +1168,19 @@ export function App() {
     modal.kind !== 'settings' &&
     modal.kind !== 'clone' &&
     modal.kind !== 'identity' && (
-    <AppModals
-      modal={modal}
-      repoPath={repoPath}
-      branch={branch}
-      busy={modalBusy}
-      runModalOp={runModalOp}
-      onDeleteBranch={deleteBranch}
-      onCheckoutCommit={checkoutCommit}
-      onOpenRepo={openRepoByPath}
-      onError={fail}
-      onClose={() => setModal(null)}
-    />
-  )
+      <AppModals
+        modal={modal}
+        repoPath={repoPath}
+        branch={branch}
+        busy={modalBusy}
+        runModalOp={runModalOp}
+        onDeleteBranch={deleteBranch}
+        onCheckoutCommit={checkoutCommit}
+        onOpenRepo={openRepoByPath}
+        onError={fail}
+        onClose={() => setModal(null)}
+      />
+    )
 
   const overlays = (
     <>
@@ -1204,8 +1216,11 @@ export function App() {
         />
       )}
       {/* Settings works with or without a repo — connecting an account is
-          most valuable right before the first clone. */}
-      {modal?.kind === 'settings' && (
+          most valuable right before the first clone. Suppressed while a
+          credential prompt is up (same rule as the identity dialog below): the
+          prompt holds a live git op and must be the single modal in focus, and
+          it carries its own "Sign in with GitHub" path anyway. */}
+      {modal?.kind === 'settings' && credentialPrompts.length === 0 && (
         <SettingsDialog
           repoPath={repoPath}
           themePref={themePref}

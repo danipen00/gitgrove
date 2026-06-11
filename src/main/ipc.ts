@@ -251,8 +251,9 @@ export function registerIpc(ctx: IpcContext): void {
   }
 
   ipcMain.handle(IPC.accountsList, () => accountsStore().listAccounts())
-  ipcMain.handle(IPC.accountsHasOAuthClient, (_e, host: string) =>
-    oauthClientIdFor(accountsStore(), host) !== null
+  ipcMain.handle(
+    IPC.accountsHasOAuthClient,
+    (_e, host: string) => oauthClientIdFor(accountsStore(), host) !== null
   )
 
   // One sign-in at a time: a newly started flow supersedes (aborts) the old.

@@ -1,14 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CredentialPrompt } from '@shared/types'
-import {
-  type AccountCipher,
-  type AccountProfile,
-  AccountsStore,
-  answerFromAccounts
-} from './store'
+import { type AccountCipher, type AccountProfile, AccountsStore, answerFromAccounts } from './store'
 
 let dir: string
 
@@ -98,6 +93,33 @@ describe('AccountsStore', () => {
     store.saveClientId('GHE.corp.example', 'Iv1.abc')
     expect(store.getClientId('ghe.corp.example')).toBe('Iv1.abc')
   })
+
+  test('drops malformed entries from a corrupt/hand-edited store file', () => {
+    const file = join(dir, `accounts-${++storeSeq}.json`)
+    writeFileSync(
+      file,
+      JSON.stringify({
+        accounts: [
+          { host: 5, login: 'x' }, // host not a string — would throw in normalizeHost
+          { provider: 'github', host: 'github.com', login: 'good' }, // missing tokenCipher/scopes
+          {
+            provider: 'github',
+            host: 'github.com',
+            login: 'good',
+            name: null,
+            email: null,
+            scopes: [],
+            tokenCipher: 'enc:dG9r' // base64('tok')
+          }
+        ],
+        clientIds: {}
+      })
+    )
+    const store = new AccountsStore(file, fakeCipher())
+    // Only the well-formed account survives; malformed ones can't crash reads.
+    expect(store.listAccounts().map((a) => a.login)).toEqual(['good'])
+    expect(store.getTokenForHost('github.com')).toBe('tok')
+  })
 })
 
 describe('answerFromAccounts', () => {
@@ -117,5 +139,23 @@ describe('answerFromAccounts', () => {
     expect(answerFromAccounts(store, prompt('password', 'gitlab.com'))).toBeNull()
     expect(answerFromAccounts(store, prompt('password'))).toBeNull()
     expect(answerFromAccounts(store, { kind: 'passphrase', keyPath: '/k' })).toBeNull()
+  })
+
+  test('answers neither half when the stored token cannot be decrypted', () => {
+    // Persist with a working cipher, then reopen with one that can't decrypt
+    // (key lost / file copied across machines). The account is still listed,
+    // but a half-credential (username with no usable password) must not leak —
+    // both halves stay silent so a full credential dialog shows instead.
+    const file = join(dir, `accounts-${++storeSeq}.json`)
+    new AccountsStore(file, fakeCipher()).saveAccount(profile(), 'tok')
+    const undecryptable: AccountCipher = {
+      available: () => true,
+      encrypt: (t) => t,
+      decrypt: () => null
+    }
+    const store = new AccountsStore(file, undecryptable)
+    expect(store.getAccountForHost('github.com')?.login).toBe('octocat') // still listed
+    expect(answerFromAccounts(store, prompt('username', 'github.com'))).toBeNull()
+    expect(answerFromAccounts(store, prompt('password', 'github.com'))).toBeNull()
   })
 })

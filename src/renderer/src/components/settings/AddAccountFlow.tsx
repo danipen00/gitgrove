@@ -90,6 +90,10 @@ export function AddAccountFlow({ onDone, onCancel }: Props) {
       return
     }
     if (isGitHubDotCom(host)) return chooseGitHub()
+    // Entering a (possibly different) host's token step: drop any client ID
+    // typed for a previous host so it can't be submitted against this one.
+    setShowClientId(false)
+    setClientId('')
     // A client ID remembered from an earlier sign-in makes this one click.
     if (await window.gitgrove.hasOAuthClient(host)) startOAuth(host)
     else setStep({ id: 'token', host })
@@ -236,8 +240,8 @@ export function AddAccountFlow({ onDone, onCancel }: Props) {
                   </button>
                 </div>
                 <p className="trust__note">
-                  From a “GitGrove” OAuth app registered on {step.host} (with device flow
-                  enabled). Remembered after the first sign-in.
+                  From a “GitGrove” OAuth app registered on {step.host} (with device flow enabled).
+                  Remembered after the first sign-in.
                 </p>
               </div>
             ) : (

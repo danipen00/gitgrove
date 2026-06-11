@@ -49,8 +49,7 @@ const api: GitGroveApi = {
   respondCredential: (requestId, value) =>
     ipcRenderer.invoke(IPC.credentialRespond, requestId, value),
   listAccounts: () => ipcRenderer.invoke(IPC.accountsList),
-  beginAccountOAuth: (host, clientId) =>
-    ipcRenderer.invoke(IPC.accountsBeginOAuth, host, clientId),
+  beginAccountOAuth: (host, clientId) => ipcRenderer.invoke(IPC.accountsBeginOAuth, host, clientId),
   cancelAccountOAuth: () => ipcRenderer.invoke(IPC.accountsCancelOAuth),
   addAccountWithToken: (host, token) => ipcRenderer.invoke(IPC.accountsAddToken, host, token),
   removeAccount: (id) => ipcRenderer.invoke(IPC.accountsRemove, id),
