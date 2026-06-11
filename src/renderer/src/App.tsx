@@ -429,15 +429,14 @@ export function App() {
   const switchTab = useCallback(
     (next: Tab) => {
       setTab(next)
-      // The file list remounts on a tab switch, dropping any multi-selection;
-      // reset the count up front so the diff pane doesn't flash a stale
-      // "multiple files selected" state before the remount reports back.
+      // Both sidebar panes stay mounted (the inactive one is just hidden), so
+      // each tab keeps its own draft, filters and multi-selection across the
+      // switch. All that's left to do is re-point the shared diff pane at the
+      // active tab's current selection.
       if (next === 'changes') {
-        setChangeSelCount(1)
         if (changeSel) selectWorkingFile(changeSel, undefined, { force: true })
         else clearDiff()
       } else {
-        setCommitSelCount(1)
         // First visit to History: fetch the log on demand.
         const repoPath = repoRef.current?.path
         if (repoPath && !logLoaded && !commitsLoading) loadLog(repoPath).catch(fail)
@@ -1417,7 +1416,10 @@ export function App() {
             </button>
           </div>
           <div className="sidebar__body">
-            {tab === 'changes' ? (
+            {/* Both panes stay mounted — only the active one is shown — so a
+                tab switch never discards the composer draft, the file filters
+                or the working-list selection (all component-local state). */}
+            <div className={`sidebar__pane${tab === 'changes' ? '' : ' sidebar__pane--hidden'}`}>
               <ChangesView
                 repoPath={repo.path}
                 branch={
@@ -1444,7 +1446,8 @@ export function App() {
                 onCommit={doCommit}
                 onStash={doStash}
               />
-            ) : (
+            </div>
+            <div className={`sidebar__pane${tab === 'history' ? '' : ' sidebar__pane--hidden'}`}>
               <HistoryView
                 repoPath={repo.path}
                 commits={commits}
@@ -1461,7 +1464,7 @@ export function App() {
                 onFileSelectionChange={setCommitSelCount}
                 commitMenuFor={commitMenuFor}
               />
-            )}
+            </div>
           </div>
         </aside>
 

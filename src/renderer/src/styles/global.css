@@ -860,6 +860,20 @@ button {
   flex-direction: column;
 }
 
+/* Changes and History each live in a pane that fills the body; both stay
+   mounted so a tab switch preserves their state, and the inactive one is
+   hidden. `display: none` must beat the child view's own `display: flex`,
+   so it's set on the pane rather than via the `hidden` attribute. */
+.sidebar__pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar__pane--hidden {
+  display: none;
+}
+
 /* Section header inside panels */
 .section-head {
   display: flex;
