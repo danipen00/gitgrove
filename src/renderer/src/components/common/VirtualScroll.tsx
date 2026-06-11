@@ -25,8 +25,9 @@
 // run while the ref is still null. Keying them on the node itself makes them
 // run exactly when it mounts/unmounts.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
+import { type RowHeight, rowMetrics, windowRange } from '@/lib/rowMetrics'
 
 /** Minimum draggable scrollbar thumb height (px). */
 const MIN_THUMB = 24
@@ -40,8 +41,12 @@ const thumbHeight = (viewportH: number, totalHeight: number) =>
 export interface VirtualScrollOptions {
   /** Number of rows. */
   count: number
-  /** Fixed row height (px). */
-  rowHeight: number
+  /** Row height (px): a constant for uniform lists, or a function of the row
+   *  index for variable-height lists (e.g. commits with/without ref chips).
+   *  A function MUST be referentially stable (memoize it) — the offset table is
+   *  rebuilt whenever its identity changes, which would be every scroll tick
+   *  otherwise. */
+  rowHeight: RowHeight
   /** Extra rows rendered above/below the window — covers sub-pixel rounding.
    *  Main-thread scrolling never outruns the render, so this stays tiny. */
   overscan?: number
@@ -91,15 +96,20 @@ export function useVirtualScroll({
   const [viewportH, setViewportH] = useState(initialViewportH)
   const [scrollTop, setScrollTop] = useState(0)
 
-  const totalHeight = padTop + count * rowHeight + padBottom
+  // Row geometry (offset table for variable heights). Rebuilt only when the row
+  // count or the height spec changes — never on scroll — so flinging a long
+  // list stays cheap. See VirtualScrollOptions.rowHeight for the stability rule.
+  const metrics = useMemo(() => rowMetrics(count, rowHeight), [count, rowHeight])
+
+  const totalHeight = padTop + metrics.total + padBottom
   const maxScroll = Math.max(0, totalHeight - viewportH)
   // The state is left unclamped when the list shrinks; clamping the derived
   // value (and every write) keeps renders correct without an extra effect.
   const top = clamp(scrollTop, 0, maxScroll)
 
   // Fresh values for the once-per-mount wheel listener and stable callbacks.
-  const live = useRef({ top, maxScroll, viewportH, rowHeight, padTop, totalHeight })
-  live.current = { top, maxScroll, viewportH, rowHeight, padTop, totalHeight }
+  const live = useRef({ top, maxScroll, viewportH, metrics, padTop, totalHeight })
+  live.current = { top, maxScroll, viewportH, metrics, padTop, totalHeight }
 
   // Measure the viewport, and keep it in sync on resize (sidebar drags etc.).
   useLayoutEffect(() => {
@@ -117,14 +127,14 @@ export function useVirtualScroll({
   useEffect(() => {
     if (!viewportEl) return
     const onWheel = (e: WheelEvent) => {
-      const { maxScroll, viewportH, rowHeight } = live.current
+      const { maxScroll, viewportH, metrics } = live.current
       if (maxScroll <= 0) return
       e.preventDefault()
       // Normalize delta units: 0 = pixels (trackpads), 1 = lines (Windows
       // wheel mice), 2 = pages. Raw line deltas would crawl a few px per tick.
       const dy =
         e.deltaMode === 1
-          ? e.deltaY * rowHeight
+          ? e.deltaY * metrics.averageHeight
           : e.deltaMode === 2
             ? e.deltaY * viewportH
             : e.deltaY
@@ -143,20 +153,20 @@ export function useVirtualScroll({
   }, [])
 
   const ensureVisible = useCallback((index: number) => {
-    const { top, viewportH, rowHeight, padTop } = live.current
-    const rowT = padTop + index * rowHeight
+    const { top, viewportH, metrics, padTop } = live.current
+    const rowT = padTop + metrics.rowTop(index)
+    const rowH = metrics.heightOf(index)
     if (rowT < top) setScrollTop(clamp(rowT, 0, live.current.maxScroll))
-    else if (rowT + rowHeight > top + viewportH)
-      setScrollTop(clamp(rowT + rowHeight - viewportH, 0, live.current.maxScroll))
+    else if (rowT + rowH > top + viewportH)
+      setScrollTop(clamp(rowT + rowH - viewportH, 0, live.current.maxScroll))
   }, [])
 
   const rowTop = useCallback(
-    (index: number) => live.current.padTop + index * rowHeight,
-    [rowHeight]
+    (index: number) => live.current.padTop + live.current.metrics.rowTop(index),
+    []
   )
 
-  const start = Math.max(0, Math.floor((top - padTop) / rowHeight) - overscan)
-  const end = Math.min(count, Math.ceil((top - padTop + viewportH) / rowHeight) + overscan)
+  const { start, end } = windowRange(metrics, count, top, viewportH, overscan, padTop)
 
   const thumbH = thumbHeight(viewportH, totalHeight)
   const thumbTop = maxScroll > 0 ? (top / maxScroll) * (viewportH - thumbH) : 0
