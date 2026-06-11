@@ -91,6 +91,11 @@ pattern.) Beauty and UX are verified on screen, not in the diff.
 - **Path aliases:** `@/` → `src/renderer/src/`, `@shared/` → `src/shared/`.
 - **Comments explain *why*, richly** (lock semantics, NUL delimiting, PATH probing).
   Match that density on tricky code; don't strip existing rationale.
+- **Sidebar banners carry at most one button.** Banners (`.op-banner`,
+  `.stash-reminder`) live in a narrow column: every extra button steals width from the
+  message and wraps it into a skinny multi-line column. One compact button per banner;
+  when more actions are needed, use a split button whose caret opens a popover (see
+  `StashReminder`), with destructive options confirmed from there.
 - **Tests** are colocated `*.test.ts`; git tests are integration tests driving the real
   `git` binary against a throwaway repo, not mocks. TypeScript is strict — no new `any`.
 - **Every new behaviour or spec change ships with unit tests.** Tests must be
