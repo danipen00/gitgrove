@@ -1,9 +1,10 @@
 import type { ChangedFile, Commit } from '@shared/types'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ContextMenu, type ContextMenuItem } from '@/components/common/ContextMenu'
 import { copyPathItems } from '@/components/common/copyPathItems'
 import { useFileFilter } from '@/components/common/FileFilter'
 import { Resizer } from '@/components/common/Resizer'
+import { useVirtualScroll, VScrollbar } from '@/components/common/VirtualScroll'
 import { WorkingFileList } from '@/components/common/WorkingFileList'
 import { parseRefs, pluralize } from '@/lib/format'
 import { Icon } from '@/lib/icons'
@@ -38,6 +39,18 @@ interface Props {
 
 /** How many ref chips to show inline in the list before collapsing to "+N". */
 const MAX_LIST_REFS = 2
+
+// Commit rows come in exactly two heights — refs stay on a single line (capped
+// to "+N") so a commit carrying branches/tags is just one row taller. These
+// mirror `.commit` in global.css; keep them in sync if the row padding changes.
+const COMMIT_ROW_H = 51
+const COMMIT_ROW_REFS_H = 69
+/** Space reserved below the last row for the "load older commits" spinner. */
+const MORE_ROW_H = 44
+/** Page in the next batch once the window is within this many rows of the end. */
+const PREFETCH_ROWS = 12
+
+const hasRefs = (commit: Commit) => parseRefs(commit.refs).length > 0
 
 export function HistoryView({
   repoPath,
@@ -75,57 +88,56 @@ export function HistoryView({
   // Height is applied to this node directly while dragging (see Resizer.onPreview)
   // so resizing the commit-files panel never re-renders the history list.
   const filesRef = useRef<HTMLDivElement>(null)
+
+  // Windowed rendering: only the visible commit rows (plus a small overscan)
+  // live in the DOM, so a deep history (the unity repo loads 800k+ commits, a
+  // page at a time) stays at a few dozen nodes instead of growing without
+  // bound. Rows are one of two fixed heights; the table is rebuilt only when a
+  // page is appended, so the height fn must be stable across scroll renders.
+  const rowHeight = useCallback(
+    (i: number) => (hasRefs(commits[i]) ? COMMIT_ROW_REFS_H : COMMIT_ROW_H),
+    [commits]
+  )
+  const vs = useVirtualScroll({
+    count: commits.length,
+    rowHeight,
+    // Leave room under the last row for the "load older commits" spinner.
+    padBottom: hasMore ? MORE_ROW_H : 0
+  })
+
   // Selecting a commit reveals the files panel below the list, which shrinks the
-  // scroll viewport — a bottom row can end up below the fold. Pull the active row
-  // back into view (block:'nearest' leaves already-visible rows untouched).
-  const activeRef = useRef<HTMLButtonElement>(null)
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: these are intentional triggers; the body only reads a ref.
+  // scroll viewport — the active row can end up below the fold. Nudge it back
+  // into view; re-runs on viewport height changes (panel open / resize) too.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the hash + viewport height are the intentional triggers; ensureVisible is stable.
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [selectedCommit?.hash, filesHeight])
+    if (!selectedCommit) return
+    const idx = commits.findIndex((c) => c.hash === selectedCommit.hash)
+    if (idx >= 0) vs.ensureVisible(idx)
+  }, [selectedCommit?.hash, vs.viewportH])
 
-  // Infinite scroll: an IntersectionObserver on a sentinel row instead of an
-  // onScroll handler — zero work per scrolled frame, fires once when the
-  // sentinel enters the 600px pre-fetch margin so the next page is usually in
-  // before the user reaches the end. `onLoadMore` lives in a ref so observer
-  // setup never depends on the callback's identity.
-  const listRef = useRef<HTMLDivElement>(null)
-  const sentinelRef = useRef<HTMLDivElement>(null)
+  // Infinite scroll: page in the next batch once the rendered window comes
+  // within PREFETCH_ROWS of the last loaded commit. Re-runs as each page is
+  // appended, so a tall viewport keeps filling itself with no scrolling. The
+  // callback lives in a ref so this effect never depends on its identity.
   const onLoadMoreRef = useRef(onLoadMore)
   onLoadMoreRef.current = onLoadMore
+  useEffect(() => {
+    if (hasMore && vs.end >= commits.length - PREFETCH_ROWS) onLoadMoreRef.current?.()
+  }, [hasMore, vs.end, commits.length])
 
   // Keyboard navigation: arrows / PageUp / PageDown / Home / End move the
   // selection (selection follows focus, exactly like the file lists). The
-  // handler lives on the scroll container, so it works whether focus sits on
-  // the container itself or on a clicked commit row inside it; the
-  // scrollIntoView effect above keeps the new selection on screen.
+  // handler lives on the scroll container; the effect above keeps the new
+  // selection on screen.
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (commits.length === 0) return
-    const list = listRef.current
-    // Rows have variable height (ref chips) — measure one for the page jump.
-    const rowH = list?.querySelector<HTMLElement>('.commit')?.offsetHeight ?? 60
-    const page = Math.max(1, Math.floor((list?.clientHeight ?? 0) / rowH) - 1)
+    const page = Math.max(1, Math.floor(vs.viewportH / COMMIT_ROW_H) - 1)
     const current = selectedCommit ? commits.findIndex((c) => c.hash === selectedCommit.hash) : -1
     const target = navTarget(e.key, current, commits.length, page)
     if (target === null) return
     e.preventDefault()
     if (target !== current) onSelectCommit(commits[target])
   }
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-observing per appended page is the point — a new observer reports the current intersection immediately, which keeps paging until the sentinel leaves the margin (fills tall viewports with no scroll event at all).
-  useEffect(() => {
-    const root = listRef.current
-    const sentinel = sentinelRef.current
-    if (!root || !sentinel || !hasMore) return
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) onLoadMoreRef.current?.()
-      },
-      { root, rootMargin: '0px 0px 600px 0px' }
-    )
-    io.observe(sentinel)
-    return () => io.disconnect()
-  }, [hasMore, commits.length])
 
   if (loading && commits.length === 0) {
     return (
@@ -151,60 +163,71 @@ export function HistoryView({
     <div className="history">
       <div
         className="commit-list"
-        ref={listRef}
+        ref={vs.viewportRef}
         role="listbox"
         aria-label="Commit history"
         tabIndex={0}
         onKeyDown={handleKeyDown}
       >
-        {commits.map((commit) => {
-          const refs = parseRefs(commit.refs)
-          const overflow = refs.length - MAX_LIST_REFS
-          const active = selectedCommit?.hash === commit.hash
-          return (
-            <button
-              key={commit.hash}
-              ref={active ? activeRef : null}
-              className={`commit${active ? ' is-active' : ''}`}
-              role="option"
-              aria-selected={active}
-              onClick={() => onSelectCommit(commit)}
-              onContextMenu={
-                commitMenuFor
-                  ? (e) => {
-                      e.preventDefault()
-                      onSelectCommit(commit)
-                      setMenu({ x: e.clientX, y: e.clientY, items: commitMenuFor(commit) })
-                    }
-                  : undefined
-              }
-            >
-              <Avatar name={commit.authorName} email={commit.authorEmail} size={28} />
-              <div className="commit__main">
-                <div className="commit__subject" data-tip={commit.subject} data-tip-overflow="">
-                  {commit.subject}
-                </div>
-                {refs.length > 0 && (
-                  <div className="commit__refs">
-                    {refs.slice(0, MAX_LIST_REFS).map((ref) => (
-                      <RefChip key={ref.name} refItem={ref} />
-                    ))}
-                    {overflow > 0 && <span className="ref-chip ref-chip--more">+{overflow}</span>}
+        <div className="vlist__sizer" style={{ height: vs.totalHeight }} aria-hidden="true" />
+        <div className="vlist__content" style={{ transform: `translateY(${-vs.top}px)` }}>
+          {commits.slice(vs.start, vs.end).map((commit, i) => {
+            const refs = parseRefs(commit.refs)
+            const overflow = refs.length - MAX_LIST_REFS
+            const active = selectedCommit?.hash === commit.hash
+            return (
+              <button
+                key={commit.hash}
+                className={`commit${active ? ' is-active' : ''}`}
+                role="option"
+                aria-selected={active}
+                style={{ position: 'absolute', top: vs.rowTop(vs.start + i), left: 0, right: 0 }}
+                onClick={() => {
+                  vs.viewportEl?.focus()
+                  onSelectCommit(commit)
+                }}
+                onContextMenu={
+                  commitMenuFor
+                    ? (e) => {
+                        e.preventDefault()
+                        onSelectCommit(commit)
+                        setMenu({ x: e.clientX, y: e.clientY, items: commitMenuFor(commit) })
+                      }
+                    : undefined
+                }
+              >
+                <Avatar name={commit.authorName} email={commit.authorEmail} size={28} />
+                <div className="commit__main">
+                  <div className="commit__subject" data-tip={commit.subject} data-tip-overflow="">
+                    {commit.subject}
                   </div>
-                )}
-                <div className="commit__meta">
-                  <span className="commit__author">{commit.authorName}</span>
-                  <span>· {commit.relativeDate}</span>
+                  {refs.length > 0 && (
+                    <div className="commit__refs">
+                      {refs.slice(0, MAX_LIST_REFS).map((ref) => (
+                        <RefChip key={ref.name} refItem={ref} />
+                      ))}
+                      {overflow > 0 && <span className="ref-chip ref-chip--more">+{overflow}</span>}
+                    </div>
+                  )}
+                  <div className="commit__meta">
+                    <span className="commit__author">{commit.authorName}</span>
+                    <span>· {commit.relativeDate}</span>
+                  </div>
                 </div>
-              </div>
-            </button>
-          )
-        })}
-        {hasMore && (
-          <div ref={sentinelRef} className="commit-list__more" aria-hidden="true">
-            {loadingMore && <div className="spinner spinner--sm" />}
-          </div>
-        )}
+              </button>
+            )
+          })}
+          {hasMore && (
+            <div
+              className="commit-list__more"
+              style={{ position: 'absolute', top: vs.rowTop(commits.length), left: 0, right: 0 }}
+              aria-hidden="true"
+            >
+              {loadingMore && <div className="spinner spinner--sm" />}
+            </div>
+          )}
+        </div>
+        <VScrollbar vs={vs} />
       </div>
 
       {selectedCommit && (

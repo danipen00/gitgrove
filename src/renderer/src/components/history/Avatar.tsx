@@ -8,26 +8,53 @@ interface Props {
   size?: number
 }
 
-/** Round author avatar: Gravatar when available, deterministic initials otherwise. */
-export function Avatar({ name, email, size = 28 }: Props) {
-  const [src, setSrc] = useState<string | null>(null)
-  const [failed, setFailed] = useState(false)
+// Module-level caches that outlive any single row. The history list is
+// virtualized, so a row scrolled out of view and back in remounts its Avatar —
+// without these it would flash initials → blank <img> → image every time.
+// Keyed by the resolved Gravatar URL: a known-good image shows immediately, a
+// known-404 one is skipped entirely (no repeat request, no flicker).
+const resolvedUrls = new Map<string, string | null>()
+const loadedUrls = new Set<string>()
+const failedUrls = new Set<string>()
 
+/** Round author avatar: a colored initials disc that a Gravatar image covers
+ *  once (and if) it loads. The initials always render underneath, so swapping
+ *  in the image — or falling back when there is none — never blinks. */
+export function Avatar({ name, email, size = 28 }: Props) {
+  const cacheKey = `${email.trim().toLowerCase()}|${size}`
+  const [src, setSrc] = useState<string | null>(() => resolvedUrls.get(cacheKey) ?? null)
+
+  // Resolve the Gravatar URL (an async email hash) once per email+size and
+  // remember it, so later mounts read it synchronously from the cache instead
+  // of dropping back to initials for a frame.
   useEffect(() => {
-    let alive = true
-    setSrc(null)
-    setFailed(false)
-    if (email.trim()) {
-      gravatarUrl(email, size * 2).then((url) => {
-        if (alive) setSrc(url)
-      })
+    if (resolvedUrls.has(cacheKey)) {
+      setSrc(resolvedUrls.get(cacheKey) ?? null)
+      return
     }
+    if (!email.trim()) {
+      resolvedUrls.set(cacheKey, null)
+      setSrc(null)
+      return
+    }
+    let alive = true
+    gravatarUrl(email, size * 2).then((url) => {
+      resolvedUrls.set(cacheKey, url)
+      if (alive) setSrc(url)
+    })
     return () => {
       alive = false
     }
-  }, [email, size])
+  }, [cacheKey, email, size])
 
-  const showImage = src && !failed
+  // Per-URL load outcome, seeded from the caches: a revisited image starts
+  // visible (no re-fade), a known-bad one renders only the initials.
+  const [loaded, setLoaded] = useState(() => (src ? loadedUrls.has(src) : false))
+  const [failed, setFailed] = useState(() => (src ? failedUrls.has(src) : false))
+  useEffect(() => {
+    setLoaded(src ? loadedUrls.has(src) : false)
+    setFailed(src ? failedUrls.has(src) : false)
+  }, [src])
 
   return (
     <span
@@ -36,19 +63,33 @@ export function Avatar({ name, email, size = 28 }: Props) {
         width: size,
         height: size,
         fontSize: Math.round(size * 0.4),
-        background: showImage ? undefined : avatarColor(email || name)
+        background: avatarColor(email || name)
       }}
       title={name}
     >
-      {showImage ? (
-        <img src={src} alt="" width={size} height={size} onError={() => setFailed(true)} />
-      ) : (
-        // Flex centering aligns the line box, whose ascent/descent are asymmetric, so
-        // uppercase initials land ~1px below the optical center at small sizes. Trimming
-        // the text box to the cap/baseline edges centers the actual letters at any size.
-        <span style={{ textBoxTrim: 'trim-both', textBoxEdge: 'cap alphabetic' }}>
-          {initials(name, email)}
-        </span>
+      {/* Flex centering aligns the line box, whose ascent/descent are asymmetric, so
+          uppercase initials land ~1px below the optical center at small sizes. Trimming
+          the text box to the cap/baseline edges centers the actual letters at any size. */}
+      <span style={{ textBoxTrim: 'trim-both', textBoxEdge: 'cap alphabetic' }}>
+        {initials(name, email)}
+      </span>
+      {src && !failed && (
+        <img
+          className="avatar__img"
+          src={src}
+          alt=""
+          width={size}
+          height={size}
+          style={{ opacity: loaded ? 1 : 0 }}
+          onLoad={() => {
+            loadedUrls.add(src)
+            setLoaded(true)
+          }}
+          onError={() => {
+            failedUrls.add(src)
+            setFailed(true)
+          }}
+        />
       )}
     </span>
   )
