@@ -27,6 +27,13 @@ import { buildMenu, type MenuContext } from './menu'
 import { rememberRepo } from './store'
 import { initAutoUpdater } from './updater'
 import { RepoWatcher } from './watcher'
+import {
+  DEFAULT_WINDOW_HEIGHT,
+  DEFAULT_WINDOW_WIDTH,
+  MIN_WINDOW_HEIGHT,
+  MIN_WINDOW_WIDTH
+} from './window-state'
+import { loadWindowState, trackWindowState } from './window-state-store'
 
 const isDev = !app.isPackaged
 
@@ -89,11 +96,13 @@ const watcher = new RepoWatcher((repoPath) => {
 })
 
 function createWindow(): void {
+  // Last session's geometry, already reconciled against the monitors attached
+  // right now (the display it was on may be gone — see window-state.ts).
+  const windowState = loadWindowState()
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 940,
-    minHeight: 560,
+    ...(windowState.bounds ?? { width: DEFAULT_WINDOW_WIDTH, height: DEFAULT_WINDOW_HEIGHT }),
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     backgroundColor: '#0c0d10',
     // Window icon is used on Windows/Linux (ignored on macOS); only needed in
@@ -114,7 +123,15 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => mainWindow?.show())
+  mainWindow.on('ready-to-show', () => {
+    // Maximize/full-screen must wait until here: maximize() implicitly shows
+    // the window, which before ready-to-show would flash an unpainted frame.
+    if (windowState.isMaximized) mainWindow?.maximize()
+    if (windowState.isFullScreen) mainWindow?.setFullScreen(true)
+    mainWindow?.show()
+  })
+
+  trackWindowState(mainWindow)
 
   // Keep the renderer's custom window controls (Windows/Linux) in sync with the
   // real maximize state so the maximize/restore glyph matches the window.
