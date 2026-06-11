@@ -147,9 +147,8 @@ describe('buildExcludedDiffCss', () => {
     )
     // Block 0 (line 1) is included, so it must not be targeted.
     expect(css).not.toContain('[data-line="1"]')
-    // Recolors via pierre's documented per-line override variables.
-    expect(css).toContain('--diffs-bg-addition-override:var(--gg-diff-excluded)')
-    expect(css).toContain('--diffs-bg-deletion-override:var(--gg-diff-excluded)')
+    // Excluded lines take the unselected bar's flat gray (--bg-panel).
+    expect(css).toContain('background-color:var(--bg-panel)')
   })
 
   test('a pure addition block emits no deletion selectors (and vice versa)', () => {

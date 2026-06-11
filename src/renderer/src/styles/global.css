@@ -50,9 +50,6 @@
   --st-conflicted: #f0616d;
   --st-modified-soft: rgba(214, 160, 39, 0.16);
   --st-added-soft: rgba(63, 185, 80, 0.14);
-  /* Neutral the diff tints excluded hunks with (pierre mixes this ~20% over the
-     diff background, so it reads as gray at the same strength a change would). */
-  --gg-diff-excluded: #97a0ae;
 
   /* Themed chrome details */
   --scrollbar-thumb: #2c2f39;
@@ -120,8 +117,6 @@
   --st-conflicted: #cf222e;
   --st-modified-soft: rgba(154, 103, 0, 0.14);
   --st-added-soft: rgba(26, 127, 55, 0.12);
-  /* Excluded-hunk neutral (see dark theme). Darker so it reads on light diffs. */
-  --gg-diff-excluded: #6b7280;
 
   /* Themed chrome details */
   --scrollbar-thumb: #c9ced7;
