@@ -1,10 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import {
-  MIN_WINDOW_HEIGHT,
-  MIN_WINDOW_WIDTH,
-  type Rect,
-  sanitizeWindowState
-} from './window-state'
+import { MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, type Rect, sanitizeWindowState } from './window-state'
 
 // A 1920x1080 primary whose work area starts below a 40px menu/task bar.
 const primary: Rect = { x: 0, y: 40, width: 1920, height: 1040 }
@@ -89,10 +84,9 @@ describe('sanitizeWindowState', () => {
   })
 
   test('rounds fractional coordinates from display-scale changes', () => {
-    const state = sanitizeWindowState(
-      saved({ x: 100.6, y: 100.2, width: 1200.5, height: 800.4 }),
-      [primary]
-    )
+    const state = sanitizeWindowState(saved({ x: 100.6, y: 100.2, width: 1200.5, height: 800.4 }), [
+      primary
+    ])
     expect(state.bounds).toEqual({ x: 101, y: 100, width: 1201, height: 800 })
   })
 
