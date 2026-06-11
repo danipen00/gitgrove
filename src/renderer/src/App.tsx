@@ -928,8 +928,6 @@ export function App() {
       setModal(null)
     }
   }, [])
-  const performMergeRef = useRef(performMerge)
-  performMergeRef.current = performMerge
 
   const onBranchAction = useCallback((action: BranchAction, name: string) => {
     const repoPath = repoRef.current?.path
@@ -942,9 +940,6 @@ export function App() {
         // Never merge blind: the dialog dry-runs the merge (conflicts known up
         // front) and offers merge / squash / rebase before anything happens.
         setModal({ kind: 'merge', name })
-        break
-      case 'rebase':
-        performMergeRef.current(name, 'rebase')
         break
       case 'rename':
         setModal({ kind: 'rename-branch', name })
