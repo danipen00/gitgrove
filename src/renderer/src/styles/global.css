@@ -2091,10 +2091,50 @@ button {
   color: var(--fg-muted);
   line-height: 1.4;
 }
+/* The banner's single control: a small split button. Restore (the everyday
+   action) is the wide half; the caret half opens the Review / Discard menu.
+   Same joined-halves reading as the composer's commit button, sized down. */
 .stash-reminder__actions {
   display: flex;
-  gap: 6px;
+  gap: 0;
   align-items: center;
+}
+.stash-reminder__restore {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.stash-reminder__caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  align-self: stretch;
+  padding: 0 8px;
+  border: 1px solid var(--accent-border);
+  border-left: none;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+/* The full-height hairline divider between the two halves. */
+.stash-reminder__caret::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--on-accent);
+  opacity: 0.25;
+}
+.stash-reminder__caret:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+.stash-reminder__caret:disabled {
+  opacity: 0.55;
+}
+.stash-reminder__caret svg {
+  opacity: 0.85;
 }
 
 /* ── Merge dialog: dry-run preview + strategy picker ─────────────────────── */
