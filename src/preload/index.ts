@@ -2,6 +2,8 @@ import { type GitGroveApi, IPC, type MenuCommand } from '@shared/ipc'
 import type {
   ChangedFile,
   CloneProgress,
+  CredentialPromptRequest,
+  DeviceCodeInfo,
   DiffArea,
   LogOptions,
   OpProgress,
@@ -36,9 +38,22 @@ const api: GitGroveApi = {
   commit: (repoPath, message, selection) =>
     ipcRenderer.invoke(IPC.commit, repoPath, message, selection),
   lastCommitMessage: (repoPath) => ipcRenderer.invoke(IPC.lastCommitMessage, repoPath),
-  fetch: (repoPath, remote) => ipcRenderer.invoke(IPC.fetch, repoPath, remote),
+  fetch: (repoPath, remote, opts) => ipcRenderer.invoke(IPC.fetch, repoPath, remote, opts),
   pull: (repoPath, opts) => ipcRenderer.invoke(IPC.pull, repoPath, opts),
   push: (repoPath, opts) => ipcRenderer.invoke(IPC.push, repoPath, opts),
+  getIdentity: (repoPath) => ipcRenderer.invoke(IPC.getIdentity, repoPath),
+  setIdentity: (repoPath, name, email, scope) =>
+    ipcRenderer.invoke(IPC.setIdentity, repoPath, name, email, scope),
+  getGlobalIdentity: () => ipcRenderer.invoke(IPC.getGlobalIdentity),
+  setGlobalIdentity: (name, email) => ipcRenderer.invoke(IPC.setGlobalIdentity, name, email),
+  respondCredential: (requestId, value) =>
+    ipcRenderer.invoke(IPC.credentialRespond, requestId, value),
+  listAccounts: () => ipcRenderer.invoke(IPC.accountsList),
+  beginAccountOAuth: (host, clientId) => ipcRenderer.invoke(IPC.accountsBeginOAuth, host, clientId),
+  cancelAccountOAuth: () => ipcRenderer.invoke(IPC.accountsCancelOAuth),
+  addAccountWithToken: (host, token) => ipcRenderer.invoke(IPC.accountsAddToken, host, token),
+  removeAccount: (id) => ipcRenderer.invoke(IPC.accountsRemove, id),
+  hasOAuthClient: (host) => ipcRenderer.invoke(IPC.accountsHasOAuthClient, host),
   createBranch: (repoPath, name, opts) =>
     ipcRenderer.invoke(IPC.createBranch, repoPath, name, opts),
   deleteBranch: (repoPath, name, opts) =>
@@ -117,6 +132,26 @@ const api: GitGroveApi = {
     const listener = (_e: unknown, progress: CloneProgress) => handler(progress)
     ipcRenderer.on(IPC.cloneProgress, listener)
     return () => ipcRenderer.removeListener(IPC.cloneProgress, listener)
+  },
+  onCredentialPrompt: (handler) => {
+    const listener = (_e: unknown, request: CredentialPromptRequest) => handler(request)
+    ipcRenderer.on(IPC.credentialPrompt, listener)
+    return () => ipcRenderer.removeListener(IPC.credentialPrompt, listener)
+  },
+  onCredentialDismiss: (handler) => {
+    const listener = (_e: unknown, requestId: string) => handler(requestId)
+    ipcRenderer.on(IPC.credentialDismiss, listener)
+    return () => ipcRenderer.removeListener(IPC.credentialDismiss, listener)
+  },
+  onAccountDeviceCode: (handler) => {
+    const listener = (_e: unknown, info: DeviceCodeInfo) => handler(info)
+    ipcRenderer.on(IPC.accountsDeviceCode, listener)
+    return () => ipcRenderer.removeListener(IPC.accountsDeviceCode, listener)
+  },
+  onAccountsChanged: (handler) => {
+    const listener = () => handler()
+    ipcRenderer.on(IPC.accountsChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.accountsChanged, listener)
   },
   onOpProgress: (handler) => {
     const listener = (_e: unknown, progress: OpProgress) => handler(progress)

@@ -274,6 +274,112 @@ export interface AppError {
   detail?: string
 }
 
+/** What kind of secret a git/ssh credential prompt is asking for. */
+export type CredentialKind = 'username' | 'password' | 'passphrase'
+
+/**
+ * A git/ssh credential prompt, parsed from the raw prompt string (see
+ * main/git/askpass-prompt.ts). The raw text never crosses to the renderer —
+ * only this classification, so the dialog can show purposeful copy.
+ */
+export interface CredentialPrompt {
+  kind: CredentialKind
+  /** Host being authenticated against (https prompts). */
+  host?: string
+  /** Path of the SSH key being unlocked (passphrase prompts). */
+  keyPath?: string
+}
+
+/**
+ * A credential prompt pushed to the renderer while a network operation waits.
+ * The renderer answers with `respondCredential(requestId, value | null)`;
+ * null cancels, which makes the waiting git process abort cleanly.
+ */
+export interface CredentialPromptRequest extends CredentialPrompt {
+  requestId: string
+}
+
+/** Git hosting providers GitGrove can connect accounts for. v1: GitHub (.com + Enterprise). */
+export type AccountProvider = 'github'
+
+/**
+ * A connected git-host account, as the renderer sees it: metadata only. The
+ * access token stays in the main process (encrypted at rest via safeStorage)
+ * and is served to git through the askpass responder — it never crosses the
+ * IPC boundary.
+ */
+export interface ConnectedAccount {
+  /** Stable identifier: `${host}/${login}`. */
+  id: string
+  provider: AccountProvider
+  /** Host the account authenticates, e.g. `github.com` or a GHES hostname. */
+  host: string
+  login: string
+  name: string | null
+  /** Primary email when readable — also used to prefill the commit identity. */
+  email: string | null
+  /** OAuth scopes the token carries (informational, shown in the UI). */
+  scopes: string[]
+  /**
+   * False when OS-level encryption was unavailable (no Linux keyring): the
+   * token is kept in memory for this session only, never written to disk.
+   */
+  persisted: boolean
+}
+
+/**
+ * The user-facing half of a device-flow sign-in: the code to type and where.
+ * Pushed to the renderer while the main process polls for the authorization.
+ */
+export interface DeviceCodeInfo {
+  userCode: string
+  verificationUri: string
+  /** Epoch ms when the code expires (drives the dialog's countdown). */
+  expiresAt: number
+}
+
+/** Why connecting an account failed — stable codes the UI maps to copy. */
+export type AccountErrorCode =
+  | 'access-denied'
+  | 'expired'
+  | 'network'
+  | 'bad-token'
+  | 'bad-client-id'
+  | 'cancelled'
+
+/**
+ * Outcome of connecting an account. Expected failures (user denied, code
+ * expired, bad token…) are modelled as data — same pattern as RepoOpenResult —
+ * so the renderer reacts without parsing error strings.
+ */
+export type AddAccountResult =
+  | { ok: true; account: ConnectedAccount }
+  | { ok: false; code: AccountErrorCode }
+
+/**
+ * The commit identity resolved from git config, with where it came from.
+ * `source: 'none'` means name or email is missing — a commit would fail with
+ * git's "Please tell me who you are" error, so the UI collects them first.
+ */
+export interface GitIdentity {
+  name: string
+  email: string
+  source: 'local' | 'global' | 'none'
+}
+
+/** Where setIdentity writes: the user's global config or just this repo's. */
+export type IdentityScope = 'global' | 'local'
+
+/**
+ * The machine-wide identity from the global git config (Settings → Identity).
+ * Unlike GitIdentity this never includes repo-local overrides, so editing it
+ * edits exactly what every repository without an override will use.
+ */
+export interface GlobalIdentity {
+  name: string
+  email: string
+}
+
 /**
  * Whether a usable `git` executable was found, used to gate the UI: when git is
  * missing the renderer shows a guided setup screen instead of letting the user

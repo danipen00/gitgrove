@@ -10,7 +10,15 @@ export default defineConfig({
         // electron is a devDependency, so externalizeDepsPlugin won't catch it;
         // it must stay external (it's provided by the runtime).
         external: ['electron'],
-        input: { index: resolve(__dirname, 'src/main/index.ts') }
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          // The askpass shim is a standalone program (git execs it through a
+          // generated wrapper, with the app binary as plain Node) — its own
+          // entry, emitted as out/main/askpass.js next to the main bundle. It
+          // imports nothing from the app on purpose, so it bundles to a single
+          // self-contained file that electron-builder can asarUnpack alone.
+          askpass: resolve(__dirname, 'src/main/git/askpass-main.ts')
+        }
       }
     },
     resolve: {

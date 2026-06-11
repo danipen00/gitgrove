@@ -48,6 +48,12 @@ export function buildMenu(ctx: MenuContext): void {
                 click: () => checkForUpdates(getWindow, true)
               },
               { type: 'separator' as const },
+              {
+                label: 'Settings…',
+                accelerator: 'CmdOrCtrl+,',
+                click: () => sendCommand('settings')
+              },
+              { type: 'separator' as const },
               { role: 'hide' as const },
               { role: 'hideOthers' as const },
               { role: 'unhide' as const },
@@ -71,6 +77,17 @@ export function buildMenu(ctx: MenuContext): void {
           click: () => sendCommand('clone')
         },
         { type: 'separator' },
+        // macOS hosts this in the app menu (the conventional settings slot).
+        ...(isMac
+          ? []
+          : [
+              {
+                label: 'Settings…',
+                accelerator: 'CmdOrCtrl+,',
+                click: () => sendCommand('settings')
+              } as MenuItemConstructorOptions,
+              { type: 'separator' as const }
+            ]),
         isMac ? { role: 'close' } : { role: 'quit' }
       ]
     },

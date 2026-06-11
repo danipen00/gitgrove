@@ -11,6 +11,11 @@ files:
   - package.json
 asarUnpack:
   - '**/*.node'
+  # The askpass shim is executed by a relaunched plain-Node process (see
+  # src/main/git/askpass.ts), which can't read inside the asar — ship the real
+  # file in app.asar.unpacked. It bundles self-contained, so this one file is
+  # enough (no shared chunks to unpack alongside it).
+  - out/main/askpass.js
 
 # Ship the aggregated third-party license/NOTICE bundle alongside the app so we
 # honour the redistribution terms of bundled dependencies (the Apache-2.0
