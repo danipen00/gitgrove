@@ -176,3 +176,48 @@ export function buildBlockPatch(
 
   return `${lines.join('\n')}\n`
 }
+
+/**
+ * CSS for @pierre/diffs' `unsafeCSS` option that repaints the changed lines of
+ * *excluded* blocks (checkbox off) with the **same flat gray as the unselected
+ * "Include in commit" bar** (`--bg-panel`) — so the block and its header read as
+ * one set-aside unit, still clearly a change but visibly not going into the
+ * commit. Pierre paints line backgrounds in its shadow DOM, so we feed the rule
+ * through `unsafeCSS`; it lands in pierre's last cascade layer (`@layer unsafe`),
+ * so a plain `background-color` wins over the diff's green/red without any
+ * specificity tricks. The word-level emphasis and the changed line numbers are
+ * neutralized to the same gray/muted tone so nothing stays tinted.
+ *
+ * Each changed line is keyed by its line number on its own side, scoped to the
+ * line type so old/new numbers never collide; both the content row
+ * (`[data-line]`) and its gutter number cell (`[data-column-number]`) are grayed.
+ * Returns '' when nothing is excluded, so the common "all included" case injects
+ * no styles at all.
+ */
+export function buildExcludedDiffCss(
+  blocks: ChangeBlock[],
+  isExcluded: (blockIndex: number) => boolean
+): string {
+  const selectors: string[] = []
+  const addLines = (type: 'change-addition' | 'change-deletion', start: number, count: number) => {
+    for (let n = start; n < start + count; n++) {
+      selectors.push(
+        `[data-line-type="${type}"]:is([data-line="${n}"],[data-column-number="${n}"])`
+      )
+    }
+  }
+  for (const block of blocks) {
+    if (!isExcluded(block.index)) continue
+    addLines('change-addition', block.newStart, block.newLines)
+    addLines('change-deletion', block.oldStart, block.oldLines)
+  }
+  if (selectors.length === 0) return ''
+  return (
+    `:is(${selectors.join(',')}){` +
+    'background-color:var(--bg-panel);' +
+    '--diffs-bg-addition-emphasis-override:var(--bg-panel);' +
+    '--diffs-bg-deletion-emphasis-override:var(--bg-panel);' +
+    '--diffs-fg-number-addition-override:var(--fg-muted);' +
+    '--diffs-fg-number-deletion-override:var(--fg-muted)}'
+  )
+}

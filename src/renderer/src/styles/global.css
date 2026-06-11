@@ -33,6 +33,10 @@
   --fg: #e7e9ee;
   --fg-muted: #9aa0ad;
   --fg-faint: #6b707c;
+  /* Directory prefix on a file path: softer than the filename, but legible.
+     Tuned per theme — dark needs more lift to stay readable on the dark panel;
+     light needs to stay faint enough to read clearly softer than the name. */
+  --fg-path-dir: #9aa0ad;
 
   /* Accents */
   --accent: #5b8cff;
@@ -100,6 +104,7 @@
   --fg: #1b1e25;
   --fg-muted: #586070;
   --fg-faint: #8a909c;
+  --fg-path-dir: #8a909c;
 
   /* Accents */
   --accent: #2f6df6;
@@ -3093,7 +3098,7 @@ button {
   color: var(--fg-faint);
 }
 .wfl__dir {
-  color: var(--fg-faint);
+  color: var(--fg-path-dir);
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 0 1 auto;
@@ -3125,7 +3130,13 @@ button {
   border-bottom: 1px solid var(--border);
 }
 .stage-bar[data-state='staged'] {
-  background: color-mix(in srgb, var(--st-added) 7%, var(--bg-panel));
+  /* This bar is a pierre line annotation, slotted into the diff's shadow tree, so
+     pierre's --diffs-bg-addition (the exact background it paints behind added lines)
+     is in scope here via the flattened tree. Reuse it verbatim so the staged green is
+     identical to the additions this bar toggles, and tracks both themes on its own (the
+     value is a light-dark() resolved against our color-scheme). The fallback mirrors
+     pierre's recipe with our own green, in case the variable is ever out of reach. */
+  background: var(--diffs-bg-addition, color-mix(in lab, var(--bg-panel) 80%, var(--st-added)));
 }
 .stage-bar__check {
   display: inline-flex;

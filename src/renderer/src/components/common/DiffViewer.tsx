@@ -6,7 +6,7 @@ import { memo, useMemo, useState } from 'react'
 import type { FileSelection } from '@/lib/commit-selection'
 import { formatBytes, splitPath, statusLabel, statusLetter } from '@/lib/format'
 import { Icon } from '@/lib/icons'
-import { buildBlockPatch, listChangeBlocks } from '@/lib/staging'
+import { buildBlockPatch, buildExcludedDiffCss, listChangeBlocks } from '@/lib/staging'
 import type { ResolvedTheme } from '@/lib/theme'
 import { useSpinDelay } from '@/lib/useSpinDelay'
 import { ConfirmDialog } from './Dialog'
@@ -180,6 +180,22 @@ function DiffViewerImpl({
     if (sel === 'none') return false
     return sel.has(blockIndex)
   }
+
+  // Gray out the lines of excluded blocks (checkbox off) so the diff still shows
+  // the change but reads as "not in this commit". Pierre paints line backgrounds
+  // in its shadow DOM, so we feed the rule through its `unsafeCSS` option; the
+  // string is empty in the common all-included case, injecting nothing.
+  const selection = selectionActions?.selection
+  const fileDiffOptions = useMemo(() => {
+    const isExcluded = (i: number) =>
+      selection === 'all' || selection == null
+        ? false
+        : selection === 'none'
+          ? true
+          : !selection.has(i)
+    const css = buildExcludedDiffCss(blocks, isExcluded)
+    return css ? { ...diffOptions, unsafeCSS: css } : diffOptions
+  }, [blocks, diffOptions, selection])
 
   const toggleBlock = (blockIndex: number) => {
     if (!meta || !selectionActions) return
@@ -378,7 +394,7 @@ function DiffViewerImpl({
             lineAnnotations={annotations}
             renderAnnotation={renderSelectionBar}
             disableWorkerPool
-            options={diffOptions}
+            options={fileDiffOptions}
             style={{ minHeight: '100%' }}
           />
         )}
