@@ -9,7 +9,7 @@ import { Icon } from '@/lib/icons'
 import { useListKeyNav } from '@/lib/useListKeyNav'
 
 /** Branch operations surfaced from the switcher (beyond plain checkout). */
-export type BranchAction = 'new' | 'merge' | 'rebase' | 'rename' | 'delete'
+export type BranchAction = 'new' | 'merge' | 'rename' | 'delete'
 
 interface Props {
   branch: BranchInfo | null
@@ -122,21 +122,15 @@ export function BranchSwitcher({
       },
       {},
       {
+        // The single entry point for bringing a branch in: the dialog offers
+        // merge, squash AND rebase, each explained, with a conflict preview —
+        // a bare "rebase onto this" item would duplicate it minus the safety.
         label: `Merge into ${branch?.current ?? 'current'}…`,
         icon: <Icon.Merge size={15} />,
         disabled: name === branch?.current,
         onClick: () => {
           setOpen(false)
           onBranchAction('merge', name)
-        }
-      },
-      {
-        label: `Rebase ${branch?.current ?? 'current'} onto this…`,
-        icon: <Icon.Branch size={15} />,
-        disabled: name === branch?.current,
-        onClick: () => {
-          setOpen(false)
-          onBranchAction('rebase', name)
         }
       },
       {},

@@ -7,13 +7,26 @@
 // the draft; Stash turns the box into a stash composer (message optional,
 // the checked files are stashed). Commit signing follows the user's git
 // config — commits run through the real `git commit` in the main process.
+//
+// While a merge is in progress the composer IS the merge's "continue":
+// git's prepared message pre-fills the fields (editable — it's a normal
+// commit message), the button becomes "Complete merge" and stays disabled,
+// explaining itself, until every conflict is resolved.
 
+import type { RepoOpKind } from '@shared/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatBytes, pluralize } from '@/lib/format'
 import { Icon } from '@/lib/icons'
 import { isCmdOrCtrl, modKeyLabel } from '@/lib/platform'
 
 export type CommitMode = 'commit' | 'amend' | 'stash'
+
+/** What blocks the composer during each non-merge op, for the tooltip. */
+const OP_NOUN: Record<Exclude<RepoOpKind, 'merging'>, string> = {
+  rebasing: 'rebase',
+  'cherry-picking': 'cherry-pick',
+  reverting: 'revert'
+}
 
 interface Props {
   repoPath: string
@@ -27,6 +40,13 @@ interface Props {
   busy: boolean
   /** Composer mode (controlled by the switch in the row above). */
   mode: CommitMode
+  /** In-flight repo op: 'merging' turns the composer into the merge
+   *  concluder; any other op disables it (their continue lives in the banner). */
+  repoOp: RepoOpKind | null
+  /** Conflicted paths left — blocks committing until zero. */
+  conflicts: number
+  /** Branch being merged in, when known — for the pre-merge button label. */
+  mergeSource: string | null
   /** Fixed height (px) of the description box — driven by the panel splitter. */
   descriptionHeight: number
   /** Receives the description textarea node, for live splitter previews. */
@@ -47,6 +67,9 @@ export function CommitComposer({
   commitSize,
   busy,
   mode,
+  repoOp,
+  conflicts,
+  mergeSource,
   descriptionHeight,
   descriptionRef,
   modeMenuRef,
@@ -99,12 +122,50 @@ export function CommitComposer({
 
   const amend = mode === 'amend'
   const stash = mode === 'stash'
+  const merging = repoOp === 'merging'
+  // Rebase/cherry-pick/revert continue from the banner — committing here
+  // mid-op would tangle their state.
+  const blockedByOp = repoOp !== null && !merging
+
+  // Entering a merge saves the draft and pre-fills git's prepared merge
+  // message (editable — completing the merge is a normal commit); leaving
+  // (completed or aborted) restores the draft. Mirrors the amend flip below.
+  const prevMerging = useRef(merging)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the merge flip should trigger this
+  useEffect(() => {
+    if (merging === prevMerging.current) return
+    prevMerging.current = merging
+    if (merging) {
+      draftRef.current = { summary, description }
+      window.gitgrove
+        .mergeMessage(repoPath)
+        .then((msg) => {
+          const [first, ...rest] = msg.split('\n')
+          setSummary(first ?? '')
+          setDescription(rest.join('\n').replace(/^\n+/, ''))
+        })
+        .catch(() => {})
+    } else {
+      const draft = draftRef.current
+      setSummary(draft?.summary ?? '')
+      setDescription(draft?.description ?? '')
+      draftRef.current = null
+    }
+  }, [merging])
 
   // Stash: message optional, but something must be checked. Commit: summary
-  // required, something checked (unless amending — message-only amends are fine).
-  const canAct = stash
-    ? includedCount > 0 && !busy && !committing
-    : summary.trim().length > 0 && (includedCount > 0 || amend) && !busy && !committing
+  // required, something checked (unless amending — message-only amends are
+  // fine). A merge commits the whole tree, so only the summary and the
+  // conflict count gate it; other ops block the composer entirely.
+  const canAct =
+    !busy &&
+    !committing &&
+    !blockedByOp &&
+    (stash
+      ? includedCount > 0
+      : merging
+        ? summary.trim().length > 0 && conflicts === 0
+        : summary.trim().length > 0 && (includedCount > 0 || amend))
 
   const act = useCallback(async () => {
     if (!canAct) return
@@ -139,33 +200,49 @@ export function CommitComposer({
   const disabledReason =
     busy || committing
       ? null
-      : stash
-        ? includedCount === 0
-          ? 'Select some files to stash'
-          : null
-        : includedCount === 0 && !amend
-          ? 'Select some changes to commit'
-          : summary.trim().length === 0
-            ? 'Write a commit summary to continue'
-            : null
+      : repoOp !== null && repoOp !== 'merging'
+        ? `A ${OP_NOUN[repoOp]} is in progress — continue or abort it in the banner above`
+        : merging
+          ? conflicts > 0
+            ? `Resolve ${pluralize(conflicts, 'conflicted file')} to complete the merge`
+            : summary.trim().length === 0
+              ? 'Write a commit summary to complete the merge'
+              : null
+          : stash
+            ? includedCount === 0
+              ? 'Select some files to stash'
+              : null
+            : includedCount === 0 && !amend
+              ? 'Select some changes to commit'
+              : summary.trim().length === 0
+                ? 'Write a commit summary to continue'
+                : null
 
   const size = commitSize !== null && commitSize > 0 ? ` · ${formatBytes(commitSize)}` : ''
-  const label = stash
-    ? includedCount > 0
-      ? `Stash ${pluralize(includedCount, 'file')}${size}`
-      : 'Stash'
-    : amend
-      ? 'Amend last commit'
-      : includedCount > 0
-        ? `Commit ${pluralize(includedCount, 'file')} to ${branch}${size}`
-        : `Commit to ${branch}`
+  const label = merging
+    ? `Complete merge${mergeSource ? ` of ${mergeSource}` : ''} into ${branch}`
+    : stash
+      ? includedCount > 0
+        ? `Stash ${pluralize(includedCount, 'file')}${size}`
+        : 'Stash'
+      : amend
+        ? 'Amend last commit'
+        : includedCount > 0
+          ? `Commit ${pluralize(includedCount, 'file')} to ${branch}${size}`
+          : `Commit to ${branch}`
 
   return (
     <div className="composer">
       <input
         className="composer__summary"
         placeholder={
-          stash ? 'Stash message (optional)' : amend ? 'Amend commit summary' : 'Commit summary'
+          merging
+            ? 'Merge commit summary'
+            : stash
+              ? 'Stash message (optional)'
+              : amend
+                ? 'Amend commit summary'
+                : 'Commit summary'
         }
         value={summary}
         maxLength={500}
@@ -189,14 +266,18 @@ export function CommitComposer({
           aria-disabled={!canAct}
           data-tip={
             disabledReason ??
-            (stash
-              ? `Stash selected files (${modKeyLabel}↵)`
-              : `Commit selected changes (${modKeyLabel}↵)`)
+            (merging
+              ? `Create the merge commit (${modKeyLabel}↵)`
+              : stash
+                ? `Stash selected files (${modKeyLabel}↵)`
+                : `Commit selected changes (${modKeyLabel}↵)`)
           }
           onClick={act}
         >
           {committing ? (
             <span className="about__spinner" aria-hidden />
+          ) : merging ? (
+            <Icon.Merge size={14} />
           ) : stash ? (
             <Icon.Stash size={14} />
           ) : amend ? (
@@ -210,7 +291,7 @@ export function CommitComposer({
           type="button"
           ref={modeMenuRef}
           className="composer__mode-btn"
-          disabled={busy || committing}
+          disabled={busy || committing || repoOp !== null}
           aria-haspopup="menu"
           aria-label="Change mode"
           data-tip="Mode: Commit · Amend · Stash"

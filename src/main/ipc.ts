@@ -36,7 +36,10 @@ import {
   getBranches,
   getCommitDiff,
   getCommitFiles,
+  getConflictSides,
   getLog,
+  getMergePreview,
+  getMergeToolName,
   getRemoteWebUrl,
   getWorkingDiff
 } from './git/read'
@@ -307,9 +310,16 @@ export function registerIpc(ctx: IpcContext): void {
   )
 
   // ── Merge / rebase / history surgery ──
-  ipcMain.handle(IPC.merge, (_e, repoPath: string, branch: string) =>
-    gitWrite.merge(repoPath, branch)
+  ipcMain.handle(IPC.merge, (_e, repoPath: string, branch: string, opts?: { squash?: boolean }) =>
+    gitWrite.merge(repoPath, branch, opts)
   )
+  ipcMain.handle(IPC.mergePreview, (_e, repoPath: string, branch: string) =>
+    getMergePreview(repoPath, branch)
+  )
+  ipcMain.handle(IPC.commitMerge, (_e, repoPath: string, message: string) =>
+    gitWrite.commitMerge(repoPath, message)
+  )
+  ipcMain.handle(IPC.mergeMessage, (_e, repoPath: string) => gitWrite.mergeMessage(repoPath))
   ipcMain.handle(IPC.rebase, (_e, repoPath: string, onto: string) =>
     gitWrite.rebase(repoPath, onto)
   )
@@ -344,6 +354,13 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle(IPC.markResolved, (_e, repoPath: string, path: string) =>
     gitWrite.markResolved(repoPath, path)
   )
+  ipcMain.handle(IPC.conflictSides, (_e, repoPath: string, path: string) =>
+    getConflictSides(repoPath, path)
+  )
+  ipcMain.handle(IPC.openMergeTool, (_e, repoPath: string, path: string) =>
+    gitWrite.openMergeTool(repoPath, path)
+  )
+  ipcMain.handle(IPC.mergeToolName, (_e, repoPath: string) => getMergeToolName(repoPath))
   ipcMain.handle(IPC.openFileInEditor, (_e, repoPath: string, path: string) =>
     shell.openPath(join(repoPath, path)).then(() => undefined)
   )

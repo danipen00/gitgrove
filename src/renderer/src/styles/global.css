@@ -49,6 +49,7 @@
   --st-untracked: #6cc6c0;
   --st-conflicted: #f0616d;
   --st-modified-soft: rgba(214, 160, 39, 0.16);
+  --st-added-soft: rgba(63, 185, 80, 0.14);
 
   /* Themed chrome details */
   --scrollbar-thumb: #2c2f39;
@@ -62,6 +63,9 @@
   --toast-bg: #2a1417;
   --toast-border: rgba(240, 97, 109, 0.4);
   --toast-fg: #ffd9dc;
+  --toast-success-bg: #12281b;
+  --toast-success-border: rgba(63, 185, 80, 0.4);
+  --toast-success-fg: #c9f2d3;
 
   /* @pierre/trees overrides (custom properties pierce the shadow root).
      The library defaults use light-dark(), which the shadow root resolves to
@@ -118,6 +122,7 @@
   --st-untracked: #1b7c83;
   --st-conflicted: #cf222e;
   --st-modified-soft: rgba(154, 103, 0, 0.14);
+  --st-added-soft: rgba(26, 127, 55, 0.12);
 
   /* Themed chrome details */
   --scrollbar-thumb: #c9ced7;
@@ -131,6 +136,9 @@
   --toast-bg: #fde8ea;
   --toast-border: rgba(207, 34, 46, 0.35);
   --toast-fg: #8a1820;
+  --toast-success-bg: #e9f7ee;
+  --toast-success-border: rgba(26, 127, 55, 0.35);
+  --toast-success-fg: #135a28;
 
   /* @pierre/trees overrides (light) */
   --trees-bg-override: var(--bg-panel);
@@ -588,6 +596,11 @@ button {
   text-transform: uppercase;
   color: var(--fg-faint);
 }
+.popover__sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--border);
+}
 .popover__item {
   display: flex;
   align-items: center;
@@ -845,6 +858,20 @@ button {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Changes and History each live in a pane that fills the body; both stay
+   mounted so a tab switch preserves their state, and the inactive one is
+   hidden. `display: none` must beat the child view's own `display: flex`,
+   so it's set on the pane rather than via the `hidden` attribute. */
+.sidebar__pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar__pane--hidden {
+  display: none;
 }
 
 /* Section header inside panels */
@@ -1679,6 +1706,16 @@ button {
 .toast button:hover {
   opacity: 1;
 }
+/* Positive outcomes (merge completed, already up to date) — same toast, green. */
+.toast--success {
+  background: var(--toast-success-bg);
+  border-color: var(--toast-success-border);
+  color: var(--toast-success-fg);
+}
+.toast--success > svg {
+  flex: 0 0 auto;
+  color: var(--st-added);
+}
 
 /* ── Small button variants (About / update banner) ───────────────────────── */
 .btn-primary--sm {
@@ -1934,15 +1971,34 @@ button {
    ════════════════════════════════════════════════════════════════════════ */
 
 /* ── Operation banner (merge/rebase/cherry-pick/revert in progress) ──────── */
+/* Visible but never alarming: an in-progress op is a normal state, not an
+   error. Amber accent while conflicts remain, green once it's ready. */
 .op-banner {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 10px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--toast-border);
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 3px 0 0 var(--st-modified);
   background: var(--st-modified-soft);
 }
+.op-banner--ready {
+  box-shadow: inset 3px 0 0 var(--st-added);
+  background: var(--st-added-soft);
+}
+.op-banner__icon {
+  display: flex;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--st-modified);
+}
+.op-banner--ready .op-banner__icon {
+  color: var(--st-added);
+}
 .op-banner__text {
+  flex: 1;
+  min-width: 150px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1952,6 +2008,10 @@ button {
   font-size: 12.5px;
   color: var(--fg);
 }
+.op-banner__text strong code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
 .op-banner__text span {
   color: var(--fg-muted);
   line-height: 1.4;
@@ -1959,6 +2019,285 @@ button {
 .op-banner__actions {
   display: flex;
   gap: 6px;
+  align-items: center;
+}
+
+/* ── Merge dialog: dry-run preview + strategy picker ─────────────────────── */
+.merge-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fg);
+  text-align: left;
+}
+.merge-preview > svg,
+.merge-preview__line > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.merge-preview--loading {
+  background: var(--bg-hover);
+  color: var(--fg-muted);
+}
+.merge-preview--clean {
+  background: var(--st-added-soft);
+}
+.merge-preview--clean > svg {
+  color: var(--st-added);
+}
+.merge-preview--conflicts {
+  flex-direction: column;
+  background: var(--st-modified-soft);
+}
+.merge-preview__line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.merge-preview__line > svg {
+  color: var(--st-modified);
+}
+.merge-preview__files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 110px;
+  overflow-y: auto;
+  padding-left: 23px;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+}
+.merge-preview__files code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.merge-preview--unknown {
+  background: var(--bg-hover);
+  color: var(--fg-muted);
+}
+.merge-preview--unknown > svg {
+  color: var(--fg-faint);
+}
+.merge-strategies {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.merge-strategy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  text-align: left;
+}
+.merge-strategy:hover {
+  border-color: var(--border-strong);
+}
+.merge-strategy.is-active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.merge-strategy input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.merge-strategy__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.merge-strategy__title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.merge-strategy__sub {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fg-muted);
+}
+
+/* ── Conflict-resolution panel (replaces the diff pane for conflicts) ────── */
+.conflict-pane {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.conflict-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 16px 0;
+}
+.conflict-head__badge {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--st-modified-soft);
+  color: var(--st-modified);
+}
+.conflict-head__file {
+  display: flex;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  user-select: text;
+}
+.conflict-head__dir {
+  color: var(--fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conflict-head__name {
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.conflict-chip {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--st-modified-soft);
+  color: var(--st-modified);
+  font-size: 11px;
+  font-weight: 600;
+}
+.conflict-chip--clear {
+  background: var(--st-added-soft);
+  color: var(--st-added);
+}
+.conflict-intro {
+  margin: 8px 0 0;
+  padding: 0 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+.conflict-intro code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--fg);
+}
+/* The split resolve button: primary half = the single best next step,
+   caret = the alternatives. Mirrors the commit composer's split button. */
+.conflict-resolve {
+  display: inline-flex;
+  align-items: stretch;
+}
+.conflict-resolve__main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conflict-resolve__caret {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 0 8px;
+  border: none;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+/* The full-height hairline divider between the two halves. */
+.conflict-resolve__caret::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--on-accent);
+  opacity: 0.25;
+}
+.conflict-resolve__caret:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+.conflict-resolve__caret:disabled {
+  opacity: 0.55;
+}
+.conflict-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px 12px;
+}
+.conflict-tools .btn-ghost--sm,
+.conflict-tools .btn-primary--sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.conflict-tools__spacer {
+  flex: 1;
+}
+.conflict-tools .segmented button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.conflict-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+.conflict-sides-labels {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--fg-faint);
+}
+.conflict-sides-labels span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conflict-sides-labels code {
+  font-family: var(--font-mono);
+  color: var(--fg-muted);
+}
+.conflict-diff {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  user-select: text;
+}
+.conflict-diff pierre-diff,
+.conflict-diff .pierre-diffs {
+  display: block;
 }
 
 /* ── Stash row + popover list ────────────────────────────────────────────── */
@@ -2697,6 +3036,9 @@ button {
 }
 .wfl-filter__chip.st-renamed {
   color: var(--st-renamed);
+}
+.wfl-filter__chip.st-conflicted {
+  color: var(--st-conflicted);
 }
 
 /* ── Composer: commit button label ───────────────────────────────────────── */

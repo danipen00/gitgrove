@@ -103,12 +103,14 @@ const Row = memo(function Row({
         onMenu(file, e.clientX, e.clientY)
       }}
     >
-      {check !== null &&
-        (conflicted ? (
-          <span className="wfl__conflict" data-tip="Conflicted — resolve via right-click">
-            <Icon.Alert size={14} />
-          </span>
-        ) : (
+      {conflicted ? (
+        // Shown with or without checkboxes (which hide during a merge): the
+        // glyph is what marks the file as needing the conflict panel.
+        <span className="wfl__conflict" data-tip="Conflicted — select to resolve">
+          <Icon.Alert size={14} />
+        </span>
+      ) : (
+        check !== null && (
           <input
             type="checkbox"
             className="wfl__check"
@@ -120,7 +122,8 @@ const Row = memo(function Row({
             onClick={(e) => e.stopPropagation()}
             onChange={() => onToggleIncluded?.(file.path)}
           />
-        ))}
+        )
+      )}
       <span className={`wfl__status st-${file.status}`} data-tip={statusLabel(file.status)}>
         {statusLetter(file.status)}
       </span>

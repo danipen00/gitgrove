@@ -11,6 +11,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
   DiscardItem,
+  MergeOutcome,
   RepoOpKind,
   ResetMode,
   StashEntry,
@@ -332,12 +333,118 @@ export async function checkoutDetached(repoPath: string, hash: string): Promise<
 
 // ── Merge / rebase / cherry-pick / revert / reset ───────────────────────────
 
-export async function merge(repoPath: string, branch: string): Promise<void> {
-  await run(repoPath, ['-c', 'core.editor=true', 'merge', '--no-edit', branch])
+/**
+ * Locale-independent "is `ref` already contained in `head`" probe. Exit 1
+ * (not an ancestor) is expected; any other failure (e.g. an unresolvable ref)
+ * reports false so the operation itself surfaces its own, better error.
+ */
+async function isAncestor(repoPath: string, ref: string, head: string): Promise<boolean> {
+  try {
+    await runRead(repoPath, ['merge-base', '--is-ancestor', ref, head])
+    return true
+  } catch {
+    return false
+  }
 }
 
-export async function rebase(repoPath: string, onto: string): Promise<void> {
-  await run(repoPath, ['-c', 'core.editor=true', 'rebase', onto])
+/**
+ * True when the index holds unmerged entries — the locale-independent way to
+ * tell "stopped on conflicts" (normal workflow) from a genuine failure after
+ * a merge/rebase/squash exits non-zero. Covers `merge --squash` too, which
+ * conflicts without leaving a MERGE_HEAD behind.
+ */
+async function hasUnmergedEntries(repoPath: string): Promise<boolean> {
+  try {
+    return (await runRead(repoPath, ['ls-files', '-u', '-z'])).length > 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Merge `branch` into HEAD. Conflicts come back as data ('conflicts'), never
+ * as a thrown error — stopping to resolve them is a normal part of merging.
+ * `squash` stages the combined result without committing (the user reviews
+ * and commits from the composer).
+ */
+export async function merge(
+  repoPath: string,
+  branch: string,
+  opts: { squash?: boolean } = {}
+): Promise<MergeOutcome> {
+  // Probe first: git's "Already up to date." is success output the caller
+  // would otherwise have to string-match (and it's localized).
+  if (await isAncestor(repoPath, branch, 'HEAD')) return 'up-to-date'
+  const args = opts.squash ? ['merge', '--squash', branch] : ['merge', '--no-edit', branch]
+  try {
+    await run(repoPath, ['-c', 'core.editor=true', ...args])
+    return 'completed'
+  } catch (e) {
+    if (await hasUnmergedEntries(repoPath)) return 'conflicts'
+    throw e
+  }
+}
+
+/** Rebase HEAD onto `onto`. Same conflicts-as-data contract as `merge`. */
+export async function rebase(repoPath: string, onto: string): Promise<MergeOutcome> {
+  if (await isAncestor(repoPath, onto, 'HEAD')) return 'up-to-date'
+  try {
+    await run(repoPath, ['-c', 'core.editor=true', 'rebase', onto])
+    return 'completed'
+  } catch (e) {
+    if (await hasUnmergedEntries(repoPath)) return 'conflicts'
+    // A rebase can also stop without unmerged entries (e.g. dirty tree
+    // pre-checks abort before starting) — only an in-flight rebase counts.
+    try {
+      await runRead(repoPath, ['rev-parse', '-q', '--verify', 'REBASE_HEAD'])
+      return 'conflicts'
+    } catch {
+      throw e
+    }
+  }
+}
+
+/**
+ * Conclude an in-progress merge as a regular commit: stage everything (the
+ * working tree IS the merge result once conflicts are resolved) and commit
+ * with the user's message. MERGE_HEAD makes git record the merge parents —
+ * this is exactly `merge --continue`, but with the message the user wrote in
+ * the composer instead of an editor round-trip.
+ */
+export async function commitMerge(repoPath: string, message: string): Promise<void> {
+  await enqueue(repoPath, async () => {
+    await runOnce(repoPath, ['add', '-A'])
+    await runOnce(repoPath, ['commit', '-F', '-'], { input: message })
+  })
+}
+
+/**
+ * The merge message git prepared (MERGE_MSG) with its comment lines dropped,
+ * used to pre-fill the composer while a merge is in progress. Empty when no
+ * merge is in flight.
+ */
+export async function mergeMessage(repoPath: string): Promise<string> {
+  try {
+    const gitDir = (await runRead(repoPath, ['rev-parse', '--absolute-git-dir'])).trim()
+    const raw = await readFile(join(gitDir, 'MERGE_MSG'), 'utf8')
+    return raw
+      .split('\n')
+      .filter((line) => !line.startsWith('#'))
+      .join('\n')
+      .replace(/\n+$/, '')
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Launch the user's configured merge tool for one conflicted path. Deliberately
+ * NOT on the write queue: mergetool blocks until the external tool closes,
+ * which would freeze every other git operation behind it. The tool writes the
+ * file; the watcher-driven refresh picks up the result.
+ */
+export async function openMergeTool(repoPath: string, path: string): Promise<void> {
+  await runOnce(repoPath, ['mergetool', '--no-prompt', '--', path])
 }
 
 export async function cherryPick(repoPath: string, hash: string): Promise<void> {
@@ -385,13 +492,25 @@ export async function skipRebaseCommit(repoPath: string): Promise<void> {
   await run(repoPath, ['rebase', '--skip'])
 }
 
-/** Resolve a conflicted path by taking one side wholesale, then stage it. */
+/**
+ * Resolve a conflicted path by taking one side wholesale, then stage it.
+ * In a modify/delete conflict the chosen side may not have the file at all
+ * (`checkout --ours/--theirs` fails with "does not have our/their version") —
+ * taking that side then means resolving as deleted.
+ */
 export async function resolveConflict(
   repoPath: string,
   path: string,
   side: 'ours' | 'theirs'
 ): Promise<void> {
-  await run(repoPath, ['checkout', side === 'ours' ? '--ours' : '--theirs', '--', path])
+  try {
+    await run(repoPath, ['checkout', side === 'ours' ? '--ours' : '--theirs', '--', path])
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    if (!/does not have (our|their) version/i.test(message)) throw e
+    await run(repoPath, ['rm', '-f', '-q', '--', path])
+    return
+  }
   await run(repoPath, ['add', '--', path])
 }
 

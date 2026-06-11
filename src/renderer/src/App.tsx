@@ -7,6 +7,8 @@ import type {
   CredentialPromptRequest,
   GitAvailability,
   IdentityScope,
+  MergeKind,
+  MergeOutcome,
   ProgressOpKind,
   RepoOpenResult,
   RepoSnapshot,
@@ -26,6 +28,7 @@ import { TrustDialog } from './components/app/TrustDialog'
 import { UpdateBanner } from './components/app/UpdateBanner'
 import { Welcome } from './components/app/Welcome'
 import { ChangesView } from './components/changes/ChangesView'
+import { ConflictPanel } from './components/changes/ConflictPanel'
 import type { ContextMenuItem } from './components/common/ContextMenu'
 import { type DiffMode, DiffViewer } from './components/common/DiffViewer'
 import { Resizer } from './components/common/Resizer'
@@ -43,6 +46,7 @@ import {
   type FileSelection
 } from './lib/commit-selection'
 import { Icon } from './lib/icons'
+import { mergeSourceFromDetail } from './lib/merge'
 import { usePersistentState } from './lib/persist'
 import { overallPercent } from './lib/progress'
 import { useTheme } from './lib/theme'
@@ -62,6 +66,10 @@ export function App() {
   const [busy, setBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Positive feedback (merge completed, already up to date, …) — the calm
+  // green counterpart of the error toast, so successful operations never end
+  // in silence.
+  const [notice, setNotice] = useState<string | null>(null)
 
   // Git availability gates the whole UI: null = checking, then a setup screen
   // when git is missing (see the render gate below).
@@ -168,6 +176,10 @@ export function App() {
   const logReq = useRef(0)
   const branchRef = useRef<BranchInfo | null>(branch)
   branchRef.current = branch
+  // Ref so doCommit can route a mid-merge commit without re-creating on every
+  // snapshot refresh.
+  const repoStateRef = useRef<RepoState | null>(repoState)
+  repoStateRef.current = repoState
   const syncRef = useRef<SyncStatus | null>(sync)
   syncRef.current = sync
   const busyRef = useRef(busy)
@@ -417,15 +429,14 @@ export function App() {
   const switchTab = useCallback(
     (next: Tab) => {
       setTab(next)
-      // The file list remounts on a tab switch, dropping any multi-selection;
-      // reset the count up front so the diff pane doesn't flash a stale
-      // "multiple files selected" state before the remount reports back.
+      // Both sidebar panes stay mounted (the inactive one is just hidden), so
+      // each tab keeps its own draft, filters and multi-selection across the
+      // switch. All that's left to do is re-point the shared diff pane at the
+      // active tab's current selection.
       if (next === 'changes') {
-        setChangeSelCount(1)
         if (changeSel) selectWorkingFile(changeSel, undefined, { force: true })
         else clearDiff()
       } else {
-        setCommitSelCount(1)
         // First visit to History: fetch the log on demand.
         const repoPath = repoRef.current?.path
         if (repoPath && !logLoaded && !commitsLoading) loadLog(repoPath).catch(fail)
@@ -686,6 +697,17 @@ export function App() {
           // Probe failed — let the commit itself surface the real error.
         }
       }
+      // Mid-merge the commit button IS the merge's "continue": commit the whole
+      // working tree (the merge result) and let MERGE_HEAD record the parents.
+      // Checkbox selections don't apply — git refuses partial merge commits.
+      if (repoStateRef.current?.op === 'merging') {
+        const ok = await runOp(() => window.gitgrove.commitMerge(repoPath, message))
+        if (ok) {
+          setSelections(new Map())
+          setNotice(`Merge completed on ${branchRef.current?.current ?? 'the current branch'}.`)
+        }
+        return ok
+      }
       const sel = buildCommitSelection(changesRef.current, selections)
       const ok = await runOp(() => window.gitgrove.commit(repoPath, message, { amend, ...sel }))
       if (ok) setSelections(new Map())
@@ -869,6 +891,43 @@ export function App() {
   const runOpRef = useRef(runOp)
   runOpRef.current = runOp
 
+  /**
+   * Run the chosen merge strategy and narrate the outcome: completed and
+   * already-up-to-date get a friendly notice, so a merge never ends in
+   * silence. Stopping on conflicts is NOT an error — the in-progress banner
+   * and the conflict panel take over from the refreshed snapshot.
+   */
+  const performMerge = useCallback(async (name: string, kind: MergeKind) => {
+    const repoPath = repoRef.current?.path
+    if (!repoPath) return
+    const current = branchRef.current?.current ?? 'the current branch'
+    setModalBusy(true)
+    try {
+      let outcome: MergeOutcome | null = null
+      const ok = await runOpRef.current(async () => {
+        outcome =
+          kind === 'rebase'
+            ? await window.gitgrove.rebase(repoPath, name)
+            : await window.gitgrove.merge(repoPath, name, { squash: kind === 'squash' })
+      })
+      if (!ok) return
+      if (outcome === 'up-to-date') {
+        setNotice(`${current} is already up to date with ${name} — there was nothing to merge.`)
+      } else if (outcome === 'completed') {
+        setNotice(
+          kind === 'merge'
+            ? `Merged ${name} into ${current}.`
+            : kind === 'squash'
+              ? `Squashed ${name} into ${current} — review the staged changes and commit them.`
+              : `Rebased ${current} onto ${name}.`
+        )
+      }
+    } finally {
+      setModalBusy(false)
+      setModal(null)
+    }
+  }, [])
+
   const onBranchAction = useCallback((action: BranchAction, name: string) => {
     const repoPath = repoRef.current?.path
     if (!repoPath) return
@@ -877,10 +936,9 @@ export function App() {
         setModal({ kind: 'new-branch', initialName: name })
         break
       case 'merge':
-        runOpRef.current(() => window.gitgrove.merge(repoPath, name))
-        break
-      case 'rebase':
-        runOpRef.current(() => window.gitgrove.rebase(repoPath, name))
+        // Never merge blind: the dialog dry-runs the merge (conflicts known up
+        // front) and offers merge / squash / rebase before anything happens.
+        setModal({ kind: 'merge', name })
         break
       case 'rename':
         setModal({ kind: 'rename-branch', name })
@@ -1142,6 +1200,12 @@ export function App() {
     return () => clearTimeout(t)
   }, [error])
 
+  useEffect(() => {
+    if (!notice) return
+    const t = setTimeout(() => setNotice(null), 6000)
+    return () => clearTimeout(t)
+  }, [notice])
+
   // What the toolbar shows of the running op: the sync button's fill (only
   // when the progress kind matches the running action) and the branch
   // switcher's "switching to X" fill.
@@ -1161,6 +1225,14 @@ export function App() {
       }
     : null
 
+  // The conflicted file focused in Changes, if any — it swaps the diff pane
+  // for the dedicated conflict-resolution panel. The conflictedCount guard
+  // keeps the (90k-file-capable) list scan off every conflict-free render.
+  const conflictFile =
+    (repoState?.conflictedCount ?? 0) > 0 && tab === 'changes' && changeSel && changeSelCount === 1
+      ? changes.find((f) => f.path === changeSel && f.status === 'conflicted')
+      : undefined
+
   // ── App-level modals ───────────────────────────────────────────────────────
   const repoPath = repo?.path
   const modals = repoPath &&
@@ -1174,6 +1246,7 @@ export function App() {
         branch={branch}
         busy={modalBusy}
         runModalOp={runModalOp}
+        onMerge={performMerge}
         onDeleteBranch={deleteBranch}
         onCheckoutCommit={checkoutCommit}
         onOpenRepo={openRepoByPath}
@@ -1343,7 +1416,10 @@ export function App() {
             </button>
           </div>
           <div className="sidebar__body">
-            {tab === 'changes' ? (
+            {/* Both panes stay mounted — only the active one is shown — so a
+                tab switch never discards the composer draft, the file filters
+                or the working-list selection (all component-local state). */}
+            <div className={`sidebar__pane${tab === 'changes' ? '' : ' sidebar__pane--hidden'}`}>
               <ChangesView
                 repoPath={repo.path}
                 branch={
@@ -1366,10 +1442,12 @@ export function App() {
                 discardProgress={opProgress?.kind === 'discard' ? opProgress.percent : null}
                 theme={theme}
                 runOp={runOp}
+                onError={fail}
                 onCommit={doCommit}
                 onStash={doStash}
               />
-            ) : (
+            </div>
+            <div className={`sidebar__pane${tab === 'history' ? '' : ' sidebar__pane--hidden'}`}>
               <HistoryView
                 repoPath={repo.path}
                 commits={commits}
@@ -1386,7 +1464,7 @@ export function App() {
                 onFileSelectionChange={setCommitSelCount}
                 commitMenuFor={commitMenuFor}
               />
-            )}
+            </div>
           </div>
         </aside>
 
@@ -1400,38 +1478,55 @@ export function App() {
         />
 
         <div className="workspace">
-          {tab === 'history' && selectedCommit && (
-            <CommitSummary
-              key={selectedCommit.hash}
-              commit={selectedCommit}
-              files={commitFiles}
-              filesLoading={commitFilesLoading}
+          {conflictFile ? (
+            <ConflictPanel
+              key={conflictFile.path}
+              repoPath={repo.path}
+              file={conflictFile}
+              ours={branch?.current ?? 'current branch'}
+              theirs={mergeSourceFromDetail(repoState?.detail)}
+              theme={theme}
+              busy={busy}
+              runOp={runOp}
+              onError={fail}
             />
+          ) : (
+            <>
+              {tab === 'history' && selectedCommit && (
+                <CommitSummary
+                  key={selectedCommit.hash}
+                  commit={selectedCommit}
+                  files={commitFiles}
+                  filesLoading={commitFilesLoading}
+                />
+              )}
+              <DiffViewer
+                diff={diff}
+                loading={diffLoading}
+                mode={diffMode}
+                wrap={diffWrap}
+                theme={theme}
+                selectedCount={tab === 'changes' ? changeSelCount : commitSelCount}
+                onModeChange={setDiffMode}
+                onWrapChange={setDiffWrap}
+                selectionActions={
+                  tab === 'changes' && changeSel
+                    ? {
+                        selection: selections.get(changeSel) ?? 'all',
+                        onChange: (selected, total) => setHunkSelection(changeSel, selected, total),
+                        onDiscard: discardHunk,
+                        busy
+                      }
+                    : undefined
+                }
+              />
+            </>
           )}
-          <DiffViewer
-            diff={diff}
-            loading={diffLoading}
-            mode={diffMode}
-            wrap={diffWrap}
-            theme={theme}
-            selectedCount={tab === 'changes' ? changeSelCount : commitSelCount}
-            onModeChange={setDiffMode}
-            onWrapChange={setDiffWrap}
-            selectionActions={
-              tab === 'changes' && changeSel
-                ? {
-                    selection: selections.get(changeSel) ?? 'all',
-                    onChange: (selected, total) => setHunkSelection(changeSel, selected, total),
-                    onDiscard: discardHunk,
-                    busy
-                  }
-                : undefined
-            }
-          />
         </div>
       </div>
 
       {error && <ErrorToast message={error} onClose={() => setError(null)} />}
+      {notice && !error && <NoticeToast message={notice} onClose={() => setNotice(null)} />}
       {overlays}
       <TooltipLayer />
     </div>
@@ -1441,6 +1536,19 @@ export function App() {
 function ErrorToast({ message, onClose }: { message: string; onClose: () => void }) {
   return (
     <div className="toast" role="alert">
+      <span>{message}</span>
+      <button onClick={onClose} title="Dismiss">
+        <Icon.Close size={14} />
+      </button>
+    </div>
+  )
+}
+
+/** Positive outcome toast (merge completed, already up to date, …). */
+function NoticeToast({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div className="toast toast--success" role="status">
+      <Icon.Check size={14} />
       <span>{message}</span>
       <button onClick={onClose} title="Dismiss">
         <Icon.Close size={14} />
