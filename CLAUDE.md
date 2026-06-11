@@ -97,3 +97,12 @@ pattern.) Beauty and UX are verified on screen, not in the diff.
   **reliable, never flaky** — no timing races, no shared mutable state, no ordering
   assumptions. Design for testability *before* writing code: keep logic pure and
   separable (see `lib/staging.ts`), so it can be tested directly without driving the UI.
+- **GitGrove is cross-platform — Windows, Linux, and macOS are all first-class.** CI runs
+  the suite on all three, and Windows is where platform assumptions bite: code and tests
+  written on macOS routinely pass locally but fail on the Windows runner. Guard against it
+  *while writing*, not after CI goes red. Watch for: path separators (`path.join`/
+  `path.sep`, never hardcoded `/`), line endings (`\r\n` vs `\n` — git's `core.autocrlf`
+  can rewrite them), absolute-path and drive-letter shapes (`C:\…`), case-insensitive
+  filesystems, temp-dir locations, and shelling out to platform-specific binaries or
+  shell syntax. Tests especially must not bake in POSIX-only paths, separators, or
+  newlines — normalize, or assert in a platform-agnostic way.
