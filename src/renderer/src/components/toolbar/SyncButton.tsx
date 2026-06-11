@@ -68,6 +68,9 @@ export function SyncButton({
             ? 'Push'
             : 'Fetch'
 
+  // Glyph mirrors the menu's icon vocabulary so the pill and its popup never
+  // disagree: Upload for sending (push/publish), Refresh for fetch (check the
+  // remote, nothing merged), Download for pull (bring changes in).
   const glyph =
     running !== null ? (
       <span className="pill__chev is-spinning" style={{ display: 'flex' }}>
@@ -75,6 +78,8 @@ export function SyncButton({
       </span>
     ) : primary === 'push' || primary === 'publish' ? (
       <Icon.Upload size={15} />
+    ) : primary === 'fetch' ? (
+      <Icon.Refresh size={15} />
     ) : (
       <Icon.Download size={15} />
     )
@@ -171,7 +176,9 @@ export function SyncButton({
           {sync.upstream &&
             item(
               'pull-rebase',
-              <Icon.Download size={15} />,
+              // Branch glyph, not the download arrow: rebase reattaches your
+              // commits onto a new base — distinct from a plain merging pull.
+              <Icon.Branch size={15} />,
               'Pull with rebase',
               'Replay your commits on top — no merge commit',
               'git pull --rebase'
