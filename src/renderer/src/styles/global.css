@@ -1433,6 +1433,13 @@ button {
   line-height: 1.5;
   font-size: 12.5px;
 }
+/* Object size line on the Git LFS diff panel — the one number that matters. */
+.center-state .diff-lfs-size {
+  color: var(--fg-muted);
+  font-weight: 600;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
 .center-state .icon-ring {
   width: 56px;
   height: 56px;

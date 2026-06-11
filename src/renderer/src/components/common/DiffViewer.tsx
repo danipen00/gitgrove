@@ -4,7 +4,7 @@ import { FileDiff, MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
 import type { DiffPayload } from '@shared/types'
 import { memo, useMemo, useState } from 'react'
 import type { FileSelection } from '@/lib/commit-selection'
-import { splitPath, statusLabel, statusLetter } from '@/lib/format'
+import { formatBytes, splitPath, statusLabel, statusLetter } from '@/lib/format'
 import { Icon } from '@/lib/icons'
 import { buildBlockPatch, listChangeBlocks } from '@/lib/staging'
 import type { ResolvedTheme } from '@/lib/theme'
@@ -56,6 +56,20 @@ interface Props {
 /** Annotation metadata: which change block a selection bar belongs to. */
 interface BlockRef {
   blockIndex: number
+}
+
+/**
+ * Human description of an LFS object's size across the diff: a single size,
+ * or "old → new" when the change replaced the object. Sizes are of the real
+ * LFS content, not the pointer file.
+ */
+function lfsSizeLabel(lfs: NonNullable<DiffPayload['lfs']>): string {
+  const { oldSize, newSize } = lfs
+  if (oldSize !== null && newSize !== null && oldSize !== newSize) {
+    return `${formatBytes(oldSize)} → ${formatBytes(newSize)}`
+  }
+  const size = newSize ?? oldSize
+  return size !== null ? formatBytes(size) : ''
 }
 
 function countChanges(patch: string): { additions: number; deletions: number } {
@@ -294,7 +308,10 @@ function DiffViewerImpl({
             <div className="icon-ring">
               <Icon.Diff size={22} />
             </div>
-            <h3>{statusLabel(diff.status)}</h3>
+            <h3>{diff.lfs ? `Git LFS file — ${statusLabel(diff.status).toLowerCase()}` : statusLabel(diff.status)}</h3>
+            {diff.lfs && lfsSizeLabel(diff.lfs) && (
+              <p className="diff-lfs-size">{lfsSizeLabel(diff.lfs)}</p>
+            )}
             <p>{diff.notice}</p>
           </div>
         )}

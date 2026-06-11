@@ -279,6 +279,12 @@ export interface DiffPayload {
   binary: boolean
   /** Set when the file is too large / binary and no patch is produced. */
   notice?: string
+  /**
+   * Set when both sides of the diff are Git LFS pointers: the sizes (bytes) of
+   * the real LFS objects, null meaning the file doesn't exist on that side.
+   * The viewer renders an "LFS file" panel instead of raw pointer text.
+   */
+  lfs?: { oldSize: number | null; newSize: number | null }
   language?: string
   /**
    * Full old/new file contents. When both are present the diff viewer renders

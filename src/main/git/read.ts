@@ -21,6 +21,7 @@ import type {
   RepoSummary
 } from '@shared/types'
 import { locateGit } from './bin'
+import { describeLfsPatch } from './lfs-pointer'
 
 const execFileAsync = promisify(execFile)
 
@@ -476,6 +477,19 @@ function finalizeDiff(
       patch: '',
       binary,
       notice: 'This diff is too large to display.'
+    }
+  }
+  // LFS-tracked files diff as pointer text (both sides run through the clean
+  // filter) — oid/size churn no user should have to read. Ship the object
+  // sizes instead; the viewer renders a dedicated LFS panel.
+  const lfs = describeLfsPatch(patch)
+  if (lfs) {
+    return {
+      ...payload,
+      patch: '',
+      binary: false,
+      lfs,
+      notice: 'This file is stored with Git LFS — its content lives outside the repository.'
     }
   }
   if (binary && !patch.includes('@@')) {
