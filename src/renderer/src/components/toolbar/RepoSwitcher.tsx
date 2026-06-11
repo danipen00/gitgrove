@@ -161,10 +161,7 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
       {
         label: 'Copy Repo Name',
         icon: <Icon.Copy size={15} />,
-        onClick: () => {
-          window.gitgrove.clipboardWrite(target.name)
-          flash('Copied repository name')
-        }
+        onClick: () => window.gitgrove.clipboardWrite(target.name)
       },
       {
         label: 'Copy Repo Path',
