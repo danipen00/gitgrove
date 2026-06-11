@@ -21,7 +21,13 @@ beforeAll(() => {
   process.env.XDG_CONFIG_HOME = join(home, '.config')
   process.env.GIT_CONFIG_NOSYSTEM = '1'
   credsFile = join(home, 'git-credentials')
-  writeFileSync(join(home, '.gitconfig'), `[credential]\n\thelper = store --file=${credsFile}\n`)
+  // git config treats backslashes as escapes, so a raw Windows path
+  // (C:\Users\…) in the helper value would be mangled and the store helper
+  // would read a different file. git accepts forward slashes on every
+  // platform, so normalize the path for the config value (fs calls below still
+  // use the native `credsFile`).
+  const helperFile = credsFile.replace(/\\/g, '/')
+  writeFileSync(join(home, '.gitconfig'), `[credential]\n\thelper = store --file=${helperFile}\n`)
 })
 
 afterAll(() => {
