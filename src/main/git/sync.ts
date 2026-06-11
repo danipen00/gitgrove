@@ -15,6 +15,26 @@ import { askpassEnv } from './askpass'
 import { friendlyAuthError } from './askpass-prompt'
 import { locateGit } from './bin'
 import { type ProgressHandler, parseProgressText, run, runOnce } from './exec'
+import { openLfsProgressChannel } from './lfs-progress'
+
+/**
+ * Run a network git operation with an LFS progress side channel attached
+ * (see lfs-progress.ts): LFS moves its content after git's own transfer and
+ * reports nothing on stderr, so without this a large LFS pull looks frozen.
+ * No-op plumbing when the caller doesn't track progress.
+ */
+async function withLfsProgress<T>(
+  onProgress: ProgressHandler | undefined,
+  op: (lfsEnv: Record<string, string>) => Promise<T>
+): Promise<T> {
+  if (!onProgress) return op({})
+  const channel = openLfsProgressChannel(onProgress)
+  try {
+    return await op(channel.env)
+  } finally {
+    await channel.dispose()
+  }
+}
 
 export async function fetch(
   repoPath: string,
@@ -28,7 +48,9 @@ export async function fetch(
   // GIT_ASKPASS the disabled terminal prompt makes git fail fast and silent —
   // a timer must never pop a credential dialog under the user.
   const env = opts.quiet ? {} : await askpassEnv()
-  await runOnce(repoPath, args, { onProgress, env }).catch(rethrowFriendly(env))
+  await withLfsProgress(onProgress, (lfsEnv) =>
+    runOnce(repoPath, args, { onProgress, env: { ...env, ...lfsEnv } })
+  ).catch(rethrowFriendly(env))
 }
 
 export async function pull(
@@ -39,7 +61,9 @@ export async function pull(
   const args = ['-c', 'core.editor=true', 'pull', '--progress']
   if (opts.rebase) args.push('--rebase')
   const env = await askpassEnv()
-  await run(repoPath, args, { onProgress, env }).catch(rethrowFriendly(env))
+  await withLfsProgress(onProgress, (lfsEnv) =>
+    run(repoPath, args, { onProgress, env: { ...env, ...lfsEnv } })
+  ).catch(rethrowFriendly(env))
 }
 
 export async function push(
@@ -51,7 +75,9 @@ export async function push(
   if (opts.forceWithLease) args.push('--force-with-lease')
   if (opts.setUpstream) args.push('-u', opts.setUpstream.remote, opts.setUpstream.branch)
   const env = await askpassEnv()
-  await runOnce(repoPath, args, { onProgress, env }).catch(rethrowFriendly(env))
+  await withLfsProgress(onProgress, (lfsEnv) =>
+    runOnce(repoPath, args, { onProgress, env: { ...env, ...lfsEnv } })
+  ).catch(rethrowFriendly(env))
 }
 
 /**
@@ -82,27 +108,29 @@ export async function clone(
   const dest = join(parentDir, name)
   const bin = await locateGit()
   const credentialEnv = await askpassEnv()
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(bin, ['clone', '--progress', '--recurse-submodules', url, dest], {
-      windowsHide: true,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...credentialEnv }
-    })
-    let stderrTail = ''
-    child.stderr.on('data', (d: Buffer) => {
-      const text = d.toString('utf8')
-      stderrTail = (stderrTail + text).slice(-4000)
-      parseProgressText(text, onProgress)
-    })
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code === 0) resolve()
-      else {
-        // The tail of stderr holds the human-readable failure (auth, 404, …).
-        const lines = stderrTail.split('\n').filter((l) => l.trim() && !/\d+%/.test(l))
-        const reason = lines.slice(-3).join('\n') || 'git clone failed'
-        const askpassActive = Object.keys(credentialEnv).length > 0
-        reject(new Error(friendlyAuthError(stderrTail, askpassActive) ?? reason))
-      }
+  await withLfsProgress(onProgress, (lfsEnv) => {
+    return new Promise<void>((resolve, reject) => {
+      const child = spawn(bin, ['clone', '--progress', '--recurse-submodules', url, dest], {
+        windowsHide: true,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...credentialEnv, ...lfsEnv }
+      })
+      let stderrTail = ''
+      child.stderr.on('data', (d: Buffer) => {
+        const text = d.toString('utf8')
+        stderrTail = (stderrTail + text).slice(-4000)
+        parseProgressText(text, onProgress)
+      })
+      child.on('error', reject)
+      child.on('close', (code) => {
+        if (code === 0) resolve()
+        else {
+          // The tail of stderr holds the human-readable failure (auth, 404, …).
+          const lines = stderrTail.split('\n').filter((l) => l.trim() && !/\d+%/.test(l))
+          const reason = lines.slice(-3).join('\n') || 'git clone failed'
+          const askpassActive = Object.keys(credentialEnv).length > 0
+          reject(new Error(friendlyAuthError(stderrTail, askpassActive) ?? reason))
+        }
+      })
     })
   })
   return dest

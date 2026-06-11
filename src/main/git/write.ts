@@ -19,6 +19,7 @@ import type {
   WorktreeInfo
 } from '@shared/types'
 import { enqueue, type ProgressHandler, run, runOnce, runRead } from './exec'
+import { openLfsProgressChannel } from './lfs-progress'
 
 /** Files restored per checkout-index spawn during a discard — small enough
  *  that each batch completes quickly (a progress report), large enough to
@@ -323,7 +324,19 @@ export async function checkoutBranch(
   branch: string,
   onProgress?: ProgressHandler
 ): Promise<void> {
-  await run(repoPath, ['checkout', '--progress', branch], { onProgress })
+  // Checking out can smudge LFS files (downloading missing objects), which
+  // git's own progress doesn't cover — attach the LFS side channel so big
+  // asset switches fill the progress bar instead of freezing it.
+  if (!onProgress) {
+    await run(repoPath, ['checkout', '--progress', branch])
+    return
+  }
+  const lfs = openLfsProgressChannel(onProgress)
+  try {
+    await run(repoPath, ['checkout', '--progress', branch], { onProgress, env: lfs.env })
+  } finally {
+    await lfs.dispose()
+  }
 }
 
 /** Check out a commit directly, leaving HEAD detached. */
