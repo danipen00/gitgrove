@@ -3,18 +3,22 @@
 // and the renderer client import from here so the contract stays in one place.
 
 import type {
+  AddAccountResult,
   AppInfo,
   BranchInfo,
   ChangedFile,
   CloneProgress,
   Commit,
   CommitSelection,
+  ConnectedAccount,
   CredentialPromptRequest,
+  DeviceCodeInfo,
   DiffArea,
   DiffPayload,
   DiscardItem,
   GitAvailability,
   GitIdentity,
+  GlobalIdentity,
   IdentityScope,
   LogOptions,
   OpProgress,
@@ -58,8 +62,17 @@ export const IPC = {
   // commit identity (user.name / user.email)
   getIdentity: 'repo:identity:get',
   setIdentity: 'repo:identity:set',
+  getGlobalIdentity: 'identity:global:get',
+  setGlobalIdentity: 'identity:global:set',
   // credential prompting (askpass): renderer's answer to a credential:prompt
   credentialRespond: 'credential:respond',
+  // connected accounts (browser OAuth / token sign-in to git hosts)
+  accountsList: 'accounts:list',
+  accountsBeginOAuth: 'accounts:oauth:begin',
+  accountsCancelOAuth: 'accounts:oauth:cancel',
+  accountsAddToken: 'accounts:add-token',
+  accountsRemove: 'accounts:remove',
+  accountsHasOAuthClient: 'accounts:has-oauth-client',
   // branches
   createBranch: 'repo:branch:create',
   deleteBranch: 'repo:branch:delete',
@@ -124,6 +137,10 @@ export const IPC = {
   credentialPrompt: 'credential:prompt',
   /** A credential prompt expired unanswered — close its dialog (requestId). */
   credentialDismiss: 'credential:dismiss',
+  /** A device-flow sign-in produced its user code (DeviceCodeInfo). */
+  accountsDeviceCode: 'accounts:oauth:device-code',
+  /** The connected-accounts list changed (added/removed) — refetch. */
+  accountsChanged: 'accounts:changed',
   /** Determinate progress of a running checkout/fetch/pull/push (OpProgress). */
   opProgress: 'repo:op-progress',
   updateStatus: 'update:status',
@@ -132,6 +149,7 @@ export const IPC = {
 
 /** Commands the application menu sends to the renderer to act on. */
 export type MenuCommand =
+  | 'settings'
   | 'clone'
   | 'fetch'
   | 'pull'
@@ -208,12 +226,37 @@ export interface GitGroveApi {
   getIdentity(repoPath: string): Promise<GitIdentity>
   /** Persist a commit identity to the global or this repo's git config. */
   setIdentity(repoPath: string, name: string, email: string, scope: IdentityScope): Promise<void>
+  /** The machine-wide identity from the global git config (no repo needed). */
+  getGlobalIdentity(): Promise<GlobalIdentity>
+  /** Write the machine-wide identity to the global git config. */
+  setGlobalIdentity(name: string, email: string): Promise<void>
   /**
    * Answer a credential prompt pushed via onCredentialPrompt. `null` cancels:
    * the askpass helper exits non-zero and the waiting git op aborts cleanly.
    * The value goes straight to the waiting git process — never stored.
    */
   respondCredential(requestId: string, value: string | null): Promise<void>
+  // ── Connected accounts ──
+  /** Connected git-host accounts (metadata only — tokens stay in main). */
+  listAccounts(): Promise<ConnectedAccount[]>
+  /**
+   * Start a browser device-flow sign-in for `host`. The user code arrives via
+   * onAccountDeviceCode; this resolves when the user finishes (or fails) in
+   * the browser. `clientId` is required for Enterprise hosts the first time —
+   * once a sign-in succeeds it is remembered for that host.
+   */
+  beginAccountOAuth(host: string, clientId?: string): Promise<AddAccountResult>
+  /** Abort the in-flight device-flow sign-in, if any. */
+  cancelAccountOAuth(): Promise<void>
+  /** Connect an account from a pasted personal access token. */
+  addAccountWithToken(host: string, token: string): Promise<AddAccountResult>
+  /** Disconnect an account and purge its OS-credential-helper copies. */
+  removeAccount(id: string): Promise<void>
+  /**
+   * Whether browser sign-in is possible for `host` (built-in client ID for
+   * github.com, or one remembered from a previous Enterprise sign-in).
+   */
+  hasOAuthClient(host: string): Promise<boolean>
   // ── Branches ──
   createBranch(
     repoPath: string,
@@ -322,6 +365,10 @@ export interface GitGroveApi {
   onCredentialPrompt(handler: (request: CredentialPromptRequest) => void): () => void
   /** Subscribe to credential prompt dismissals (prompt expired unanswered). */
   onCredentialDismiss(handler: (requestId: string) => void): () => void
+  /** Subscribe to device-flow user codes while a sign-in runs. */
+  onAccountDeviceCode(handler: (info: DeviceCodeInfo) => void): () => void
+  /** Subscribe to connected-account list changes. Returns an unsubscribe fn. */
+  onAccountsChanged(handler: () => void): () => void
   /** Subscribe to determinate progress of running checkout/fetch/pull/push ops. */
   onOpProgress(handler: (progress: OpProgress) => void): () => void
   /** Subscribe to auto-update lifecycle pushes. Returns an unsubscribe fn. */

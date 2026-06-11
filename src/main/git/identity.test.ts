@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { getIdentity, setIdentity } from './identity'
+import { getGlobalIdentity, getIdentity, setGlobalIdentity, setIdentity } from './identity'
 
 // Integration against the real git binary. The whole point of getIdentity is
 // reading the user's global config, so HOME (and friends) are pointed at a
@@ -78,5 +78,17 @@ describe('identity', () => {
       email: 'repo@example.com',
       source: 'local'
     })
+  })
+
+  // Settings → Identity edits exactly the global config: local overrides must
+  // be invisible to the read and untouched by the write.
+  test('the global identity ignores the local override', async () => {
+    expect(await getGlobalIdentity()).toEqual({ name: 'Test User', email: 'test@example.com' })
+  })
+
+  test('editing the global identity leaves the local override alone', async () => {
+    await setGlobalIdentity('New Global', 'global@example.com')
+    expect(await getGlobalIdentity()).toEqual({ name: 'New Global', email: 'global@example.com' })
+    expect((await getIdentity(repo)).source).toBe('local')
   })
 })

@@ -3,7 +3,8 @@
 // very first commit into a cryptic dead end — the renderer probes with
 // getIdentity before committing and collects the values with one dialog.
 
-import type { GitIdentity, IdentityScope } from '@shared/types'
+import { homedir } from 'node:os'
+import type { GitIdentity, GlobalIdentity, IdentityScope } from '@shared/types'
 import { run, runRead } from './exec'
 
 export async function getIdentity(repoPath: string): Promise<GitIdentity> {
@@ -36,6 +37,23 @@ export async function setIdentity(
   // the repo's write queue so two GitGrove writes can't collide on it.
   await run(repoPath, ['config', scopeFlag, 'user.name', name])
   await run(repoPath, ['config', scopeFlag, 'user.email', email])
+}
+
+/**
+ * The machine-wide identity (Settings → Identity), read with `--global` so
+ * repo overrides never leak in. Runs from the home directory — global config
+ * needs no repository, and Settings works with none open.
+ */
+export async function getGlobalIdentity(): Promise<GlobalIdentity> {
+  const read = (key: string) =>
+    runRead(homedir(), ['config', '--global', '--get', key], { tolerateExitCodes: [1] })
+  const [name, email] = await Promise.all([read('user.name'), read('user.email')])
+  return { name: name.trim(), email: email.trim() }
+}
+
+export async function setGlobalIdentity(name: string, email: string): Promise<void> {
+  await run(homedir(), ['config', '--global', 'user.name', name])
+  await run(homedir(), ['config', '--global', 'user.email', email])
 }
 
 /**

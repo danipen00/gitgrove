@@ -5,10 +5,12 @@
 
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { normalizeHost } from '@shared/git-hosts'
 import { IPC } from '@shared/ipc'
 import type {
   ChangedFile,
   CommitSelection,
+  CredentialPrompt,
   CredentialPromptRequest,
   DiffArea,
   DiscardItem,
@@ -23,9 +25,13 @@ import type {
   ResetMode
 } from '@shared/types'
 import { type BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from 'electron'
+import { accountsStore } from './accounts/cipher'
+import { connectViaOAuth, connectWithToken, oauthClientIdFor } from './accounts/connect'
+import { answerFromAccounts } from './accounts/store'
 import { appInfo } from './app-info'
 import { setCredentialResponder } from './git/askpass'
-import { getIdentity, setIdentity } from './git/identity'
+import { rejectStoredCredential } from './git/credential-store'
+import { getGlobalIdentity, getIdentity, setGlobalIdentity, setIdentity } from './git/identity'
 import {
   getBranches,
   getCommitDiff,
@@ -171,15 +177,25 @@ export function registerIpc(ctx: IpcContext): void {
     (_e, repoPath: string, name: string, email: string, scope: IdentityScope) =>
       setIdentity(repoPath, name, email, scope)
   )
+  ipcMain.handle(IPC.getGlobalIdentity, () => getGlobalIdentity())
+  ipcMain.handle(IPC.setGlobalIdentity, (_e, name: string, email: string) =>
+    setGlobalIdentity(name, email)
+  )
 
   // Askpass bridge: when a network op hits a credential prompt, the askpass
-  // server (git/askpass.ts) calls this responder; we forward the classified
-  // prompt to the renderer's CredentialDialog and wait for its answer.
+  // server (git/askpass.ts) calls this responder. A connected account for the
+  // prompt's host answers silently (login for the username, token for the
+  // password); only strangers reach the renderer's CredentialDialog.
   // Secrets pass through these resolvers in memory only — never logged,
   // never persisted, and the map entry is dropped the moment it settles.
   let credentialSeq = 0
-  const pendingCredentials = new Map<string, (value: string | null) => void>()
+  const pendingCredentials = new Map<
+    string,
+    { prompt: CredentialPrompt; settle: (value: string | null) => void }
+  >()
   setCredentialResponder((prompt, signal) => {
+    const silent = answerFromAccounts(accountsStore(), prompt)
+    if (silent !== null) return Promise.resolve(silent)
     const window = getWindow()
     // No window to ask — cancel so the operation fails fast instead of hanging.
     if (!window) return Promise.resolve(null)
@@ -188,7 +204,7 @@ export function registerIpc(ctx: IpcContext): void {
       const settle = (value: string | null) => {
         if (pendingCredentials.delete(requestId)) resolve(value)
       }
-      pendingCredentials.set(requestId, settle)
+      pendingCredentials.set(requestId, { prompt, settle })
       // The server aborts unanswered prompts (10 min): cancel and close the
       // renderer's dialog too, so it can't answer into the void after the
       // git operation has already failed.
@@ -201,7 +217,74 @@ export function registerIpc(ctx: IpcContext): void {
     })
   })
   ipcMain.handle(IPC.credentialRespond, (_e, requestId: string, value: string | null) => {
-    pendingCredentials.get(requestId)?.(value)
+    pendingCredentials.get(requestId)?.settle(value)
+  })
+
+  // ── Connected accounts ──
+  /**
+   * A sign-in completed while git was already waiting on a prompt for that
+   * host (the in-dialog "Sign in with GitHub" path): answer the waiting
+   * prompt from the new account and close its dialog — the user finished in
+   * the browser; asking them to also paste something would be absurd.
+   */
+  const answerPendingPromptsFor = (host: string) => {
+    const wanted = normalizeHost(host)
+    for (const [requestId, pending] of pendingCredentials) {
+      if (!pending.prompt.host || normalizeHost(pending.prompt.host) !== wanted) continue
+      const answer = answerFromAccounts(accountsStore(), pending.prompt)
+      if (answer !== null) {
+        pending.settle(answer)
+        getWindow()?.webContents.send(IPC.credentialDismiss, requestId)
+      }
+    }
+  }
+
+  /**
+   * After any successful connect: purge stale credential-helper copies (they
+   * answer before askpass and would shadow the fresh token until a 401),
+   * settle any waiting prompt, and tell the renderer to refetch the list.
+   */
+  const afterConnect = async (host: string) => {
+    await rejectStoredCredential(host)
+    answerPendingPromptsFor(host)
+    getWindow()?.webContents.send(IPC.accountsChanged)
+  }
+
+  ipcMain.handle(IPC.accountsList, () => accountsStore().listAccounts())
+  ipcMain.handle(IPC.accountsHasOAuthClient, (_e, host: string) =>
+    oauthClientIdFor(accountsStore(), host) !== null
+  )
+
+  // One sign-in at a time: a newly started flow supersedes (aborts) the old.
+  let oauthInFlight: AbortController | null = null
+  ipcMain.handle(IPC.accountsBeginOAuth, async (_e, host: string, clientId?: string) => {
+    oauthInFlight?.abort()
+    const controller = new AbortController()
+    oauthInFlight = controller
+    const result = await connectViaOAuth(accountsStore(), host, {
+      clientId,
+      signal: controller.signal,
+      onDeviceCode: (info) => getWindow()?.webContents.send(IPC.accountsDeviceCode, info)
+    })
+    if (oauthInFlight === controller) oauthInFlight = null
+    if (result.ok) await afterConnect(result.account.host)
+    return result
+  })
+  ipcMain.handle(IPC.accountsCancelOAuth, () => {
+    oauthInFlight?.abort()
+    oauthInFlight = null
+  })
+  ipcMain.handle(IPC.accountsAddToken, async (_e, host: string, token: string) => {
+    const result = await connectWithToken(accountsStore(), host, token)
+    if (result.ok) await afterConnect(result.account.host)
+    return result
+  })
+  ipcMain.handle(IPC.accountsRemove, async (_e, id: string) => {
+    const removed = accountsStore().removeAccount(id)
+    // The OS helper still holds the token git stored on the last success —
+    // sign-out must actually sign the machine out, not just forget metadata.
+    if (removed) await rejectStoredCredential(removed.host)
+    getWindow()?.webContents.send(IPC.accountsChanged)
   })
 
   // ── Branches ──

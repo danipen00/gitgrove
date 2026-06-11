@@ -33,6 +33,7 @@ import { TooltipLayer } from './components/common/TooltipLayer'
 import { CommitSummary } from './components/history/CommitSummary'
 import { commitMenuItems } from './components/history/commitMenuItems'
 import { HistoryView } from './components/history/HistoryView'
+import { SettingsDialog } from './components/settings/SettingsDialog'
 import type { BranchAction } from './components/toolbar/BranchSwitcher'
 import type { SyncAction } from './components/toolbar/SyncButton'
 import { Toolbar } from './components/toolbar/Toolbar'
@@ -104,7 +105,10 @@ export function App() {
   // Credential prompts pushed from main while a network op waits on auth.
   // A queue because git asks in steps (username, then password) and parallel
   // ops can overlap — the dialog shows them one at a time, oldest first.
-  const [credentialPrompts, setCredentialPrompts] = useState<CredentialPromptRequest[]>([])
+  // `oauth` marks prompts whose host supports one-click browser sign-in.
+  const [credentialPrompts, setCredentialPrompts] = useState<
+    Array<CredentialPromptRequest & { oauth: boolean }>
+  >([])
 
   const [commits, setCommits] = useState<Commit[]>([])
   const [commitsLoading, setCommitsLoading] = useState(false)
@@ -648,6 +652,10 @@ export function App() {
     amend: boolean
     resolve: (ok: boolean) => void
   } | null>(null)
+  // Name/email from a connected account, offered as the identity default.
+  const [identityPrefill, setIdentityPrefill] = useState<{ name: string; email: string } | null>(
+    null
+  )
 
   const doCommit = useCallback(
     async (message: string, amend: boolean) => {
@@ -661,6 +669,13 @@ export function App() {
         try {
           const identity = await window.gitgrove.getIdentity(repoPath)
           if (identity.source === 'none') {
+            // A connected account already knows who the user is — prefill the
+            // dialog so the common case is just pressing Enter.
+            const accounts = await window.gitgrove.listAccounts().catch(() => [])
+            const account = accounts.find((a) => a.email) ?? accounts[0] ?? null
+            setIdentityPrefill(
+              account ? { name: account.name ?? account.login, email: account.email ?? '' } : null
+            )
             return new Promise<boolean>((resolve) => {
               pendingIdentityCommit.current = { message, amend, resolve }
               setModal({ kind: 'identity' })
@@ -973,6 +988,9 @@ export function App() {
       window.gitgrove.onMenuCommand((command: MenuCommand) => {
         const hasRepo = !!repoRef.current
         switch (command) {
+          case 'settings':
+            setModal({ kind: 'settings' })
+            break
           case 'clone':
             setModal({ kind: 'clone' })
             break
@@ -1033,9 +1051,15 @@ export function App() {
   // Credential prompts: queue arrivals, drop expirations, answer via IPC.
   useEffect(
     () =>
-      window.gitgrove.onCredentialPrompt((request) =>
-        setCredentialPrompts((prev) => [...prev, request])
-      ),
+      window.gitgrove.onCredentialPrompt(async (request) => {
+        // Reaching here means no connected account answered silently — offer
+        // browser sign-in when the host supports it (it both rescues this
+        // prompt and connects the account for every future operation).
+        const oauth = request.host
+          ? await window.gitgrove.hasOAuthClient(request.host).catch(() => false)
+          : false
+        setCredentialPrompts((prev) => [...prev, { ...request, oauth }])
+      }),
     []
   )
   useEffect(
@@ -1127,7 +1151,11 @@ export function App() {
 
   // ── App-level modals ───────────────────────────────────────────────────────
   const repoPath = repo?.path
-  const modals = repoPath && modal && modal.kind !== 'clone' && modal.kind !== 'identity' && (
+  const modals = repoPath &&
+    modal &&
+    modal.kind !== 'settings' &&
+    modal.kind !== 'clone' &&
+    modal.kind !== 'identity' && (
     <AppModals
       modal={modal}
       repoPath={repoPath}
@@ -1175,6 +1203,16 @@ export function App() {
           onCancel={() => setModal(null)}
         />
       )}
+      {/* Settings works with or without a repo — connecting an account is
+          most valuable right before the first clone. */}
+      {modal?.kind === 'settings' && (
+        <SettingsDialog
+          repoPath={repoPath}
+          themePref={themePref}
+          onThemePref={setThemePref}
+          onClose={() => setModal(null)}
+        />
+      )}
       {/* Credentials win when both are pending: a credential prompt holds a
           live git process on a 10-minute timeout that must not expire unseen,
           while the identity dialog has no timer and simply reappears (its modal
@@ -1182,6 +1220,8 @@ export function App() {
       {modal?.kind === 'identity' && credentialPrompts.length === 0 && (
         <IdentityDialog
           busy={modalBusy}
+          initialName={identityPrefill?.name}
+          initialEmail={identityPrefill?.email}
           onSubmit={completeIdentitySetup}
           onCancel={cancelIdentitySetup}
         />
@@ -1191,6 +1231,7 @@ export function App() {
           // Remount per request so a fresh prompt never inherits typed input.
           key={credentialPrompts[0].requestId}
           request={credentialPrompts[0]}
+          oauthAvailable={credentialPrompts[0].oauth}
           onRespond={respondCredential}
         />
       )}

@@ -14,6 +14,7 @@ import { WorktreesDialog } from './WorktreesDialog'
 
 /** App-level modal dialogs (branch/tag/reset/rebase/clone/worktrees/…). */
 export type Modal =
+  | { kind: 'settings' }
   | { kind: 'clone' }
   | { kind: 'identity' }
   | { kind: 'new-branch'; from?: string; fromLabel?: string; initialName?: string }
@@ -30,10 +31,10 @@ export type Modal =
 
 interface Props {
   /**
-   * The active modal. 'clone' (works without a repo) and 'identity' (tied to
-   * App's pending-commit flow) are rendered by App itself.
+   * The active modal. 'settings' and 'clone' (work without a repo) and
+   * 'identity' (tied to App's pending-commit flow) are rendered by App itself.
    */
-  modal: Exclude<Modal, { kind: 'clone' } | { kind: 'identity' }>
+  modal: Exclude<Modal, { kind: 'settings' } | { kind: 'clone' } | { kind: 'identity' }>
   repoPath: string
   branch: BranchInfo | null
   busy: boolean
