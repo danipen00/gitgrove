@@ -8,7 +8,7 @@ import type { UpdateStatus } from '@shared/types'
 import { useCallback, useEffect, useState } from 'react'
 
 /** How long manual-check feedback ("You're up to date") stays visible (ms). */
-const FEEDBACK_DURATION = 5000
+export const FEEDBACK_DURATION = 5000
 
 const isReady = (update: UpdateStatus) =>
   update.state === 'downloaded' || update.state === 'manual-install'
@@ -59,7 +59,10 @@ export function useUpdateBanner(aboutOpen: boolean, onError: (e: unknown) => voi
 
   useEffect(() => {
     if (!update || !isManualFeedback(update) || feedbackDismissed) return
-    if (update.state === 'checking') return
+    // Only error/dev feedback needs a timer here: 'checking' has nothing to
+    // hide yet, and 'not-available' renders as a Toast whose countdown owns
+    // its dismissal (it pauses on hover — a timer here would yank it away).
+    if (update.state !== 'error' && update.state !== 'dev') return
     const t = setTimeout(() => setFeedbackDismissed(true), FEEDBACK_DURATION)
     return () => clearTimeout(t)
   }, [update, feedbackDismissed])

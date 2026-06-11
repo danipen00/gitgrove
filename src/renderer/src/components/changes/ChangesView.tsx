@@ -23,6 +23,7 @@ import { usePersistentState } from '@/lib/persist'
 import type { ResolvedTheme } from '@/lib/theme'
 import { CommitComposer, type CommitMode } from './CommitComposer'
 import { StashPanel } from './StashPanel'
+import { StashReminder } from './StashReminder'
 
 interface Props {
   repoPath: string
@@ -154,6 +155,13 @@ export function ChangesView({
   const merging = op === 'merging'
   const conflicts = repoState?.conflictedCount ?? 0
   const mergeSource = merging ? mergeSourceFromDetail(repoState?.detail) : null
+
+  // Changes GitGrove stashed on this branch when the user branched off with
+  // "leave them on …" — greeted with the welcome-back reminder below.
+  const leftStash = useMemo(
+    () => stashes.find((s) => s.auto && s.branchName === branch),
+    [stashes, branch]
+  )
 
   // ── Filter (name substring + status types, shared with History) ───────────
   // The snapshot arrives path-sorted from the main process. Filtering and the
@@ -513,6 +521,16 @@ export function ChangesView({
             </button>
           </div>
         </div>
+      )}
+
+      {leftStash && !op && (
+        <StashReminder
+          repoPath={repoPath}
+          stash={leftStash}
+          busy={busy}
+          theme={theme}
+          runOp={runOp}
+        />
       )}
 
       <div className="changes__list">

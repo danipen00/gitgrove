@@ -1,8 +1,10 @@
 import type { MenuCommand } from '@shared/ipc'
 import type {
   AppInfo,
+  BranchChangesAction,
   BranchInfo,
   ChangedFile,
+  CheckoutOutcome,
   Commit,
   CredentialPromptRequest,
   GitAvailability,
@@ -22,6 +24,7 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from 're
 import { AboutDialog } from './components/app/AboutDialog'
 import { AppModals, type Modal } from './components/app/AppModals'
 import { CloneDialog } from './components/app/CloneDialog'
+import type { CreateBranchRequest } from './components/app/CreateBranchDialog'
 import { CredentialDialog } from './components/app/CredentialDialog'
 import { GitSetup } from './components/app/GitSetup'
 import { IdentityDialog } from './components/app/IdentityDialog'
@@ -34,6 +37,7 @@ import { ConflictPanel } from './components/changes/ConflictPanel'
 import type { ContextMenuItem } from './components/common/ContextMenu'
 import { type DiffMode, DiffViewer } from './components/common/DiffViewer'
 import { Resizer } from './components/common/Resizer'
+import { Toast } from './components/common/Toast'
 import { TooltipLayer } from './components/common/TooltipLayer'
 import { CommitSummary } from './components/history/CommitSummary'
 import { commitMenuItems } from './components/history/commitMenuItems'
@@ -626,15 +630,21 @@ export function App() {
     }
   }, [trustPath, handleOpen, fail])
 
-  const checkout = useCallback(
-    async (name: string) => {
+  /** The switch itself: checkout, refresh, and narrate where the changes went. */
+  const performCheckout = useCallback(
+    async (name: string, changes?: BranchChangesAction) => {
       const repoPath = repoRef.current?.path
       if (!repoPath) return
+      const previous = branchRef.current?.current ?? 'the previous branch'
       setBusy(true)
       setCheckingOut(name)
       try {
-        const updated = await window.gitgrove.checkout(repoPath, name)
-        setBranch(updated)
+        const result = await window.gitgrove.checkout(
+          repoPath,
+          name,
+          changes ? { changes } : undefined
+        )
+        setBranch(result.branch)
         setSelectedCommit(null)
         setCommitFiles([])
         setCommitSelPath(null)
@@ -649,6 +659,18 @@ export function App() {
         if (tabRef.current === 'history') loadLog(repoPath).catch(fail)
         const files = await loadSnapshot(repoPath)
         if (files.length > 0) autoSelect(files, tabRef.current === 'changes')
+        // 'conflicts' is data, not an error (see CheckoutOutcome) — the files
+        // arrive marked conflicted in the refreshed snapshot.
+        if (result.outcome === 'conflicts') {
+          setNotice(
+            `Switched to ${name} and brought your changes — a few files need a quick ` +
+              'conflict resolution.'
+          )
+        } else if (changes === 'leave') {
+          setNotice(`Switched to ${name} — your changes stayed on ${previous}, safe in a stash.`)
+        } else if (changes === 'bring') {
+          setNotice(`Switched to ${name} — your changes came along.`)
+        }
       } catch (e) {
         fail(e)
       } finally {
@@ -657,6 +679,34 @@ export function App() {
       }
     },
     [loadSnapshot, loadLog, autoSelect, clearDiff, fail]
+  )
+
+  /**
+   * Entry point for every branch switch: a dirty working tree first asks what
+   * should happen to the pending changes (the switch-branch dialog); a clean
+   * one — or one owned by an in-flight op, which git itself arbitrates —
+   * switches straight away. Detached HEAD also goes straight through: there
+   * is no branch to leave changes on.
+   */
+  const checkout = useCallback(
+    (name: string) => {
+      const dirty = changesRef.current.length > 0
+      if (dirty && !repoStateRef.current?.op && !branchRef.current?.detached) {
+        setModal({ kind: 'switch-branch', name })
+        return
+      }
+      performCheckout(name)
+    },
+    [performCheckout]
+  )
+
+  /** Switch-branch dialog confirmed: close it and run the choreographed switch. */
+  const performSwitchBranch = useCallback(
+    (name: string, changes: BranchChangesAction) => {
+      setModal(null)
+      performCheckout(name, changes)
+    },
+    [performCheckout]
   )
 
   // ── Commit, hunks, sync, branch & history actions ──────────────────────────
@@ -935,26 +985,71 @@ export function App() {
     }
   }, [])
 
-  const onBranchAction = useCallback((action: BranchAction, name: string) => {
-    const repoPath = repoRef.current?.path
-    if (!repoPath) return
-    switch (action) {
-      case 'new':
-        setModal({ kind: 'new-branch', initialName: name })
-        break
-      case 'merge':
-        // Never merge blind: the dialog dry-runs the merge (conflicts known up
-        // front) and offers merge / squash / rebase before anything happens.
-        setModal({ kind: 'merge', name })
-        break
-      case 'rename':
-        setModal({ kind: 'rename-branch', name })
-        break
-      case 'delete':
-        setModal({ kind: 'delete-branch', name, force: false })
-        break
-    }
-  }, [])
+  /**
+   * Create a branch from the dialog and narrate the outcome: where the changes
+   * went, or that a few files need resolving ('conflicts' is data, not an
+   * error). Checking out a new branch invalidates the log, same as checkout.
+   */
+  const performCreateBranch = useCallback(
+    async (name: string, request: CreateBranchRequest) => {
+      const repoPath = repoRef.current?.path
+      if (!repoPath) return
+      const previous = branchRef.current?.current ?? 'the previous branch'
+      setModalBusy(true)
+      try {
+        let outcome: CheckoutOutcome | null = null
+        const ok = await runOpRef.current(async () => {
+          outcome = await window.gitgrove.createBranch(repoPath, name, request)
+        })
+        if (!ok) return
+        if (request.checkout) {
+          setLogLoaded(false)
+          if (tabRef.current === 'history') loadLog(repoPath).catch(fail)
+        }
+        if (outcome === 'conflicts') {
+          setNotice(
+            `Created ${name} and brought your changes along — a few files need a quick ` +
+              'conflict resolution.'
+          )
+        } else if (request.changes === 'leave') {
+          setNotice(`Created ${name} — your changes stayed on ${previous}, ready for your return.`)
+        } else if (request.changes === 'bring') {
+          setNotice(`Created ${name} — your changes came along.`)
+        }
+      } finally {
+        setModalBusy(false)
+        setModal(null)
+      }
+    },
+    [loadLog, fail]
+  )
+
+  const onBranchAction = useCallback(
+    (action: BranchAction, name: string) => {
+      const repoPath = repoRef.current?.path
+      if (!repoPath) return
+      switch (action) {
+        case 'new':
+          // The dialog's "start from the default branch" option needs a fresh
+          // branch enumeration (defaultBranch is loaded lazily).
+          reloadBranches()
+          setModal({ kind: 'new-branch', initialName: name })
+          break
+        case 'merge':
+          // Never merge blind: the dialog dry-runs the merge (conflicts known up
+          // front) and offers merge / squash / rebase before anything happens.
+          setModal({ kind: 'merge', name })
+          break
+        case 'rename':
+          setModal({ kind: 'rename-branch', name })
+          break
+        case 'delete':
+          setModal({ kind: 'delete-branch', name, force: false })
+          break
+      }
+    },
+    [reloadBranches]
+  )
 
   /** Right-click menu for a history commit. */
   const commitMenuFor = useCallback(
@@ -1067,7 +1162,11 @@ export function App() {
             if (hasRepo) doSync(command)
             break
           case 'new-branch':
-            if (hasRepo) setModal({ kind: 'new-branch' })
+            if (hasRepo) {
+              // Fresh enumeration for the dialog's default-branch option.
+              reloadBranches()
+              setModal({ kind: 'new-branch' })
+            }
             break
           case 'stash':
             if (hasRepo) setModal({ kind: 'stash' })
@@ -1086,7 +1185,7 @@ export function App() {
             break
         }
       }),
-    [doSync]
+    [doSync, reloadBranches]
   )
 
   // Every op that reports progress runs under `busy`; when it ends, so does
@@ -1251,18 +1350,6 @@ export function App() {
     }
   }, [fail])
 
-  useEffect(() => {
-    if (!error) return
-    const t = setTimeout(() => setError(null), 6000)
-    return () => clearTimeout(t)
-  }, [error])
-
-  useEffect(() => {
-    if (!notice) return
-    const t = setTimeout(() => setNotice(null), 6000)
-    return () => clearTimeout(t)
-  }, [notice])
-
   // What the toolbar shows of the running op: the sync button's fill (only
   // when the progress kind matches the running action) and the branch
   // switcher's "switching to X" fill.
@@ -1301,9 +1388,13 @@ export function App() {
         modal={modal}
         repoPath={repoPath}
         branch={branch}
+        dirtyCount={changes.length}
+        opInFlight={!!repoState?.op}
         busy={modalBusy}
         runModalOp={runModalOp}
         onMerge={performMerge}
+        onCreateBranch={performCreateBranch}
+        onSwitchBranch={performSwitchBranch}
         onDeleteBranch={deleteBranch}
         onCheckoutCommit={checkoutCommit}
         onOpenRepo={openRepoByPath}
@@ -1436,7 +1527,7 @@ export function App() {
             />
           )}
         </div>
-        {error && <ErrorToast message={error} onClose={() => setError(null)} />}
+        {error && <Toast kind="error" message={error} onClose={() => setError(null)} />}
         {overlays}
       </div>
     )
@@ -1597,34 +1688,12 @@ export function App() {
         </div>
       </div>
 
-      {error && <ErrorToast message={error} onClose={() => setError(null)} />}
-      {notice && !error && <NoticeToast message={notice} onClose={() => setNotice(null)} />}
+      {error && <Toast kind="error" message={error} onClose={() => setError(null)} />}
+      {notice && !error && (
+        <Toast kind="success" message={notice} onClose={() => setNotice(null)} />
+      )}
       {overlays}
       <TooltipLayer />
-    </div>
-  )
-}
-
-function ErrorToast({ message, onClose }: { message: string; onClose: () => void }) {
-  return (
-    <div className="toast" role="alert">
-      <span>{message}</span>
-      <button onClick={onClose} title="Dismiss">
-        <Icon.Close size={14} />
-      </button>
-    </div>
-  )
-}
-
-/** Positive outcome toast (merge completed, already up to date, …). */
-function NoticeToast({ message, onClose }: { message: string; onClose: () => void }) {
-  return (
-    <div className="toast toast--success" role="status">
-      <Icon.Check size={14} />
-      <span>{message}</span>
-      <button onClick={onClose} title="Dismiss">
-        <Icon.Close size={14} />
-      </button>
     </div>
   )
 }

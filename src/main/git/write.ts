@@ -10,6 +10,8 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
+  BranchChangesAction,
+  CheckoutOutcome,
   DiscardItem,
   MergeOutcome,
   RepoOpKind,
@@ -18,7 +20,7 @@ import type {
   SubmoduleInfo,
   WorktreeInfo
 } from '@shared/types'
-import { enqueue, type ProgressHandler, run, runOnce, runRead } from './exec'
+import { enqueue, type ProgressHandler, type RunOptions, run, runOnce, runRead } from './exec'
 import { openLfsProgressChannel } from './lfs-progress'
 
 /** Files restored per checkout-index spawn during a discard — small enough
@@ -288,17 +290,101 @@ export async function lastCommitMessage(repoPath: string): Promise<string> {
 
 // ── Branches ────────────────────────────────────────────────────────────────
 
+/**
+ * Marker GitGrove uses as the message of stashes it creates itself when the
+ * user leaves changes behind while switching branches (the GitHub Desktop
+ * trick). Git prefixes the stored subject with "On <branch>: ", so the entry
+ * stays tied to its branch for free; parseStashList recognizes the marker and
+ * the renderer shows a welcome-back reminder when that branch is current
+ * again. Exported for tests.
+ */
+export const AUTO_STASH_MARKER = '!!GitGrove'
+
+/** Locale-proof env for the checkout whose error text the choreography inspects. */
+const ENGLISH = { LC_ALL: 'C' }
+
+/**
+ * The leave/bring choreography shared by every branch switch — checking out
+ * an existing branch and create-and-checkout. Runs `checkoutArgs` honouring
+ * what the user chose for their uncommitted changes; MUST run inside the
+ * write queue (callers hold it via `enqueue`).
+ *
+ *  - 'leave': stash everything (marker message, see AUTO_STASH_MARKER) on the
+ *    current branch first, so the destination starts clean and the changes
+ *    are waiting when the user comes back;
+ *  - 'bring': checkout first — git carries the working tree for free whenever
+ *    it can, preserving staged state exactly. Only when the destination
+ *    diverges through a dirty file (git refuses: "would be overwritten") do
+ *    the changes ferry across via a transient stash + pop. A pop that hits
+ *    conflicts resolves as 'conflicts' data and keeps the stash as a safety
+ *    net — git's own behaviour, never presented as an error.
+ *
+ * If the checkout itself fails after a stash was taken, the stash is popped
+ * back so a failed switch never silently relocates the user's changes.
+ */
+async function checkoutWithChanges(
+  repoPath: string,
+  checkoutArgs: string[],
+  changes: BranchChangesAction | undefined,
+  checkoutOpts: RunOptions = {}
+): Promise<CheckoutOutcome> {
+  const restoreStash = () => runOnce(repoPath, ['stash', 'pop']).catch(() => {})
+  if (changes === 'leave') {
+    await runOnce(repoPath, ['stash', 'push', '-u', '-m', AUTO_STASH_MARKER])
+    try {
+      await runOnce(repoPath, checkoutArgs, checkoutOpts)
+    } catch (e) {
+      await restoreStash()
+      throw e
+    }
+    return 'completed'
+  }
+  try {
+    await runOnce(repoPath, checkoutArgs, {
+      ...checkoutOpts,
+      env: { ...checkoutOpts.env, ...ENGLISH }
+    })
+    return 'completed'
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    if (changes !== 'bring' || !/would be overwritten by checkout/i.test(message)) throw e
+    // The destination diverges through dirty files — ferry them in a stash.
+    await runOnce(repoPath, ['stash', 'push', '-u'])
+    try {
+      await runOnce(repoPath, checkoutArgs, checkoutOpts)
+    } catch (checkoutError) {
+      await restoreStash()
+      throw checkoutError
+    }
+    try {
+      await runOnce(repoPath, ['stash', 'pop'])
+    } catch (popError) {
+      // Conflicted pop: git applied what it could, marked the rest unmerged
+      // and kept the stash. The user resolves in the normal conflict flow.
+      if (await hasUnmergedEntries(repoPath)) return 'conflicts'
+      throw popError
+    }
+    return 'completed'
+  }
+}
+
+/**
+ * Create a branch. With checkout (the default), uncommitted changes are
+ * handled per `opts.changes` — see checkoutWithChanges — as one atomic step
+ * on the write queue.
+ */
 export async function createBranch(
   repoPath: string,
   name: string,
-  opts: { from?: string; checkout?: boolean } = {}
-): Promise<void> {
+  opts: { from?: string; checkout?: boolean; changes?: BranchChangesAction } = {}
+): Promise<CheckoutOutcome> {
   const from = opts.from?.trim()
-  if (opts.checkout !== false) {
-    await run(repoPath, from ? ['checkout', '-b', name, from] : ['checkout', '-b', name])
-  } else {
+  if (opts.checkout === false) {
     await run(repoPath, from ? ['branch', name, from] : ['branch', name])
+    return 'completed'
   }
+  const checkoutArgs = from ? ['checkout', '-b', name, from] : ['checkout', '-b', name]
+  return enqueue(repoPath, () => checkoutWithChanges(repoPath, checkoutArgs, opts.changes))
 }
 
 export async function deleteBranch(
@@ -314,26 +400,31 @@ export async function renameBranch(repoPath: string, from: string, to: string): 
 }
 
 /**
- * Switch branches. Checkout rewrites HEAD, the index and the working tree, so
- * it MUST ride the write queue — running it concurrently with a stage/commit
- * is exactly the index.lock race the queue exists to prevent. Progress comes
- * from git's "Updating files: N%" stream (emitted only on non-trivial switches).
+ * Switch branches, with uncommitted changes handled per `opts.changes` — see
+ * checkoutWithChanges. Checkout rewrites HEAD, the index and the working
+ * tree, so it MUST ride the write queue — running it concurrently with a
+ * stage/commit is exactly the index.lock race the queue exists to prevent.
+ * Progress comes from git's "Updating files: N%" stream (emitted only on
+ * non-trivial switches).
  */
 export async function checkoutBranch(
   repoPath: string,
   branch: string,
+  opts: { changes?: BranchChangesAction } = {},
   onProgress?: ProgressHandler
-): Promise<void> {
+): Promise<CheckoutOutcome> {
+  const args = ['checkout', '--progress', branch]
+  if (!onProgress) {
+    return enqueue(repoPath, () => checkoutWithChanges(repoPath, args, opts.changes))
+  }
   // Checking out can smudge LFS files (downloading missing objects), which
   // git's own progress doesn't cover — attach the LFS side channel so big
   // asset switches fill the progress bar instead of freezing it.
-  if (!onProgress) {
-    await run(repoPath, ['checkout', '--progress', branch])
-    return
-  }
   const lfs = openLfsProgressChannel(onProgress)
   try {
-    await run(repoPath, ['checkout', '--progress', branch], { onProgress, env: lfs.env })
+    return await enqueue(repoPath, () =>
+      checkoutWithChanges(repoPath, args, opts.changes, { onProgress, env: lfs.env })
+    )
   } finally {
     await lfs.dispose()
   }
@@ -546,14 +637,24 @@ export function parseStashList(out: string): StashEntry[] {
   const tokens = out.split('\0')
   const entries: StashEntry[] = []
   for (let i = 0; i + STASH_FIELDS <= tokens.length; i += STASH_FIELDS) {
-    const [ref, sha, message, relativeDate] = tokens.slice(i, i + STASH_FIELDS)
+    const [ref, sha, subject, relativeDate] = tokens.slice(i, i + STASH_FIELDS)
     const m = ref.match(/stash@\{(\d+)\}/)
     if (!m) continue
+    // `%gs` looks like "On main: message" or "WIP on main: deadbeef Subject" —
+    // the prefix carries the branch the stash was taken on (ref names can't
+    // contain ':', so the first ': ' is unambiguous; detached HEAD records
+    // "(no branch)", which means no branch to remember).
+    const prefix = subject.match(/^(?:WIP on|On) ([^:]+): /)
+    const branchName = prefix && prefix[1] !== '(no branch)' ? prefix[1] : null
+    const message = prefix ? subject.slice(prefix[0].length) : subject
+    const auto = message === AUTO_STASH_MARKER
     entries.push({
       index: Number(m[1]),
       sha,
-      // `%gs` looks like "On main: message" or "WIP on main: deadbeef Subject".
-      message: message.replace(/^(WIP on|On) [^:]+: /, ''),
+      // Auto-stashes carry only the marker — never show it; the UI labels them.
+      message: auto ? '' : message,
+      branchName,
+      auto,
       relativeDate
     })
   }
@@ -587,7 +688,22 @@ export async function stashSave(
 }
 
 export async function stashApply(repoPath: string, index: number, pop: boolean): Promise<void> {
-  await run(repoPath, ['stash', pop ? 'pop' : 'apply', `stash@{${index}}`])
+  try {
+    // LC_ALL=C so the clash detection below is locale-proof.
+    await run(repoPath, ['stash', pop ? 'pop' : 'apply', `stash@{${index}}`], { env: ENGLISH })
+  } catch (e) {
+    // Git's "would be overwritten by merge" reads like a merge went wrong;
+    // what actually happened is the working tree already touches the same
+    // files. Say that, and what to do about it. The stash is untouched.
+    const message = e instanceof Error ? e.message : String(e)
+    if (/would be overwritten by merge/i.test(message)) {
+      throw new Error(
+        'Some of the stashed files also have new changes in your working tree. ' +
+          'Commit, stash or discard those changes first — then apply this stash.'
+      )
+    }
+    throw e
+  }
 }
 
 export async function stashDrop(repoPath: string, index: number): Promise<void> {

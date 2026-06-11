@@ -1,4 +1,4 @@
-import type { FileStatus } from '@shared/types'
+import type { FileStatus, StashEntry } from '@shared/types'
 
 /** Split a repo-relative path into its directory prefix and basename. */
 export function splitPath(path: string): { dir: string; name: string } {
@@ -48,6 +48,18 @@ export function statusLetter(status: FileStatus): string {
 
 export function pluralize(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`
+}
+
+/**
+ * Display label for a stash: its message; for auto-stashes (changes GitGrove
+ * left behind while branching, which carry no user message) a friendly name;
+ * the bare ref as a last resort.
+ */
+export function stashLabel(stash: StashEntry): string {
+  if (stash.auto) {
+    return stash.branchName ? `Changes left on ${stash.branchName}` : 'Changes left behind'
+  }
+  return stash.message || `stash@{${stash.index}}`
 }
 
 export interface CommitRef {

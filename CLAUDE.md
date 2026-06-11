@@ -91,9 +91,23 @@ pattern.) Beauty and UX are verified on screen, not in the diff.
 - **Path aliases:** `@/` → `src/renderer/src/`, `@shared/` → `src/shared/`.
 - **Comments explain *why*, richly** (lock semantics, NUL delimiting, PATH probing).
   Match that density on tricky code; don't strip existing rationale.
+- **Sidebar banners carry at most one button.** Banners (`.op-banner`,
+  `.stash-reminder`) live in a narrow column: every extra button steals width from the
+  message and wraps it into a skinny multi-line column. One compact button per banner;
+  when more actions are needed, use a split button whose caret opens a popover (see
+  `StashReminder`), with destructive options confirmed from there.
 - **Tests** are colocated `*.test.ts`; git tests are integration tests driving the real
   `git` binary against a throwaway repo, not mocks. TypeScript is strict — no new `any`.
 - **Every new behaviour or spec change ships with unit tests.** Tests must be
   **reliable, never flaky** — no timing races, no shared mutable state, no ordering
   assumptions. Design for testability *before* writing code: keep logic pure and
   separable (see `lib/staging.ts`), so it can be tested directly without driving the UI.
+- **GitGrove is cross-platform — Windows, Linux, and macOS are all first-class.** CI runs
+  the suite on all three, and Windows is where platform assumptions bite: code and tests
+  written on macOS routinely pass locally but fail on the Windows runner. Guard against it
+  *while writing*, not after CI goes red. Watch for: path separators (`path.join`/
+  `path.sep`, never hardcoded `/`), line endings (`\r\n` vs `\n` — git's `core.autocrlf`
+  can rewrite them), absolute-path and drive-letter shapes (`C:\…`), case-insensitive
+  filesystems, temp-dir locations, and shelling out to platform-specific binaries or
+  shell syntax. Tests especially must not bake in POSIX-only paths, separators, or
+  newlines — normalize, or assert in a platform-agnostic way.

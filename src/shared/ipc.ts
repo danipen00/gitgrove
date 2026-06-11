@@ -5,8 +5,11 @@
 import type {
   AddAccountResult,
   AppInfo,
+  BranchChangesAction,
   BranchInfo,
   ChangedFile,
+  CheckoutOutcome,
+  CheckoutResult,
   CloneProgress,
   Commit,
   CommitSelection,
@@ -204,7 +207,17 @@ export interface GitGroveApi {
    */
   snapshot(repoPath: string): Promise<string>
   branches(repoPath: string): Promise<BranchInfo>
-  checkout(repoPath: string, branch: string): Promise<BranchInfo>
+  /**
+   * Switch to a branch. `changes` says what to do with uncommitted changes
+   * (bring along / leave auto-stashed) — see git/write.ts checkoutBranch.
+   * Resolves with the refreshed branch state and a 'conflicts' outcome when
+   * brought-along changes need resolving (normal step, not an error).
+   */
+  checkout(
+    repoPath: string,
+    branch: string,
+    opts?: { changes?: BranchChangesAction }
+  ): Promise<CheckoutResult>
   log(repoPath: string, options?: LogOptions): Promise<Commit[]>
   commitFiles(repoPath: string, hash: string): Promise<ChangedFile[]>
   workingDiff(repoPath: string, file: ChangedFile, area?: DiffArea): Promise<DiffPayload>
@@ -277,11 +290,17 @@ export interface GitGroveApi {
    */
   hasOAuthClient(host: string): Promise<boolean>
   // ── Branches ──
+  /**
+   * Create a branch, optionally from a base ref and optionally carrying or
+   * leaving the working tree's uncommitted changes (`changes`, only
+   * meaningful with checkout) — same choreography and outcome contract as
+   * `checkout`, see git/write.ts.
+   */
   createBranch(
     repoPath: string,
     name: string,
-    opts?: { from?: string; checkout?: boolean }
-  ): Promise<void>
+    opts?: { from?: string; checkout?: boolean; changes?: BranchChangesAction }
+  ): Promise<CheckoutOutcome>
   deleteBranch(repoPath: string, name: string, opts?: { force?: boolean }): Promise<void>
   renameBranch(repoPath: string, from: string, to: string): Promise<void>
   checkoutDetached(repoPath: string, hash: string): Promise<void>

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ContextMenu, type ContextMenuItem } from '@/components/common/ContextMenu'
 import { Popover } from '@/components/common/Popover'
+import { Toast } from '@/components/common/Toast'
 import { prettyPath } from '@/lib/format'
 import { highlightMatch } from '@/lib/highlight'
 import { Icon } from '@/lib/icons'
@@ -42,9 +43,11 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
   const [query, setQuery] = useState('')
   const [recents, setRecents] = useState<RecentRepo[]>([])
   const [menu, setMenu] = useState<MenuState | null>(null)
-  const [notice, setNotice] = useState<{ message: string; ok: boolean } | null>(null)
+  // `id` keys the rendered Toast so re-flashing the same message (e.g. "Open in
+  // Terminal" failing twice in a row) remounts it and restarts its countdown.
+  const [notice, setNotice] = useState<{ message: string; ok: boolean; id: number } | null>(null)
   const anchor = useRef<HTMLButtonElement>(null)
-  const noticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const noticeSeq = useRef(0)
 
   useEffect(() => {
     if (open) window.gitgrove.recentRepos().then(setRecents)
@@ -129,12 +132,9 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: query is the intentional trigger; setIndex is stable.
   useEffect(() => nav.setIndex(0), [q])
 
-  useEffect(() => () => clearTimeout(noticeTimer.current), [])
-
   const flash = (message: string, ok = true) => {
-    setNotice({ message, ok })
-    clearTimeout(noticeTimer.current)
-    noticeTimer.current = setTimeout(() => setNotice(null), 2200)
+    noticeSeq.current += 1
+    setNotice({ message, ok, id: noticeSeq.current })
   }
 
   const removeRecent = async (path: string) => {
@@ -306,10 +306,13 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
 
       {notice &&
         createPortal(
-          <div className="toast toast--notice" role="status">
-            {notice.ok ? <Icon.Check size={15} /> : <Icon.Alert size={15} />}
-            <span>{notice.message}</span>
-          </div>,
+          <Toast
+            key={notice.id}
+            kind={notice.ok ? 'success' : 'error'}
+            message={notice.message}
+            onClose={() => setNotice(null)}
+            durationMs={2200}
+          />,
           document.body
         )}
     </>

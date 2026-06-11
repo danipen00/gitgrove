@@ -14,7 +14,7 @@ import { type DiffMode, DiffViewer } from '@/components/common/DiffViewer'
 import { useFileFilter } from '@/components/common/FileFilter'
 import { Resizer } from '@/components/common/Resizer'
 import { WorkingFileList } from '@/components/common/WorkingFileList'
-import { pluralize } from '@/lib/format'
+import { pluralize, stashLabel } from '@/lib/format'
 import { Icon } from '@/lib/icons'
 import { usePersistentState } from '@/lib/persist'
 import type { ResolvedTheme } from '@/lib/theme'
@@ -105,7 +105,7 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
             <Icon.Stash size={20} />
           </span>
           <div className="stash-review__title">
-            <h2>{stash.message || `stash@{${stash.index}}`}</h2>
+            <h2>{stashLabel(stash)}</h2>
             <span>
               {stash.relativeDate}
               {files
@@ -113,12 +113,27 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
                 : ''}
             </span>
           </div>
-          <button className="btn-ghost btn-ghost--sm" onClick={() => onApply(false)}>
-            Apply
-          </button>
-          <button className="btn-ghost btn-ghost--sm" onClick={() => onApply(true)}>
-            Pop
-          </button>
+          {/* Auto-stashes (changes left behind while switching) only restore:
+              applying while keeping the entry would leave a stale welcome-back
+              reminder promising changes that are already back. */}
+          {stash.auto ? (
+            <button
+              className="btn-ghost btn-ghost--sm"
+              data-tip="Apply and clear the stash"
+              onClick={() => onApply(true)}
+            >
+              Restore
+            </button>
+          ) : (
+            <>
+              <button className="btn-ghost btn-ghost--sm" onClick={() => onApply(false)}>
+                Apply
+              </button>
+              <button className="btn-ghost btn-ghost--sm" onClick={() => onApply(true)}>
+                Pop
+              </button>
+            </>
+          )}
           <button className="btn-ghost btn-ghost--sm is-danger-text" onClick={onDrop}>
             Delete
           </button>

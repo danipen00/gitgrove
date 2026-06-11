@@ -6,7 +6,7 @@
 import type { StashEntry } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Popover } from '@/components/common/Popover'
-import { pluralize } from '@/lib/format'
+import { pluralize, stashLabel } from '@/lib/format'
 import { highlightMatch } from '@/lib/highlight'
 import { Icon } from '@/lib/icons'
 import type { ResolvedTheme } from '@/lib/theme'
@@ -37,7 +37,7 @@ export function StashPanel({ repoPath, stashes, busy, theme, runOp }: Props) {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return stashes
-    return stashes.filter((s) => (s.message || `stash@{${s.index}}`).toLowerCase().includes(q))
+    return stashes.filter((s) => stashLabel(s).toLowerCase().includes(q))
   }, [stashes, query])
 
   // Arrows move through the stashes, Enter opens the highlighted one's review.
@@ -113,31 +113,51 @@ export function StashPanel({ repoPath, stashes, busy, theme, runOp }: Props) {
                   }}
                 >
                   <span className="stash-item__msg" data-tip-overflow="">
-                    {highlightMatch(s.message || `stash@{${s.index}}`, query)}
+                    {highlightMatch(stashLabel(s), query)}
                   </span>
                   <span className="stash-item__date">{s.relativeDate}</span>
                 </button>
                 <div className="stash-item__actions">
-                  <button
-                    className="section-head__action"
-                    data-tip="Apply and keep"
-                    onClick={() => {
-                      setOpen(false)
-                      runOp(() => gg.stashApply(repoPath, s.index, false))
-                    }}
-                  >
-                    Apply
-                  </button>
-                  <button
-                    className="section-head__action"
-                    data-tip="Apply and delete"
-                    onClick={() => {
-                      setOpen(false)
-                      runOp(() => gg.stashApply(repoPath, s.index, true))
-                    }}
-                  >
-                    Pop
-                  </button>
+                  {/* Auto-stashes are GitGrove's own bookkeeping ("changes
+                      left on …"): applying while keeping the entry would
+                      leave a stale welcome-back reminder promising changes
+                      that are already back — so the only offer is Restore
+                      (apply + clear), mirroring the reminder banner. */}
+                  {s.auto ? (
+                    <button
+                      className="section-head__action"
+                      data-tip="Apply and clear the stash"
+                      onClick={() => {
+                        setOpen(false)
+                        runOp(() => gg.stashApply(repoPath, s.index, true))
+                      }}
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className="section-head__action"
+                        data-tip="Apply and keep"
+                        onClick={() => {
+                          setOpen(false)
+                          runOp(() => gg.stashApply(repoPath, s.index, false))
+                        }}
+                      >
+                        Apply
+                      </button>
+                      <button
+                        className="section-head__action"
+                        data-tip="Apply and delete"
+                        onClick={() => {
+                          setOpen(false)
+                          runOp(() => gg.stashApply(repoPath, s.index, true))
+                        }}
+                      >
+                        Pop
+                      </button>
+                    </>
+                  )}
                   <button
                     className="section-head__action is-danger"
                     data-tip="Delete stash"

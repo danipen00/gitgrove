@@ -6,11 +6,13 @@
 // surface as the standard toast) unless a modal needs custom flow (delete's
 // force escalation, checkout's log reload) — those come in as callbacks.
 
-import type { BranchInfo, Commit, MergeKind, ResetMode } from '@shared/types'
+import type { BranchChangesAction, BranchInfo, Commit, MergeKind, ResetMode } from '@shared/types'
 import { ConfirmDialog, PromptDialog, validateRefName } from '@/components/common/Dialog'
 import { InteractiveRebaseDialog } from '@/components/history/InteractiveRebaseDialog'
+import { CreateBranchDialog, type CreateBranchRequest } from './CreateBranchDialog'
 import { MergeDialog } from './MergeDialog'
 import { SubmodulesDialog } from './SubmodulesDialog'
+import { SwitchBranchDialog } from './SwitchBranchDialog'
 import { WorktreesDialog } from './WorktreesDialog'
 
 /** App-level modal dialogs (branch/tag/reset/rebase/clone/worktrees/…). */
@@ -20,6 +22,7 @@ export type Modal =
   | { kind: 'identity' }
   | { kind: 'merge'; name: string }
   | { kind: 'new-branch'; from?: string; fromLabel?: string; initialName?: string }
+  | { kind: 'switch-branch'; name: string }
   | { kind: 'rename-branch'; name: string }
   | { kind: 'delete-branch'; name: string; force: boolean }
   | { kind: 'create-tag'; hash: string; shortHash: string }
@@ -39,11 +42,19 @@ interface Props {
   modal: Exclude<Modal, { kind: 'settings' } | { kind: 'clone' } | { kind: 'identity' }>
   repoPath: string
   branch: BranchInfo | null
+  /** Uncommitted changes in the working tree, for the create-branch options. */
+  dirtyCount: number
+  /** True while a merge/rebase/… owns the working tree. */
+  opInFlight: boolean
   busy: boolean
   /** Run a modal-confirmed op: spinner, close, errors → toast. */
   runModalOp: (fn: () => Promise<unknown>) => Promise<void>
   /** Merge/squash/rebase a branch; owns the outcome notice + conflict flow. */
   onMerge: (name: string, kind: MergeKind) => void
+  /** Create a branch; owns the outcome notice + the log invalidation. */
+  onCreateBranch: (name: string, request: CreateBranchRequest) => void
+  /** Switch to a branch carrying/leaving the pending changes; owns the outcome notice. */
+  onSwitchBranch: (name: string, changes: BranchChangesAction) => void
   /** Delete a branch; owns the "not fully merged" force escalation. */
   onDeleteBranch: (name: string, force: boolean) => Promise<void>
   /** Detached checkout; owns the follow-up log reload. */
@@ -57,9 +68,13 @@ export function AppModals({
   modal,
   repoPath,
   branch,
+  dirtyCount,
+  opInFlight,
   busy,
   runModalOp,
   onMerge,
+  onCreateBranch,
+  onSwitchBranch,
   onDeleteBranch,
   onCheckoutCommit,
   onOpenRepo,
@@ -81,33 +96,28 @@ export function AppModals({
       )
     case 'new-branch':
       return (
-        <PromptDialog
-          title={modal.from ? `New branch at ${modal.fromLabel}` : 'New branch'}
-          confirmLabel="Create branch"
+        <CreateBranchDialog
+          current={branch?.current ?? ''}
+          detached={branch?.detached ?? false}
+          defaultBranch={branch?.defaultBranch ?? null}
+          from={modal.from}
+          fromLabel={modal.fromLabel}
+          initialName={modal.initialName}
+          dirtyCount={dirtyCount}
+          opInFlight={opInFlight}
           busy={busy}
-          fields={[
-            {
-              key: 'name',
-              label: 'Branch name',
-              placeholder: 'feature/my-change',
-              initial: modal.initialName,
-              validate: validateRefName
-            },
-            {
-              key: 'checkout',
-              label: 'Check out the new branch',
-              checkbox: true,
-              initialChecked: true
-            }
-          ]}
-          onSubmit={(values, checks) =>
-            runModalOp(() =>
-              gg.createBranch(repoPath, values.name.trim(), {
-                from: modal.from,
-                checkout: checks.checkout
-              })
-            )
-          }
+          onSubmit={onCreateBranch}
+          onCancel={onClose}
+        />
+      )
+    case 'switch-branch':
+      return (
+        <SwitchBranchDialog
+          target={modal.name}
+          current={branch?.current ?? ''}
+          dirtyCount={dirtyCount}
+          busy={busy}
+          onConfirm={(changes) => onSwitchBranch(modal.name, changes)}
           onCancel={onClose}
         />
       )

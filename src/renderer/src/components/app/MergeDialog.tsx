@@ -137,9 +137,9 @@ export function MergeDialog({ repoPath, name, current, busy, onConfirm, onCancel
       )}
 
       {!upToDate && (
-        <div className="merge-strategies" role="radiogroup" aria-label="How to merge">
+        <div className="option-cards" role="radiogroup" aria-label="How to merge">
           {STRATEGIES.map((s) => (
-            <label key={s.kind} className={`merge-strategy${kind === s.kind ? ' is-active' : ''}`}>
+            <label key={s.kind} className={`option-card${kind === s.kind ? ' is-active' : ''}`}>
               <input
                 type="radio"
                 name="merge-kind"
@@ -147,9 +147,9 @@ export function MergeDialog({ repoPath, name, current, busy, onConfirm, onCancel
                 disabled={busy}
                 onChange={() => setKind(s.kind)}
               />
-              <span className="merge-strategy__text">
-                <span className="merge-strategy__title">{s.label}</span>
-                <span className="merge-strategy__sub">{s.sub(name, current)}</span>
+              <span className="option-card__text">
+                <span className="option-card__title">{s.label}</span>
+                <span className="option-card__sub">{s.sub(name, current)}</span>
               </span>
             </label>
           ))}
