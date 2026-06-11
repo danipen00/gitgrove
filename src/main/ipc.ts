@@ -56,12 +56,14 @@ import { checkForUpdates, quitAndInstall } from './updater'
 export interface IpcContext {
   getWindow(): BrowserWindow | null
   openRepoAtPath(path: string): Promise<RepoOpenResult>
+  /** The repo requested on launch, returned once then forgotten (see cli.ts). */
+  takeInitialRepoPath(): string | null
   trustRepo(path: string): Promise<RepoOpenResult>
   checkGit(force: boolean): Promise<GitAvailability>
 }
 
 export function registerIpc(ctx: IpcContext): void {
-  const { getWindow, openRepoAtPath, trustRepo, checkGit } = ctx
+  const { getWindow, openRepoAtPath, takeInitialRepoPath, trustRepo, checkGit } = ctx
 
   /**
    * Progress forwarder for a long-running op: pushes phase + percent to the
@@ -87,6 +89,7 @@ export function registerIpc(ctx: IpcContext): void {
   })
 
   ipcMain.handle(IPC.openRepo, (_e, path: string) => openRepoAtPath(path))
+  ipcMain.handle(IPC.initialRepoPath, () => takeInitialRepoPath())
   ipcMain.handle(IPC.trustRepo, (_e, path: string) => trustRepo(path))
 
   ipcMain.handle(IPC.recentRepos, () => getRecentRepos())

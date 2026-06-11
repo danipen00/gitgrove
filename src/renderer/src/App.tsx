@@ -1201,6 +1201,18 @@ export function App() {
 
   useEffect(() => window.gitgrove.onShowAbout(() => setAboutOpen(true)), [])
 
+  // Open the repository named on the command line / GITGROVE_OPEN_REPO at
+  // launch. Main hands it over once (then forgets it), so this fires only for
+  // the first mount — a reload drops back to the welcome screen as usual.
+  useEffect(() => {
+    window.gitgrove
+      .initialRepoPath()
+      .then((path) => {
+        if (path) openRepoByPath(path)
+      })
+      .catch(() => {})
+  }, [openRepoByPath])
+
   // Probe LFS health once per repo open — cheap (a handful of config reads)
   // and silent for the overwhelming majority of repos that don't use LFS.
   const probeLfsHealth = useCallback((path: string) => {

@@ -15,6 +15,7 @@ const api: GitGroveApi = {
   platform: process.platform,
   pickRepo: () => ipcRenderer.invoke(IPC.pickRepo),
   openRepo: (path) => ipcRenderer.invoke(IPC.openRepo, path),
+  initialRepoPath: () => ipcRenderer.invoke(IPC.initialRepoPath),
   trustRepo: (path) => ipcRenderer.invoke(IPC.trustRepo, path),
   recentRepos: () => ipcRenderer.invoke(IPC.recentRepos),
   removeRecent: (path) => ipcRenderer.invoke(IPC.removeRecent, path),

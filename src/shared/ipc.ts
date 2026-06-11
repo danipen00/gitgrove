@@ -40,6 +40,7 @@ import type {
 export const IPC = {
   pickRepo: 'repo:pick',
   openRepo: 'repo:open',
+  initialRepoPath: 'repo:initial-path',
   trustRepo: 'repo:trust',
   recentRepos: 'repo:recent',
   removeRecent: 'repo:recent:remove',
@@ -180,6 +181,11 @@ export interface GitGroveApi {
   pickRepo(): Promise<RepoOpenResult | null>
   /** Open a known path as a repository. */
   openRepo(path: string): Promise<RepoOpenResult>
+  /**
+   * The repository requested on launch (via `--repo` or GITGROVE_OPEN_REPO), or
+   * null. Consumed once: a later reload returns null so it doesn't reopen.
+   */
+  initialRepoPath(): Promise<string | null>
   /** Trust a folder git flagged as untrusted (persist a safe.directory exception), then open it. */
   trustRepo(path: string): Promise<RepoOpenResult>
   recentRepos(): Promise<RecentRepo[]>
