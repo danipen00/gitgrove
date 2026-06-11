@@ -14,6 +14,7 @@ import {
   getMergeToolName,
   getRemoteWebUrl,
   parseMergeTreeNames,
+  parseRawNumstat,
   parseRecentBranches,
   resolveRepoRoot,
   toWebUrl
@@ -257,6 +258,28 @@ describe('getCommitFiles', () => {
     const statuses = new Set(files.map((f) => f.status))
     expect(files.map((f) => f.path).sort()).toEqual(['README.md', 'keep.txt'])
     expect([...statuses]).toEqual(['added'])
+  })
+})
+
+describe('parseRawNumstat', () => {
+  it('marks gitlink (mode 160000) entries as submodules', () => {
+    const raw = [
+      ':160000 160000 aaaaaaa bbbbbbb M',
+      'libs/engine',
+      ':000000 160000 0000000 ccccccc A',
+      'libs/new-sub',
+      ':100644 100644 ddddddd eeeeeee M',
+      'src/file.ts',
+      '-\t-\tlibs/engine',
+      '-\t-\tlibs/new-sub',
+      '3\t1\tsrc/file.ts'
+    ].join('\0')
+    const files = parseRawNumstat(raw)
+    expect(files.map((f) => [f.path, f.submodule ?? false])).toEqual([
+      ['libs/engine', true],
+      ['libs/new-sub', true],
+      ['src/file.ts', false]
+    ])
   })
 })
 

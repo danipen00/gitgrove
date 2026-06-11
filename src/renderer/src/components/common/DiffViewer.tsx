@@ -308,14 +308,41 @@ function DiffViewerImpl({
             <div className="icon-ring">
               <Icon.Diff size={22} />
             </div>
-            <h3>{diff.lfs ? `Git LFS file — ${statusLabel(diff.status).toLowerCase()}` : statusLabel(diff.status)}</h3>
+            <h3>
+              {diff.lfs
+                ? `Git LFS file — ${statusLabel(diff.status).toLowerCase()}`
+                : statusLabel(diff.status)}
+            </h3>
             {diff.lfs && lfsSizeLabel(diff.lfs) && (
               <p className="diff-lfs-size">{lfsSizeLabel(diff.lfs)}</p>
             )}
             <p>{diff.notice}</p>
           </div>
         )}
-        {!spin && diff && !diff.notice && isEmptyFile && (
+        {!spin && diff && !diff.notice && diff.submodule && (
+          <div className="center-state">
+            <div className="icon-ring">
+              <Icon.Module size={22} />
+            </div>
+            <h3>Submodule {statusLabel(diff.status).toLowerCase()}</h3>
+            <p className="submodule-move">
+              {diff.submodule.oldSha && <code>{diff.submodule.oldSha.slice(0, 7)}</code>}
+              {diff.submodule.oldSha && diff.submodule.newSha && <span aria-hidden>→</span>}
+              {diff.submodule.newSha && <code>{diff.submodule.newSha.slice(0, 7)}</code>}
+            </p>
+            <p>
+              {diff.submodule.oldSha && diff.submodule.newSha
+                ? 'The submodule points at a different commit.'
+                : diff.submodule.newSha
+                  ? 'The submodule was added at this commit.'
+                  : 'The submodule was removed.'}
+              {diff.submodule.dirty &&
+                ' It also has uncommitted changes of its own — open it as a' +
+                  ' repository to review them.'}
+            </p>
+          </div>
+        )}
+        {!spin && diff && !diff.notice && !diff.submodule && isEmptyFile && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Diff size={22} />
@@ -366,7 +393,7 @@ function DiffViewerImpl({
               style={{ minHeight: '100%' }}
             />
           )}
-        {!spin && diff && !diff.notice && !isEmptyFile && !diff.patch && (
+        {!spin && diff && !diff.notice && !diff.submodule && !isEmptyFile && !diff.patch && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Check size={22} />

@@ -56,6 +56,24 @@ describe('parsePorcelainV2', () => {
     expect(files[4]).toMatchObject({ status: 'deleted', workingStatus: 'deleted' })
   })
 
+  test('submodule entries (sub field S...) are flagged', () => {
+    const out = rec(
+      '1 .M S.M. 160000 160000 160000 aaa aaa libs/engine',
+      '1 A. S... 000000 160000 160000 000 bbb libs/new-sub',
+      '1 .M N... 100644 100644 100644 aaa bbb plain.txt',
+      'u UU S... 160000 160000 160000 160000 a b c libs/conflicted'
+    )
+    const { files } = parsePorcelainV2(out)
+    expect(files[0]).toMatchObject({ path: 'libs/engine', submodule: true, status: 'modified' })
+    expect(files[1]).toMatchObject({ path: 'libs/new-sub', submodule: true, status: 'added' })
+    expect(files[2].submodule).toBeUndefined()
+    expect(files[3]).toMatchObject({
+      path: 'libs/conflicted',
+      submodule: true,
+      status: 'conflicted'
+    })
+  })
+
   test('renames carry the original path from the extra record', () => {
     const out = rec(
       '2 R. N... 100644 100644 100644 aaa bbb R100 new name.txt',

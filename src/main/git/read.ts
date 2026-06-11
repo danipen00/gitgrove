@@ -22,6 +22,7 @@ import type {
 } from '@shared/types'
 import { locateGit } from './bin'
 import { describeLfsPatch } from './lfs-pointer'
+import { describeSubmodulePatch } from './submodule-patch'
 
 const execFileAsync = promisify(execFile)
 
@@ -409,14 +410,24 @@ export function parseRawNumstat(out: string): ChangedFile[] {
     const tok = tokens[i]
     if (!tok) continue
     if (tok.startsWith(':')) {
-      const status = tok.split(' ')[4] ?? ''
+      const fields = tok.split(' ')
+      const status = fields[4] ?? ''
+      // Gitlink mode on either side marks a submodule entry (the other side
+      // is 000000 when the submodule was added or removed).
+      const submodule = fields[0] === ':160000' || fields[1] === '160000' || undefined
       const rename = status.startsWith('R') || status.startsWith('C')
       const oldPath = rename ? tokens[++i] : undefined
       const path = tokens[++i]
       // Dedup guard: a single tree-pair diff yields each path once, but a
       // duplicate would make the file-tree renderer throw.
       if (path && !byPath.has(path)) {
-        const file: ChangedFile = { path, oldPath, status: parseStatusLetter(status), staged: true }
+        const file: ChangedFile = {
+          path,
+          oldPath,
+          status: parseStatusLetter(status),
+          staged: true,
+          submodule
+        }
         byPath.set(path, file)
         files.push(file)
       }
@@ -491,6 +502,13 @@ function finalizeDiff(
       lfs,
       notice: 'This file is stored with Git LFS — its content lives outside the repository.'
     }
+  }
+  // Submodule (gitlink) changes diff as "Subproject commit <sha>" plumbing
+  // text — ship the structured commit movement instead; the viewer renders a
+  // dedicated submodule panel.
+  const submodule = describeSubmodulePatch(patch)
+  if (submodule) {
+    return { ...payload, patch: '', binary: false, submodule }
   }
   if (binary && !patch.includes('@@')) {
     return { ...payload, binary, notice: 'Binary file — no textual diff available.' }
@@ -575,7 +593,7 @@ export async function getWorkingDiff(
   }
 
   const payload = finalizeDiff({ ...base, patch })
-  if (payload.notice || payload.binary) return payload
+  if (payload.notice || payload.binary || payload.submodule) return payload
 
   // Old/new sides matching the patch above, so the viewer can expand context.
   // `:0` is the index (stage 0); HEAD is the last commit. The old side of an
@@ -648,7 +666,7 @@ export async function getCommitDiff(
     }
   }
   const payload = finalizeDiff({ ...base, patch })
-  if (payload.notice || payload.binary) return payload
+  if (payload.notice || payload.binary || payload.submodule) return payload
 
   const oldContents =
     file.status === 'added' || !hasParent

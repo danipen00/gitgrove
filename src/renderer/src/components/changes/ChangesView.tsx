@@ -203,7 +203,10 @@ export function ChangesView({
         const sel = selections.get(f.path) ?? 'all'
         if (sel !== 'none') includedCount++
         if (sel === 'all') fullyIncluded++
-        discardables++
+        // Submodule rows commit fine but can't be discarded: restoring a
+        // gitlink means moving the submodule's own working tree, which the
+        // discard machinery (checkout-index) doesn't do — so don't offer it.
+        if (!f.submodule) discardables++
       }
     }
     return {
@@ -273,7 +276,7 @@ export function ChangesView({
 
   const confirmDiscardAll = () =>
     setConfirmDiscard({
-      files: files.filter((f) => f.status !== 'conflicted'),
+      files: files.filter((f) => f.status !== 'conflicted' && !f.submodule),
       all: true
     })
 
@@ -306,6 +309,8 @@ export function ChangesView({
       const items: ContextMenuItem[] = []
       if (actionable.length > 0 && !op) {
         const allIncluded = actionable.every((f) => (selections.get(f.path) ?? 'all') !== 'none')
+        // Submodule rows commit fine but can't be discarded (see stats above).
+        const discardable = actionable.filter((f) => !f.submodule)
         items.push(
           allIncluded
             ? {
@@ -326,12 +331,16 @@ export function ChangesView({
                     actionable.map((f) => f.path)
                   )
               },
-          {
-            label: 'Discard Changes…',
-            icon: <Icon.Undo size={15} />,
-            danger: true,
-            onClick: () => setConfirmDiscard({ files: actionable, all: false })
-          },
+          ...(discardable.length > 0
+            ? [
+                {
+                  label: 'Discard Changes…',
+                  icon: <Icon.Undo size={15} />,
+                  danger: true,
+                  onClick: () => setConfirmDiscard({ files: discardable, all: false })
+                }
+              ]
+            : []),
           {}
         )
       }
@@ -416,12 +425,17 @@ export function ChangesView({
                   icon: <Icon.Plus size={15} />,
                   onClick: () => onToggleFile(file.path)
                 },
-            {
-              label: file.status === 'untracked' ? 'Move to Trash…' : 'Discard Changes…',
-              icon: <Icon.Undo size={15} />,
-              danger: true,
-              onClick: () => setConfirmDiscard({ files: [file], all: false })
-            },
+            // Submodule rows commit fine but can't be discarded (see stats above).
+            ...(file.submodule
+              ? []
+              : [
+                  {
+                    label: file.status === 'untracked' ? 'Move to Trash…' : 'Discard Changes…',
+                    icon: <Icon.Undo size={15} />,
+                    danger: true,
+                    onClick: () => setConfirmDiscard({ files: [file], all: false })
+                  }
+                ]),
             {}
           ]),
       ...(file.status === 'untracked' ? [...ignoreItemsFor(file), {}] : []),

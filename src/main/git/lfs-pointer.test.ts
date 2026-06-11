@@ -39,7 +39,9 @@ describe('parseLfsPointer', () => {
   })
 
   test('accepts extra key-value lines (e.g. extensions)', () => {
-    const text = `version https://git-lfs.github.com/spec/v1\next-0-foo sha256:${OID_B}\noid sha256:${OID_A}\nsize 42\n`
+    const text =
+      'version https://git-lfs.github.com/spec/v1\n' +
+      `ext-0-foo sha256:${OID_B}\noid sha256:${OID_A}\nsize 42\n`
     expect(parseLfsPointer(text)).toEqual({ oid: `sha256:${OID_A}`, size: 42 })
   })
 

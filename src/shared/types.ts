@@ -30,6 +30,8 @@ export interface ChangedFile {
   deletions?: number
   /** True when git considers the blob binary. */
   binary?: boolean
+  /** True when the entry is a submodule (gitlink, mode 160000). */
+  submodule?: boolean
 }
 
 /**
@@ -301,6 +303,13 @@ export interface DiffPayload {
    * The viewer renders an "LFS file" panel instead of raw pointer text.
    */
   lfs?: { oldSize: number | null; newSize: number | null }
+  /**
+   * Set when the diff is a submodule (gitlink) change: the commit movement,
+   * null sides meaning added/removed, `dirty` meaning the submodule's own
+   * working tree has uncommitted changes. The viewer renders a dedicated
+   * submodule panel instead of raw "Subproject commit" plumbing text.
+   */
+  submodule?: { oldSha: string | null; newSha: string | null; dirty: boolean }
   language?: string
   /**
    * Full old/new file contents. When both are present the diff viewer renders
