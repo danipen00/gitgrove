@@ -184,7 +184,7 @@ export function ChangesView({
     return () => {
       stale = true
     }
-  }, [hasConflictedFiles, repoPath, gg])
+  }, [hasConflictedFiles, repoPath])
   const {
     filtered: files,
     query: filterQuery,

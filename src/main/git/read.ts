@@ -692,7 +692,7 @@ export function countConflictMarkers(contents: string): number {
 }
 
 /** Heuristic binary sniff, mirroring git's own: any NUL byte means binary. */
-const looksBinary = (contents: string | null) => contents !== null && contents.includes('\0')
+const looksBinary = (contents: string | null) => contents?.includes('\0') ?? false
 
 /**
  * The three versions of a conflicted path for the conflict-resolution panel.

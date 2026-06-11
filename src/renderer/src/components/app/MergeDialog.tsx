@@ -139,10 +139,7 @@ export function MergeDialog({ repoPath, name, current, busy, onConfirm, onCancel
       {!upToDate && (
         <div className="merge-strategies" role="radiogroup" aria-label="How to merge">
           {STRATEGIES.map((s) => (
-            <label
-              key={s.kind}
-              className={`merge-strategy${kind === s.kind ? ' is-active' : ''}`}
-            >
+            <label key={s.kind} className={`merge-strategy${kind === s.kind ? ' is-active' : ''}`}>
               <input
                 type="radio"
                 name="merge-kind"

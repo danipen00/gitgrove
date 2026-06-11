@@ -42,7 +42,20 @@ function git(args: string[], cwd = repo): string {
   }).trim()
 }
 
+// Isolate git from the developer's machine config so these tests are hermetic:
+// without this, an actual `merge.tool` in the user's global config leaks into
+// getMergeToolName. Point global + system config at an empty file (cross-platform
+// — `/dev/null` isn't valid on Windows CI). Both the `git()` helper and the
+// product code under test inherit this via process.env.
+let configHome: string
+
 beforeAll(() => {
+  configHome = mkdtempSync(join(tmpdir(), 'gitgrove-config-'))
+  const emptyConfig = join(configHome, 'gitconfig')
+  writeFileSync(emptyConfig, '')
+  process.env.GIT_CONFIG_GLOBAL = emptyConfig
+  process.env.GIT_CONFIG_SYSTEM = emptyConfig
+
   repo = mkdtempSync(join(tmpdir(), 'gitgrove-test-'))
   git(['init', '-q', '-b', 'main'])
   git(['config', 'commit.gpgsign', 'false'])
@@ -72,6 +85,9 @@ beforeAll(() => {
 
 afterAll(() => {
   rmSync(repo, { recursive: true, force: true })
+  rmSync(configHome, { recursive: true, force: true })
+  delete process.env.GIT_CONFIG_GLOBAL
+  delete process.env.GIT_CONFIG_SYSTEM
 })
 
 describe('resolveRepoRoot', () => {

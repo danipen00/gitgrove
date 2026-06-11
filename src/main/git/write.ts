@@ -375,9 +375,7 @@ export async function merge(
   // Probe first: git's "Already up to date." is success output the caller
   // would otherwise have to string-match (and it's localized).
   if (await isAncestor(repoPath, branch, 'HEAD')) return 'up-to-date'
-  const args = opts.squash
-    ? ['merge', '--squash', branch]
-    : ['merge', '--no-edit', branch]
+  const args = opts.squash ? ['merge', '--squash', branch] : ['merge', '--no-edit', branch]
   try {
     await run(repoPath, ['-c', 'core.editor=true', ...args])
     return 'completed'

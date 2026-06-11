@@ -78,13 +78,13 @@ export function ConflictPanel({
       .catch(() => {
         if (id === req.current) setSides(null)
       })
-  }, [gg, repoPath, file])
+  }, [repoPath, file])
 
   useEffect(() => {
     gg.mergeToolName(repoPath)
       .then(setToolName)
       .catch(() => setToolName(null))
-  }, [gg, repoPath])
+  }, [repoPath])
 
   const diffOptions = useMemo(
     () =>
@@ -196,9 +196,7 @@ export function ConflictPanel({
                 : 'Unresolved <<<<<<< regions in the file'
             }
           >
-            {resolvedOnDisk
-              ? 'no markers left'
-              : pluralize(sides.markerCount, 'conflict region')}
+            {resolvedOnDisk ? 'no markers left' : pluralize(sides.markerCount, 'conflict region')}
           </span>
         )}
       </div>
@@ -426,8 +424,8 @@ export function ConflictPanel({
             <h3>Changed on one side, deleted on the other</h3>
             <p>
               <code>{sides.oursDeleted ? ours : theirsLabel}</code> deleted this file while{' '}
-              <code>{sides.oursDeleted ? theirsLabel : ours}</code> changed it. Choose above
-              whether to keep the changed file or delete it.
+              <code>{sides.oursDeleted ? theirsLabel : ours}</code> changed it. Choose above whether
+              to keep the changed file or delete it.
             </p>
           </div>
         ) : (
