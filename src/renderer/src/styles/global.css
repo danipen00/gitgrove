@@ -3125,7 +3125,13 @@ button {
   border-bottom: 1px solid var(--border);
 }
 .stage-bar[data-state='staged'] {
-  background: color-mix(in srgb, var(--st-added) 7%, var(--bg-panel));
+  /* This bar is a pierre line annotation, slotted into the diff's shadow tree, so
+     pierre's --diffs-bg-addition (the exact background it paints behind added lines)
+     is in scope here via the flattened tree. Reuse it verbatim so the staged green is
+     identical to the additions this bar toggles, and tracks both themes on its own (the
+     value is a light-dark() resolved against our color-scheme). The fallback mirrors
+     pierre's recipe with our own green, in case the variable is ever out of reach. */
+  background: var(--diffs-bg-addition, color-mix(in lab, var(--bg-panel) 80%, var(--st-added)));
 }
 .stage-bar__check {
   display: inline-flex;
