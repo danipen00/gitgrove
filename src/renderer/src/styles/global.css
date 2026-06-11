@@ -2006,7 +2006,10 @@ button {
 
 /* ── Operation banner (merge/rebase/cherry-pick/revert in progress) ──────── */
 /* Visible but never alarming: an in-progress op is a normal state, not an
-   error. Amber accent while conflicts remain, green once it's ready. */
+   error. Amber accent while conflicts remain, green once it's ready.
+   Layout (shared with .stash-reminder): text and actions share the row —
+   compact buttons keep the text's column wide — and the actions wrap to
+   their own row only when the sidebar gets too narrow for both. */
 .op-banner {
   display: flex;
   flex-wrap: wrap;
@@ -2054,6 +2057,17 @@ button {
   display: flex;
   gap: 6px;
   align-items: center;
+  /* Centered against the text block, not pinned to its first line. */
+  align-self: center;
+}
+/* In-banner buttons sit a notch smaller than their dialog cousins — the
+   actions are secondary to the message beside them, and the saved width is
+   exactly what keeps the text from wrapping into a skinny column. */
+.op-banner__actions .btn-primary--sm,
+.op-banner__actions .btn-ghost--sm,
+.stash-reminder__actions .btn-primary--sm,
+.stash-reminder__actions .btn-ghost--sm {
+  padding: 4px 10px;
 }
 
 /* ── Welcome-back stash reminder (changes left behind while branching) ───── */
@@ -2098,6 +2112,8 @@ button {
   display: flex;
   gap: 0;
   align-items: center;
+  /* Centered against the text block, like .op-banner__actions. */
+  align-self: center;
 }
 .stash-reminder__restore {
   border-top-right-radius: 0;
