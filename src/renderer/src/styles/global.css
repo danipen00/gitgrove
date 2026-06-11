@@ -989,8 +989,10 @@ button {
   border-radius: 4px;
 }
 
-/* Round author avatar (Gravatar or initials fallback). */
+/* Round author avatar: a colored initials disc with the Gravatar image (when
+   one exists) layered on top — see Avatar.tsx. */
 .avatar {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1002,11 +1004,16 @@ button {
   line-height: 1;
   user-select: none;
 }
-.avatar img {
+.avatar__img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  /* Fade in over the initials the first time. Revisited (cached) images mount
+     already-visible, so scrolling back over them in the list doesn't re-fade. */
+  transition: opacity 0.15s ease;
 }
 
 /* Refs in the list stay on a single line (capped to +N) so rows keep an even
