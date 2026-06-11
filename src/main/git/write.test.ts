@@ -18,6 +18,29 @@ import {
   resolveConflict
 } from './write'
 
+// Isolate git from the machine's config so these integration tests are
+// hermetic. Crucially on Windows, Git ships with `core.autocrlf=true` in its
+// system config, which would rewrite checked-out LF files to CRLF and break
+// the exact-content assertions below (e.g. 'theirs\n' arriving as 'theirs\r\n').
+// Point global + system config at an empty file (cross-platform — `/dev/null`
+// isn't valid on Windows). Both the test's `git` helpers and the product code
+// under test inherit this via process.env.
+let configHome: string
+
+beforeAll(() => {
+  configHome = mkdtempSync(join(tmpdir(), 'gitgrove-config-'))
+  const emptyConfig = join(configHome, 'gitconfig')
+  writeFileSync(emptyConfig, '')
+  process.env.GIT_CONFIG_GLOBAL = emptyConfig
+  process.env.GIT_CONFIG_SYSTEM = emptyConfig
+})
+
+afterAll(() => {
+  rmSync(configHome, { recursive: true, force: true })
+  delete process.env.GIT_CONFIG_GLOBAL
+  delete process.env.GIT_CONFIG_SYSTEM
+})
+
 describe('planDiscard', () => {
   test('plain modified/deleted files are reset and restored, never trashed', () => {
     const plan = planDiscard([{ path: 'a.txt', status: 'modified' }], [])
