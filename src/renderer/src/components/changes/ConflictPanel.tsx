@@ -39,8 +39,9 @@ interface Props {
   onError: (e: unknown) => void
 }
 
-/** Which pair of versions the diff shows. */
-type ConflictView = 'incoming' | 'ours' | 'sides'
+/** Which pair of versions the diff shows — same ours/theirs vocabulary as
+ *  the resolve actions. */
+type ConflictView = 'theirs' | 'ours' | 'sides'
 
 export function ConflictPanel({
   repoPath,
@@ -60,7 +61,7 @@ export function ConflictPanel({
   // True while the external merge tool runs — it can take minutes and must
   // not hold the app's `busy` flag (it doesn't touch the write queue either).
   const [toolBusy, setToolBusy] = useState(false)
-  const [view, setView] = usePersistentState<ConflictView>('gg.conflictView', 'incoming')
+  const [view, setView] = usePersistentState<ConflictView>('gg.conflictView', 'theirs')
   // The split button's caret menu (alternative ways to resolve).
   const [menuOpen, setMenuOpen] = useState(false)
   const menuAnchor = useRef<HTMLButtonElement>(null)
@@ -107,18 +108,18 @@ export function ConflictPanel({
 
   // Which comparisons are possible: base-relative views need the common
   // ancestor (a file added on both sides has none) plus that side's content.
-  const canIncoming = sides?.base != null && sides?.theirs != null
+  const canTheirs = sides?.base != null && sides?.theirs != null
   const canOurs = sides?.base != null && sides?.ours != null
   const canSides = sides?.ours != null && sides?.theirs != null
   const viewAvailable: Record<ConflictView, boolean> = {
-    incoming: canIncoming,
+    theirs: canTheirs,
     ours: canOurs,
     sides: canSides
   }
   const activeView: ConflictView | null = viewAvailable[view]
     ? view
-    : canIncoming
-      ? 'incoming'
+    : canTheirs
+      ? 'theirs'
       : canOurs
         ? 'ours'
         : canSides
@@ -129,7 +130,7 @@ export function ConflictPanel({
   const pair =
     sides === null || activeView === null
       ? null
-      : activeView === 'incoming'
+      : activeView === 'theirs'
         ? {
             old: sides.base ?? '',
             new: sides.theirs ?? '',
@@ -259,27 +260,28 @@ export function ConflictPanel({
         </button>
         <span className="conflict-tools__spacer" />
         {sides !== null && activeView !== null && (
+          /* Same ours/theirs vocabulary as the resolve actions. */
           <div className="segmented">
             <button
-              className={activeView === 'incoming' ? 'is-active' : ''}
-              disabled={!canIncoming}
-              data-tip={`What ${theirsLabel} changed since the common base`}
-              onClick={() => setView('incoming')}
+              className={activeView === 'theirs' ? 'is-active' : ''}
+              disabled={!canTheirs}
+              data-tip={`What theirs (${theirsLabel}) changed since the common base`}
+              onClick={() => setView('theirs')}
             >
-              Incoming
+              Theirs
             </button>
             <button
               className={activeView === 'ours' ? 'is-active' : ''}
               disabled={!canOurs}
-              data-tip={`What ${ours} changed since the common base`}
+              data-tip={`What ours (${ours}) changed since the common base`}
               onClick={() => setView('ours')}
             >
-              Yours
+              Ours
             </button>
             <button
               className={activeView === 'sides' ? 'is-active' : ''}
               disabled={!canSides}
-              data-tip="Where the two versions disagree"
+              data-tip="Where ours and theirs disagree"
               onClick={() => setView('sides')}
             >
               Side by side
