@@ -32,6 +32,7 @@ import { appInfo } from './app-info'
 import { setCredentialResponder } from './git/askpass'
 import { rejectStoredCredential } from './git/credential-store'
 import { getGlobalIdentity, getIdentity, setGlobalIdentity, setIdentity } from './git/identity'
+import { enableLfs, getLfsHealth } from './git/lfs'
 import {
   getBranches,
   getCommitDiff,
@@ -55,12 +56,14 @@ import { checkForUpdates, quitAndInstall } from './updater'
 export interface IpcContext {
   getWindow(): BrowserWindow | null
   openRepoAtPath(path: string): Promise<RepoOpenResult>
+  /** The repo requested on launch, returned once then forgotten (see cli.ts). */
+  takeInitialRepoPath(): string | null
   trustRepo(path: string): Promise<RepoOpenResult>
   checkGit(force: boolean): Promise<GitAvailability>
 }
 
 export function registerIpc(ctx: IpcContext): void {
-  const { getWindow, openRepoAtPath, trustRepo, checkGit } = ctx
+  const { getWindow, openRepoAtPath, takeInitialRepoPath, trustRepo, checkGit } = ctx
 
   /**
    * Progress forwarder for a long-running op: pushes phase + percent to the
@@ -86,6 +89,7 @@ export function registerIpc(ctx: IpcContext): void {
   })
 
   ipcMain.handle(IPC.openRepo, (_e, path: string) => openRepoAtPath(path))
+  ipcMain.handle(IPC.initialRepoPath, () => takeInitialRepoPath())
   ipcMain.handle(IPC.trustRepo, (_e, path: string) => trustRepo(path))
 
   ipcMain.handle(IPC.recentRepos, () => getRecentRepos())
@@ -425,6 +429,8 @@ export function registerIpc(ctx: IpcContext): void {
   )
   ipcMain.handle(IPC.submoduleList, (_e, repoPath: string) => gitWrite.listSubmodules(repoPath))
   ipcMain.handle(IPC.submoduleUpdate, (_e, repoPath: string) => gitWrite.updateSubmodules(repoPath))
+  ipcMain.handle(IPC.lfsHealth, (_e, repoPath: string) => getLfsHealth(repoPath))
+  ipcMain.handle(IPC.lfsEnable, (_e, repoPath: string) => enableLfs(repoPath))
   ipcMain.handle(IPC.optimizeRepo, (_e, repoPath: string) => gitWrite.optimizeRepo(repoPath))
   ipcMain.handle(IPC.selectionSize, async (_e, repoPath: string, paths: string[]) => {
     // Working-tree byte sizes of the included files — a fast, honest proxy

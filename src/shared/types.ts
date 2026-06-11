@@ -30,6 +30,8 @@ export interface ChangedFile {
   deletions?: number
   /** True when git considers the blob binary. */
   binary?: boolean
+  /** True when the entry is a submodule (gitlink, mode 160000). */
+  submodule?: boolean
 }
 
 /**
@@ -109,6 +111,22 @@ export interface WorktreeInfo {
   isMain: boolean
   /** True when this worktree is the repo currently open in the app. */
   isCurrent: boolean
+}
+
+/**
+ * Whether Git LFS works in a repository, probed on repo open. A repo whose
+ * `.gitattributes` tracks files with the LFS filter silently breaks on a
+ * machine missing the `git-lfs` binary or the smudge/clean filter config —
+ * files materialize as pointer text, pushes drop content. The renderer shows
+ * a one-click fix banner when `usesLfs` is true but the rest isn't.
+ */
+export interface LfsHealth {
+  /** True when a `.gitattributes` routes patterns through the LFS filter. */
+  usesLfs: boolean
+  /** True when git config resolves the LFS smudge/clean filters (any scope). */
+  filtersConfigured: boolean
+  /** True when the `git-lfs` binary is reachable from git. */
+  binaryAvailable: boolean
 }
 
 export interface SubmoduleInfo {
@@ -279,6 +297,19 @@ export interface DiffPayload {
   binary: boolean
   /** Set when the file is too large / binary and no patch is produced. */
   notice?: string
+  /**
+   * Set when both sides of the diff are Git LFS pointers: the sizes (bytes) of
+   * the real LFS objects, null meaning the file doesn't exist on that side.
+   * The viewer renders an "LFS file" panel instead of raw pointer text.
+   */
+  lfs?: { oldSize: number | null; newSize: number | null }
+  /**
+   * Set when the diff is a submodule (gitlink) change: the commit movement,
+   * null sides meaning added/removed, `dirty` meaning the submodule's own
+   * working tree has uncommitted changes. The viewer renders a dedicated
+   * submodule panel instead of raw "Subproject commit" plumbing text.
+   */
+  submodule?: { oldSha: string | null; newSha: string | null; dirty: boolean }
   language?: string
   /**
    * Full old/new file contents. When both are present the diff viewer renders

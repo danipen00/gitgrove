@@ -21,6 +21,7 @@ import type {
   GitIdentity,
   GlobalIdentity,
   IdentityScope,
+  LfsHealth,
   LogOptions,
   MergeOutcome,
   MergePreview,
@@ -39,6 +40,7 @@ import type {
 export const IPC = {
   pickRepo: 'repo:pick',
   openRepo: 'repo:open',
+  initialRepoPath: 'repo:initial-path',
   trustRepo: 'repo:trust',
   recentRepos: 'repo:recent',
   removeRecent: 'repo:recent:remove',
@@ -115,6 +117,9 @@ export const IPC = {
   worktreeRemove: 'repo:worktree:remove',
   submoduleList: 'repo:submodule:list',
   submoduleUpdate: 'repo:submodule:update',
+  // git lfs
+  lfsHealth: 'repo:lfs:health',
+  lfsEnable: 'repo:lfs:enable',
   optimizeRepo: 'repo:optimize',
   selectionSize: 'repo:selection-size',
   // clone
@@ -176,6 +181,11 @@ export interface GitGroveApi {
   pickRepo(): Promise<RepoOpenResult | null>
   /** Open a known path as a repository. */
   openRepo(path: string): Promise<RepoOpenResult>
+  /**
+   * The repository requested on launch (via `--repo` or GITGROVE_OPEN_REPO), or
+   * null. Consumed once: a later reload returns null so it doesn't reopen.
+   */
+  initialRepoPath(): Promise<string | null>
   /** Trust a folder git flagged as untrusted (persist a safe.directory exception), then open it. */
   trustRepo(path: string): Promise<RepoOpenResult>
   recentRepos(): Promise<RecentRepo[]>
@@ -335,6 +345,11 @@ export interface GitGroveApi {
   worktreeRemove(repoPath: string, path: string, opts?: { force?: boolean }): Promise<void>
   submoduleList(repoPath: string): Promise<SubmoduleInfo[]>
   submoduleUpdate(repoPath: string): Promise<void>
+  // ── Git LFS ──
+  /** Whether LFS works here: tracked patterns, filter config, binary. */
+  lfsHealth(repoPath: string): Promise<LfsHealth>
+  /** One-click LFS setup (`git lfs install`: global filters + repo hooks). */
+  lfsEnable(repoPath: string): Promise<void>
   /** Enable git's large-repo features (fsmonitor, untracked cache, index v4). */
   optimizeRepo(repoPath: string): Promise<void>
   /** Sum of the on-disk sizes (bytes) of the given repo-relative paths. */

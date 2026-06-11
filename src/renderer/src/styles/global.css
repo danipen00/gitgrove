@@ -1433,6 +1433,28 @@ button {
   line-height: 1.5;
   font-size: 12.5px;
 }
+/* Object size line on the Git LFS diff panel — the one number that matters. */
+.center-state .diff-lfs-size {
+  color: var(--fg-muted);
+  font-weight: 600;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+/* Commit movement on the submodule diff panel: old → new short hashes. */
+.center-state .submodule-move {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.center-state .submodule-move code {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--bg-active);
+  color: var(--fg);
+}
 .center-state .icon-ring {
   width: 56px;
   height: 56px;
@@ -2912,6 +2934,14 @@ button {
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
+}
+/* Trailing submodule marker on a changes-list row. */
+.wfl__module {
+  flex: none;
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+  color: var(--fg-faint);
 }
 .wfl__dir {
   color: var(--fg-faint);

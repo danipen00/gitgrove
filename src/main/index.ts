@@ -14,6 +14,7 @@ const devIconPath = join(moduleDir, '../../build/icon.png')
 import { IPC } from '@shared/ipc'
 import type { GitAvailability, RepoOpenResult } from '@shared/types'
 import { REPO_URL } from './app-info'
+import { resolveStartupRepo } from './cli'
 import { gitVersion, locateGit, resetGitLocation } from './git/bin'
 import {
   addSafeDirectory,
@@ -60,6 +61,17 @@ if (process.env.GITGROVE_DEBUG_PORT) {
 }
 
 let mainWindow: BrowserWindow | null = null
+
+// A repository named on the command line (`--repo <path>`) or via
+// GITGROVE_OPEN_REPO, opened once the renderer mounts. Read exactly once (the
+// renderer asks for it on startup) so a later reload returns to the welcome
+// screen instead of reopening it.
+let startupRepoPath = resolveStartupRepo(process.argv, process.env)
+function takeInitialRepoPath(): string | null {
+  const path = startupRepoPath
+  startupRepoPath = null
+  return path
+}
 
 // Path of the repo currently open in the renderer, mirrored here so the
 // application menu's repo actions (Reveal in Finder, Open in Terminal, …) know
@@ -219,7 +231,13 @@ app.whenReady().then(() => {
     if (!img.isEmpty()) app.dock.setIcon(img)
   }
 
-  registerIpc({ getWindow: () => mainWindow, openRepoAtPath, trustRepo, checkGit })
+  registerIpc({
+    getWindow: () => mainWindow,
+    openRepoAtPath,
+    takeInitialRepoPath,
+    trustRepo,
+    checkGit
+  })
   buildMenu(menuContext)
   createWindow()
   initAutoUpdater(() => mainWindow)

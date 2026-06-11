@@ -101,8 +101,15 @@ export function parsePorcelainV2(out: string): ParsedStatus {
 
     if (kind === 'u') {
       // Unmerged: `u XY sub m1 m2 m3 mW h1 h2 h3 path` — path is field 10.
-      const path = rec.split(' ').slice(10).join(' ')
-      files.push({ path, status: 'conflicted', staged: false, workingStatus: 'conflicted' })
+      const fields = rec.split(' ')
+      const path = fields.slice(10).join(' ')
+      files.push({
+        path,
+        status: 'conflicted',
+        staged: false,
+        workingStatus: 'conflicted',
+        submodule: fields[2]?.startsWith('S') || undefined
+      })
       conflictedCount++
       continue
     }
@@ -110,6 +117,10 @@ export function parsePorcelainV2(out: string): ParsedStatus {
     if (kind === '1' || kind === '2') {
       const fields = rec.split(' ')
       const xy = fields[1]
+      // The sub field is `N...` for ordinary files, `S<c><m><u>` for
+      // submodules — the one bit the changes list needs to render a gitlink
+      // entry as a submodule instead of pretending it's a file.
+      const submodule = fields[2]?.startsWith('S') || undefined
       const index = xy[0] === '.' ? ' ' : xy[0]
       const working = xy[1] === '.' ? ' ' : xy[1]
       // Ordinary entries: path starts at field 8. Renames have an extra
@@ -132,7 +143,8 @@ export function parsePorcelainV2(out: string): ParsedStatus {
         staged,
         partiallyStaged: staged && unstaged,
         indexStatus: staged ? mapCode(index) : undefined,
-        workingStatus: unstaged ? mapCode(working) : undefined
+        workingStatus: unstaged ? mapCode(working) : undefined,
+        submodule
       })
     }
   }

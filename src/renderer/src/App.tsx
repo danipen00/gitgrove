@@ -7,6 +7,7 @@ import type {
   CredentialPromptRequest,
   GitAvailability,
   IdentityScope,
+  LfsHealth,
   MergeKind,
   MergeOutcome,
   ProgressOpKind,
@@ -24,6 +25,7 @@ import { CloneDialog } from './components/app/CloneDialog'
 import { CredentialDialog } from './components/app/CredentialDialog'
 import { GitSetup } from './components/app/GitSetup'
 import { IdentityDialog } from './components/app/IdentityDialog'
+import { LfsBanner } from './components/app/LfsBanner'
 import { TrustDialog } from './components/app/TrustDialog'
 import { UpdateBanner } from './components/app/UpdateBanner'
 import { Welcome } from './components/app/Welcome'
@@ -107,6 +109,11 @@ export function App() {
   )
   // Branch a checkout is switching to, for the switcher's progress display.
   const [checkingOut, setCheckingOut] = useState<string | null>(null)
+  // Git LFS health of the open repo (null = not probed / not applicable) and
+  // whether the user waved the banner away for this repo session.
+  const [lfsHealth, setLfsHealth] = useState<LfsHealth | null>(null)
+  const [lfsDismissed, setLfsDismissed] = useState(false)
+  const [lfsEnabling, setLfsEnabling] = useState(false)
   const [modal, setModal] = useState<Modal | null>(null)
   const [modalBusy, setModalBusy] = useState(false)
 
@@ -1194,6 +1201,56 @@ export function App() {
 
   useEffect(() => window.gitgrove.onShowAbout(() => setAboutOpen(true)), [])
 
+  // Open the repository named on the command line / GITGROVE_OPEN_REPO at
+  // launch. Main hands it over once (then forgets it), so this fires only for
+  // the first mount — a reload drops back to the welcome screen as usual.
+  useEffect(() => {
+    window.gitgrove
+      .initialRepoPath()
+      .then((path) => {
+        if (path) openRepoByPath(path)
+      })
+      .catch(() => {})
+  }, [openRepoByPath])
+
+  // Probe LFS health once per repo open — cheap (a handful of config reads)
+  // and silent for the overwhelming majority of repos that don't use LFS.
+  const probeLfsHealth = useCallback((path: string) => {
+    let stale = false
+    window.gitgrove
+      .lfsHealth(path)
+      .then((health) => {
+        if (!stale) setLfsHealth(health)
+      })
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  }, [])
+
+  const lfsRepoPath = repo?.path
+  useEffect(() => {
+    setLfsHealth(null)
+    setLfsDismissed(false)
+    if (!lfsRepoPath) return
+    return probeLfsHealth(lfsRepoPath)
+  }, [lfsRepoPath, probeLfsHealth])
+
+  const enableLfs = useCallback(async () => {
+    const path = repoRef.current?.path
+    if (!path) return
+    setLfsEnabling(true)
+    try {
+      await window.gitgrove.lfsEnable(path)
+      setLfsHealth(await window.gitgrove.lfsHealth(path))
+      setNotice('Git LFS is set up — large files now download and upload correctly.')
+    } catch (e) {
+      fail(e)
+    } finally {
+      setLfsEnabling(false)
+    }
+  }, [fail])
+
   useEffect(() => {
     if (!error) return
     const t = setTimeout(() => setError(null), 6000)
@@ -1262,6 +1319,21 @@ export function App() {
         onInstall={updates.install}
         onDismiss={updates.dismiss}
       />
+      {/* Same bottom-right spot as the update banner; updates win when both
+          are pending (they're transient, the LFS state isn't going anywhere). */}
+      {!updates.bannerUpdate &&
+        repoPath &&
+        lfsHealth?.usesLfs &&
+        (!lfsHealth.filtersConfigured || !lfsHealth.binaryAvailable) &&
+        !lfsDismissed && (
+          <LfsBanner
+            health={lfsHealth}
+            enabling={lfsEnabling}
+            onEnable={enableLfs}
+            onRecheck={() => probeLfsHealth(repoPath)}
+            onDismiss={() => setLfsDismissed(true)}
+          />
+        )}
       {trustPath && (
         <TrustDialog
           path={trustPath}

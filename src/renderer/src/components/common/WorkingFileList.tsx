@@ -131,6 +131,11 @@ const Row = memo(function Row({
         {dir && <span className="wfl__dir">{highlightMatch(dir, highlight)}</span>}
         <span className="wfl__name">{highlightMatch(name, highlight)}</span>
       </span>
+      {file.submodule && (
+        <span className="wfl__module" data-tip="Submodule">
+          <Icon.Module size={13} />
+        </span>
+      )}
     </div>
   )
 })

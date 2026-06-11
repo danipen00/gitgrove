@@ -4,7 +4,7 @@ import { FileDiff, MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
 import type { DiffPayload } from '@shared/types'
 import { memo, useMemo, useState } from 'react'
 import type { FileSelection } from '@/lib/commit-selection'
-import { splitPath, statusLabel, statusLetter } from '@/lib/format'
+import { formatBytes, splitPath, statusLabel, statusLetter } from '@/lib/format'
 import { Icon } from '@/lib/icons'
 import { buildBlockPatch, listChangeBlocks } from '@/lib/staging'
 import type { ResolvedTheme } from '@/lib/theme'
@@ -56,6 +56,41 @@ interface Props {
 /** Annotation metadata: which change block a selection bar belongs to. */
 interface BlockRef {
   blockIndex: number
+}
+
+/**
+ * Human description of an LFS object's size across the diff: a single size,
+ * or "old → new" when the change replaced the object. Sizes are of the real
+ * LFS content, not the pointer file.
+ */
+function lfsSizeLabel(lfs: NonNullable<DiffPayload['lfs']>): string {
+  const { oldSize, newSize } = lfs
+  if (oldSize !== null && newSize !== null && oldSize !== newSize) {
+    return `${formatBytes(oldSize)} → ${formatBytes(newSize)}`
+  }
+  const size = newSize ?? oldSize
+  return size !== null ? formatBytes(size) : ''
+}
+
+/**
+ * Plain-language description of a submodule (gitlink) change. A gitlink can
+ * move to a new commit, be added or removed, or simply be dirty: its own
+ * working tree has uncommitted changes while its HEAD stays put, which git
+ * reports as the same sha on both sides with a `-dirty` suffix.
+ */
+function submoduleSummary(sub: NonNullable<DiffPayload['submodule']>): string {
+  const { oldSha, newSha, dirty } = sub
+  const moved = oldSha !== null && newSha !== null && oldSha !== newSha
+  const dirtyNote = ' open it as a repository to review them.'
+  if (moved) {
+    return dirty
+      ? `The submodule points at a different commit. It also has uncommitted changes of its own —${dirtyNote}`
+      : 'The submodule points at a different commit.'
+  }
+  if (oldSha === null) return 'The submodule was added at this commit.'
+  if (newSha === null) return 'The submodule was removed.'
+  // Both sides present and equal: only the submodule's own working tree moved.
+  return `The submodule has uncommitted changes —${dirtyNote}`
 }
 
 function countChanges(patch: string): { additions: number; deletions: number } {
@@ -294,11 +329,40 @@ function DiffViewerImpl({
             <div className="icon-ring">
               <Icon.Diff size={22} />
             </div>
-            <h3>{statusLabel(diff.status)}</h3>
+            <h3>
+              {diff.lfs
+                ? `Git LFS file — ${statusLabel(diff.status).toLowerCase()}`
+                : statusLabel(diff.status)}
+            </h3>
+            {diff.lfs && lfsSizeLabel(diff.lfs) && (
+              <p className="diff-lfs-size">{lfsSizeLabel(diff.lfs)}</p>
+            )}
             <p>{diff.notice}</p>
           </div>
         )}
-        {!spin && diff && !diff.notice && isEmptyFile && (
+        {!spin && diff && !diff.notice && diff.submodule && (
+          <div className="center-state">
+            <div className="icon-ring">
+              <Icon.Module size={22} />
+            </div>
+            <h3>Submodule {statusLabel(diff.status).toLowerCase()}</h3>
+            <p className="submodule-move">
+              {diff.submodule.oldSha !== null &&
+              diff.submodule.newSha !== null &&
+              diff.submodule.oldSha !== diff.submodule.newSha ? (
+                <>
+                  <code>{diff.submodule.oldSha.slice(0, 7)}</code>
+                  <span aria-hidden>→</span>
+                  <code>{diff.submodule.newSha.slice(0, 7)}</code>
+                </>
+              ) : (
+                <code>{(diff.submodule.newSha ?? diff.submodule.oldSha)?.slice(0, 7)}</code>
+              )}
+            </p>
+            <p>{submoduleSummary(diff.submodule)}</p>
+          </div>
+        )}
+        {!spin && diff && !diff.notice && !diff.submodule && isEmptyFile && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Diff size={22} />
@@ -349,7 +413,7 @@ function DiffViewerImpl({
               style={{ minHeight: '100%' }}
             />
           )}
-        {!spin && diff && !diff.notice && !isEmptyFile && !diff.patch && (
+        {!spin && diff && !diff.notice && !diff.submodule && !isEmptyFile && !diff.patch && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Check size={22} />
