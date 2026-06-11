@@ -118,26 +118,46 @@ export function StashPanel({ repoPath, stashes, busy, theme, runOp }: Props) {
                   <span className="stash-item__date">{s.relativeDate}</span>
                 </button>
                 <div className="stash-item__actions">
-                  <button
-                    className="section-head__action"
-                    data-tip="Apply and keep"
-                    onClick={() => {
-                      setOpen(false)
-                      runOp(() => gg.stashApply(repoPath, s.index, false))
-                    }}
-                  >
-                    Apply
-                  </button>
-                  <button
-                    className="section-head__action"
-                    data-tip="Apply and delete"
-                    onClick={() => {
-                      setOpen(false)
-                      runOp(() => gg.stashApply(repoPath, s.index, true))
-                    }}
-                  >
-                    Pop
-                  </button>
+                  {/* Auto-stashes are GitGrove's own bookkeeping ("changes
+                      left on …"): applying while keeping the entry would
+                      leave a stale welcome-back reminder promising changes
+                      that are already back — so the only offer is Restore
+                      (apply + clear), mirroring the reminder banner. */}
+                  {s.auto ? (
+                    <button
+                      className="section-head__action"
+                      data-tip="Apply and clear the stash"
+                      onClick={() => {
+                        setOpen(false)
+                        runOp(() => gg.stashApply(repoPath, s.index, true))
+                      }}
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className="section-head__action"
+                        data-tip="Apply and keep"
+                        onClick={() => {
+                          setOpen(false)
+                          runOp(() => gg.stashApply(repoPath, s.index, false))
+                        }}
+                      >
+                        Apply
+                      </button>
+                      <button
+                        className="section-head__action"
+                        data-tip="Apply and delete"
+                        onClick={() => {
+                          setOpen(false)
+                          runOp(() => gg.stashApply(repoPath, s.index, true))
+                        }}
+                      >
+                        Pop
+                      </button>
+                    </>
+                  )}
                   <button
                     className="section-head__action is-danger"
                     data-tip="Delete stash"

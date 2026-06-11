@@ -113,12 +113,27 @@ export function StashReviewDialog({ repoPath, stash, theme, onApply, onDrop, onC
                 : ''}
             </span>
           </div>
-          <button className="btn-ghost btn-ghost--sm" onClick={() => onApply(false)}>
-            Apply
-          </button>
-          <button className="btn-ghost btn-ghost--sm" onClick={() => onApply(true)}>
-            Pop
-          </button>
+          {/* Auto-stashes (changes left behind while switching) only restore:
+              applying while keeping the entry would leave a stale welcome-back
+              reminder promising changes that are already back. */}
+          {stash.auto ? (
+            <button
+              className="btn-ghost btn-ghost--sm"
+              data-tip="Apply and clear the stash"
+              onClick={() => onApply(true)}
+            >
+              Restore
+            </button>
+          ) : (
+            <>
+              <button className="btn-ghost btn-ghost--sm" onClick={() => onApply(false)}>
+                Apply
+              </button>
+              <button className="btn-ghost btn-ghost--sm" onClick={() => onApply(true)}>
+                Pop
+              </button>
+            </>
+          )}
           <button className="btn-ghost btn-ghost--sm is-danger-text" onClick={onDrop}>
             Delete
           </button>

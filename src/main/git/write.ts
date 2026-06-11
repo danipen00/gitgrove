@@ -688,7 +688,22 @@ export async function stashSave(
 }
 
 export async function stashApply(repoPath: string, index: number, pop: boolean): Promise<void> {
-  await run(repoPath, ['stash', pop ? 'pop' : 'apply', `stash@{${index}}`])
+  try {
+    // LC_ALL=C so the clash detection below is locale-proof.
+    await run(repoPath, ['stash', pop ? 'pop' : 'apply', `stash@{${index}}`], { env: ENGLISH })
+  } catch (e) {
+    // Git's "would be overwritten by merge" reads like a merge went wrong;
+    // what actually happened is the working tree already touches the same
+    // files. Say that, and what to do about it. The stash is untouched.
+    const message = e instanceof Error ? e.message : String(e)
+    if (/would be overwritten by merge/i.test(message)) {
+      throw new Error(
+        'Some of the stashed files also have new changes in your working tree. ' +
+          'Commit, stash or discard those changes first — then apply this stash.'
+      )
+    }
+    throw e
+  }
 }
 
 export async function stashDrop(repoPath: string, index: number): Promise<void> {

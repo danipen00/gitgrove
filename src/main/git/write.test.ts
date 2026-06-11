@@ -19,7 +19,9 @@ import {
   parseWorktrees,
   planDiscard,
   rebase,
-  resolveConflict
+  resolveConflict,
+  stashApply,
+  stashSave
 } from './write'
 
 // Isolate git from the machine's config so these integration tests are
@@ -681,5 +683,21 @@ describe('checkoutBranch with pending changes', () => {
     expect(git(['branch', '--show-current'])).toBe('main')
     expect(readFileSync(join(repo, 'f.txt'), 'utf8')).toBe('line a (wip)\nline b\nline c\n')
     expect(await listStashes(repo)).toHaveLength(0)
+  })
+
+  test('applying a stash over clashing changes explains the fix, keeps it', async () => {
+    // Stash one edit, make another edit to the same file, then apply: git
+    // refuses with "would be overwritten by merge" — the user must get the
+    // translated explanation, never the raw git-speak.
+    writeFileSync(join(repo, 'f.txt'), 'line a (stashed)\nline b\nline c\n')
+    await stashSave(repo, {})
+    writeFileSync(join(repo, 'f.txt'), 'line a (newer)\nline b\nline c\n')
+    const error = await stashApply(repo, 0, true).then(
+      () => null,
+      (e: Error) => e
+    )
+    expect(error?.message).toContain('working tree')
+    expect(await listStashes(repo)).toHaveLength(1)
+    expect(readFileSync(join(repo, 'f.txt'), 'utf8')).toBe('line a (newer)\nline b\nline c\n')
   })
 })
