@@ -72,6 +72,27 @@ function lfsSizeLabel(lfs: NonNullable<DiffPayload['lfs']>): string {
   return size !== null ? formatBytes(size) : ''
 }
 
+/**
+ * Plain-language description of a submodule (gitlink) change. A gitlink can
+ * move to a new commit, be added or removed, or simply be dirty: its own
+ * working tree has uncommitted changes while its HEAD stays put, which git
+ * reports as the same sha on both sides with a `-dirty` suffix.
+ */
+function submoduleSummary(sub: NonNullable<DiffPayload['submodule']>): string {
+  const { oldSha, newSha, dirty } = sub
+  const moved = oldSha !== null && newSha !== null && oldSha !== newSha
+  const dirtyNote = ' open it as a repository to review them.'
+  if (moved) {
+    return dirty
+      ? `The submodule points at a different commit. It also has uncommitted changes of its own —${dirtyNote}`
+      : 'The submodule points at a different commit.'
+  }
+  if (oldSha === null) return 'The submodule was added at this commit.'
+  if (newSha === null) return 'The submodule was removed.'
+  // Both sides present and equal: only the submodule's own working tree moved.
+  return `The submodule has uncommitted changes —${dirtyNote}`
+}
+
 function countChanges(patch: string): { additions: number; deletions: number } {
   let additions = 0
   let deletions = 0
@@ -326,20 +347,19 @@ function DiffViewerImpl({
             </div>
             <h3>Submodule {statusLabel(diff.status).toLowerCase()}</h3>
             <p className="submodule-move">
-              {diff.submodule.oldSha && <code>{diff.submodule.oldSha.slice(0, 7)}</code>}
-              {diff.submodule.oldSha && diff.submodule.newSha && <span aria-hidden>→</span>}
-              {diff.submodule.newSha && <code>{diff.submodule.newSha.slice(0, 7)}</code>}
+              {diff.submodule.oldSha !== null &&
+              diff.submodule.newSha !== null &&
+              diff.submodule.oldSha !== diff.submodule.newSha ? (
+                <>
+                  <code>{diff.submodule.oldSha.slice(0, 7)}</code>
+                  <span aria-hidden>→</span>
+                  <code>{diff.submodule.newSha.slice(0, 7)}</code>
+                </>
+              ) : (
+                <code>{(diff.submodule.newSha ?? diff.submodule.oldSha)?.slice(0, 7)}</code>
+              )}
             </p>
-            <p>
-              {diff.submodule.oldSha && diff.submodule.newSha
-                ? 'The submodule points at a different commit.'
-                : diff.submodule.newSha
-                  ? 'The submodule was added at this commit.'
-                  : 'The submodule was removed.'}
-              {diff.submodule.dirty &&
-                ' It also has uncommitted changes of its own — open it as a' +
-                  ' repository to review them.'}
-            </p>
+            <p>{submoduleSummary(diff.submodule)}</p>
           </div>
         )}
         {!spin && diff && !diff.notice && !diff.submodule && isEmptyFile && (

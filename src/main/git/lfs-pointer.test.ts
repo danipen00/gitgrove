@@ -9,10 +9,7 @@ const pointer = (oid: string, size: number) =>
 
 /** A unified patch whose old/new sides are the given line arrays. */
 function patchOf(oldLines: string[], newLines: string[]): string {
-  const body = [
-    ...oldLines.map((l) => `-${l}`),
-    ...newLines.map((l) => `+${l}`)
-  ]
+  const body = [...oldLines.map((l) => `-${l}`), ...newLines.map((l) => `+${l}`)]
   return [
     'diff --git a/model.bin b/model.bin',
     '--- a/model.bin',
@@ -52,9 +49,7 @@ describe('parseLfsPointer', () => {
     expect(parseLfsPointer(`# docs\nversion https://git-lfs.github.com/spec/v1\n`)).toBeNull()
     // A free-text line after the version breaks the key-value shape.
     expect(
-      parseLfsPointer(
-        'version https://git-lfs.github.com/spec/v1\nthis is prose, not a pointer\n'
-      )
+      parseLfsPointer('version https://git-lfs.github.com/spec/v1\nthis is prose, not a pointer\n')
     ).toBeNull()
   })
 

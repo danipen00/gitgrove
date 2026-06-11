@@ -27,6 +27,12 @@ describe('describeSubmodulePatch', () => {
     expect(describeSubmodulePatch(patch)).toEqual({ oldSha: OLD, newSha: NEW, dirty: true })
   })
 
+  test('dirty-only change keeps the same sha on both sides', () => {
+    // HEAD hasn't moved; only the submodule's own working tree is dirty.
+    const patch = gitlinkPatch([`-Subproject commit ${OLD}`, `+Subproject commit ${OLD}-dirty`])
+    expect(describeSubmodulePatch(patch)).toEqual({ oldSha: OLD, newSha: OLD, dirty: true })
+  })
+
   test('added submodule: old side absent', () => {
     const patch = gitlinkPatch([`+Subproject commit ${NEW}`])
     expect(describeSubmodulePatch(patch)).toEqual({ oldSha: null, newSha: NEW, dirty: false })
