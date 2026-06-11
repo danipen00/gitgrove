@@ -9,10 +9,13 @@ import type {
   CloneProgress,
   Commit,
   CommitSelection,
+  CredentialPromptRequest,
   DiffArea,
   DiffPayload,
   DiscardItem,
   GitAvailability,
+  GitIdentity,
+  IdentityScope,
   LogOptions,
   OpProgress,
   RebaseTodoItem,
@@ -52,6 +55,11 @@ export const IPC = {
   fetch: 'repo:fetch',
   pull: 'repo:pull',
   push: 'repo:push',
+  // commit identity (user.name / user.email)
+  getIdentity: 'repo:identity:get',
+  setIdentity: 'repo:identity:set',
+  // credential prompting (askpass): renderer's answer to a credential:prompt
+  credentialRespond: 'credential:respond',
   // branches
   createBranch: 'repo:branch:create',
   deleteBranch: 'repo:branch:delete',
@@ -112,6 +120,10 @@ export const IPC = {
   /** Generic application-menu command (payload: a MenuCommand string). */
   menuCommand: 'menu:command',
   cloneProgress: 'repo:clone-progress',
+  /** A network op needs a credential — show the dialog (CredentialPromptRequest). */
+  credentialPrompt: 'credential:prompt',
+  /** A credential prompt expired unanswered — close its dialog (requestId). */
+  credentialDismiss: 'credential:dismiss',
   /** Determinate progress of a running checkout/fetch/pull/push (OpProgress). */
   opProgress: 'repo:op-progress',
   updateStatus: 'update:status',
@@ -184,12 +196,24 @@ export interface GitGroveApi {
   commit(repoPath: string, message: string, selection: CommitSelection): Promise<void>
   lastCommitMessage(repoPath: string): Promise<string>
   // ── Sync ──
-  fetch(repoPath: string, remote?: string): Promise<void>
+  /** Fetch from a remote. `quiet` (background timer) never prompts for credentials. */
+  fetch(repoPath: string, remote?: string, opts?: { quiet?: boolean }): Promise<void>
   pull(repoPath: string, opts?: { rebase?: boolean }): Promise<void>
   push(
     repoPath: string,
     opts?: { setUpstream?: { remote: string; branch: string }; forceWithLease?: boolean }
   ): Promise<void>
+  // ── Commit identity & credentials ──
+  /** The commit identity (user.name/user.email) git would use in this repo. */
+  getIdentity(repoPath: string): Promise<GitIdentity>
+  /** Persist a commit identity to the global or this repo's git config. */
+  setIdentity(repoPath: string, name: string, email: string, scope: IdentityScope): Promise<void>
+  /**
+   * Answer a credential prompt pushed via onCredentialPrompt. `null` cancels:
+   * the askpass helper exits non-zero and the waiting git op aborts cleanly.
+   * The value goes straight to the waiting git process — never stored.
+   */
+  respondCredential(requestId: string, value: string | null): Promise<void>
   // ── Branches ──
   createBranch(
     repoPath: string,
@@ -294,6 +318,10 @@ export interface GitGroveApi {
   onMenuCommand(handler: (command: MenuCommand) => void): () => void
   /** Subscribe to clone progress pushes while a clone runs. */
   onCloneProgress(handler: (progress: CloneProgress) => void): () => void
+  /** Subscribe to credential prompts from running network operations. */
+  onCredentialPrompt(handler: (request: CredentialPromptRequest) => void): () => void
+  /** Subscribe to credential prompt dismissals (prompt expired unanswered). */
+  onCredentialDismiss(handler: (requestId: string) => void): () => void
   /** Subscribe to determinate progress of running checkout/fetch/pull/push ops. */
   onOpProgress(handler: (progress: OpProgress) => void): () => void
   /** Subscribe to auto-update lifecycle pushes. Returns an unsubscribe fn. */

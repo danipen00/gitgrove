@@ -9,9 +9,11 @@ import { IPC } from '@shared/ipc'
 import type {
   ChangedFile,
   CommitSelection,
+  CredentialPromptRequest,
   DiffArea,
   DiscardItem,
   GitAvailability,
+  IdentityScope,
   LogOptions,
   OpProgress,
   ProgressOpKind,
@@ -22,6 +24,8 @@ import type {
 } from '@shared/types'
 import { type BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from 'electron'
 import { appInfo } from './app-info'
+import { setCredentialResponder } from './git/askpass'
+import { getIdentity, setIdentity } from './git/identity'
 import {
   getBranches,
   getCommitDiff,
@@ -145,8 +149,8 @@ export function registerIpc(ctx: IpcContext): void {
   )
 
   // ── Sync ──
-  ipcMain.handle(IPC.fetch, (_e, repoPath: string, remote?: string) =>
-    gitSync.fetch(repoPath, remote, opProgressTo(repoPath, 'fetch'))
+  ipcMain.handle(IPC.fetch, (_e, repoPath: string, remote?: string, opts?: { quiet?: boolean }) =>
+    gitSync.fetch(repoPath, remote, opProgressTo(repoPath, 'fetch'), opts)
   )
   ipcMain.handle(IPC.pull, (_e, repoPath: string, opts?: { rebase?: boolean }) =>
     gitSync.pull(repoPath, opts, opProgressTo(repoPath, 'pull'))
@@ -159,6 +163,46 @@ export function registerIpc(ctx: IpcContext): void {
       opts?: { setUpstream?: { remote: string; branch: string }; forceWithLease?: boolean }
     ) => gitSync.push(repoPath, opts, opProgressTo(repoPath, 'push'))
   )
+
+  // ── Commit identity & credentials ──
+  ipcMain.handle(IPC.getIdentity, (_e, repoPath: string) => getIdentity(repoPath))
+  ipcMain.handle(
+    IPC.setIdentity,
+    (_e, repoPath: string, name: string, email: string, scope: IdentityScope) =>
+      setIdentity(repoPath, name, email, scope)
+  )
+
+  // Askpass bridge: when a network op hits a credential prompt, the askpass
+  // server (git/askpass.ts) calls this responder; we forward the classified
+  // prompt to the renderer's CredentialDialog and wait for its answer.
+  // Secrets pass through these resolvers in memory only — never logged,
+  // never persisted, and the map entry is dropped the moment it settles.
+  let credentialSeq = 0
+  const pendingCredentials = new Map<string, (value: string | null) => void>()
+  setCredentialResponder((prompt, signal) => {
+    const window = getWindow()
+    // No window to ask — cancel so the operation fails fast instead of hanging.
+    if (!window) return Promise.resolve(null)
+    const requestId = `credential-${++credentialSeq}`
+    return new Promise<string | null>((resolve) => {
+      const settle = (value: string | null) => {
+        if (pendingCredentials.delete(requestId)) resolve(value)
+      }
+      pendingCredentials.set(requestId, settle)
+      // The server aborts unanswered prompts (10 min): cancel and close the
+      // renderer's dialog too, so it can't answer into the void after the
+      // git operation has already failed.
+      signal.addEventListener('abort', () => {
+        settle(null)
+        getWindow()?.webContents.send(IPC.credentialDismiss, requestId)
+      })
+      const request: CredentialPromptRequest = { requestId, ...prompt }
+      window.webContents.send(IPC.credentialPrompt, request)
+    })
+  })
+  ipcMain.handle(IPC.credentialRespond, (_e, requestId: string, value: string | null) => {
+    pendingCredentials.get(requestId)?.(value)
+  })
 
   // ── Branches ──
   ipcMain.handle(

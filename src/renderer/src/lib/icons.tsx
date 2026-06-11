@@ -279,6 +279,12 @@ export const Icon = {
       <path d="M10 11v5M14 11v5" />
     </Svg>
   ),
+  Lock: (p: IconProps) => (
+    <Svg {...p}>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </Svg>
+  ),
   EyeOff: (p: IconProps) => (
     <Svg {...p}>
       <path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68" />

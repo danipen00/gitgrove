@@ -4,7 +4,9 @@ import type {
   BranchInfo,
   ChangedFile,
   Commit,
+  CredentialPromptRequest,
   GitAvailability,
+  IdentityScope,
   ProgressOpKind,
   RepoOpenResult,
   RepoSnapshot,
@@ -17,7 +19,9 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from 're
 import { AboutDialog } from './components/app/AboutDialog'
 import { AppModals, type Modal } from './components/app/AppModals'
 import { CloneDialog } from './components/app/CloneDialog'
+import { CredentialDialog } from './components/app/CredentialDialog'
 import { GitSetup } from './components/app/GitSetup'
+import { IdentityDialog } from './components/app/IdentityDialog'
 import { TrustDialog } from './components/app/TrustDialog'
 import { UpdateBanner } from './components/app/UpdateBanner'
 import { Welcome } from './components/app/Welcome'
@@ -96,6 +100,11 @@ export function App() {
   const [checkingOut, setCheckingOut] = useState<string | null>(null)
   const [modal, setModal] = useState<Modal | null>(null)
   const [modalBusy, setModalBusy] = useState(false)
+
+  // Credential prompts pushed from main while a network op waits on auth.
+  // A queue because git asks in steps (username, then password) and parallel
+  // ops can overlap — the dialog shows them one at a time, oldest first.
+  const [credentialPrompts, setCredentialPrompts] = useState<CredentialPromptRequest[]>([])
 
   const [commits, setCommits] = useState<Commit[]>([])
   const [commitsLoading, setCommitsLoading] = useState(false)
@@ -528,6 +537,10 @@ export function App() {
       setSync(null)
       setStashes([])
       setModal(null)
+      // A repo switch abandons any commit waiting on the identity dialog; its
+      // composer is still awaiting the promise, so settle it.
+      pendingIdentityCommit.current?.resolve(false)
+      pendingIdentityCommit.current = null
       setTab('changes')
       // Branch enumeration is the slowest part on big repos; let it fill in the
       // combo on its own so it never gates the first diff appearing.
@@ -625,10 +638,39 @@ export function App() {
   )
 
   // ── Commit, hunks, sync, branch & history actions ──────────────────────────
+  // Repos whose commit identity is known to be configured — checked once per
+  // repo per session, so the config probe doesn't repeat on every commit.
+  const identityOkRef = useRef(new Set<string>())
+  // A commit interrupted by the identity dialog: its inputs plus the resolver
+  // of the promise doCommit handed to the composer (which is still awaiting).
+  const pendingIdentityCommit = useRef<{
+    message: string
+    amend: boolean
+    resolve: (ok: boolean) => void
+  } | null>(null)
+
   const doCommit = useCallback(
     async (message: string, amend: boolean) => {
       const repoPath = repoRef.current?.path
       if (!repoPath) return false
+      // On a fresh machine git rejects the first commit with "Please tell me
+      // who you are" — probe user.name/user.email up front and collect them
+      // with one calm dialog instead of surfacing git's error. The commit
+      // resumes (via doCommitRef) once the dialog saves the identity.
+      if (!identityOkRef.current.has(repoPath)) {
+        try {
+          const identity = await window.gitgrove.getIdentity(repoPath)
+          if (identity.source === 'none') {
+            return new Promise<boolean>((resolve) => {
+              pendingIdentityCommit.current = { message, amend, resolve }
+              setModal({ kind: 'identity' })
+            })
+          }
+          identityOkRef.current.add(repoPath)
+        } catch {
+          // Probe failed — let the commit itself surface the real error.
+        }
+      }
       const sel = buildCommitSelection(changesRef.current, selections)
       const ok = await runOp(() => window.gitgrove.commit(repoPath, message, { amend, ...sel }))
       if (ok) setSelections(new Map())
@@ -636,6 +678,42 @@ export function App() {
     },
     [runOp, selections]
   )
+  const doCommitRef = useRef(doCommit)
+  doCommitRef.current = doCommit
+
+  /** Identity dialog confirmed: save it, then finish the interrupted commit. */
+  const completeIdentitySetup = useCallback(
+    async (name: string, email: string, scope: IdentityScope) => {
+      const pending = pendingIdentityCommit.current
+      pendingIdentityCommit.current = null
+      const repoPath = repoRef.current?.path
+      if (!pending || !repoPath) {
+        setModal(null)
+        return
+      }
+      setModalBusy(true)
+      try {
+        await window.gitgrove.setIdentity(repoPath, name, email, scope)
+        identityOkRef.current.add(repoPath)
+      } catch (e) {
+        setModalBusy(false)
+        setModal(null)
+        pending.resolve(false)
+        fail(e)
+        return
+      }
+      setModalBusy(false)
+      setModal(null)
+      pending.resolve(await doCommitRef.current(pending.message, pending.amend))
+    },
+    [fail]
+  )
+
+  const cancelIdentitySetup = useCallback(() => {
+    pendingIdentityCommit.current?.resolve(false)
+    pendingIdentityCommit.current = null
+    setModal(null)
+  }, [])
 
   /** Stash the checked files. When everything is checked, plain `git stash
    *  push -u` runs with no pathspec; otherwise the checked paths stream to
@@ -952,6 +1030,26 @@ export function App() {
     []
   )
 
+  // Credential prompts: queue arrivals, drop expirations, answer via IPC.
+  useEffect(
+    () =>
+      window.gitgrove.onCredentialPrompt((request) =>
+        setCredentialPrompts((prev) => [...prev, request])
+      ),
+    []
+  )
+  useEffect(
+    () =>
+      window.gitgrove.onCredentialDismiss((requestId) =>
+        setCredentialPrompts((prev) => prev.filter((p) => p.requestId !== requestId))
+      ),
+    []
+  )
+  const respondCredential = useCallback((requestId: string, value: string | null) => {
+    setCredentialPrompts((prev) => prev.filter((p) => p.requestId !== requestId))
+    window.gitgrove.respondCredential(requestId, value).catch(() => {})
+  }, [])
+
   useEffect(() => {
     return window.gitgrove.onRepoChanged((changedPath) => {
       // Skip watcher-driven refreshes while one of our own ops runs — runOp
@@ -983,8 +1081,9 @@ export function App() {
     const t = setInterval(() => {
       const repoPath = repoRef.current?.path
       if (!repoPath || busyRef.current || syncRef.current?.remotes.length === 0) return
+      // `quiet`: a background fetch must never pop the credential dialog.
       window.gitgrove
-        .fetch(repoPath)
+        .fetch(repoPath, undefined, { quiet: true })
         .then(() => refreshRef.current())
         .catch(() => {})
     }, AUTO_FETCH_INTERVAL)
@@ -1028,7 +1127,7 @@ export function App() {
 
   // ── App-level modals ───────────────────────────────────────────────────────
   const repoPath = repo?.path
-  const modals = repoPath && modal && modal.kind !== 'clone' && (
+  const modals = repoPath && modal && modal.kind !== 'clone' && modal.kind !== 'identity' && (
     <AppModals
       modal={modal}
       repoPath={repoPath}
@@ -1074,6 +1173,21 @@ export function App() {
             openRepoByPath(path)
           }}
           onCancel={() => setModal(null)}
+        />
+      )}
+      {modal?.kind === 'identity' && (
+        <IdentityDialog
+          busy={modalBusy}
+          onSubmit={completeIdentitySetup}
+          onCancel={cancelIdentitySetup}
+        />
+      )}
+      {credentialPrompts.length > 0 && (
+        <CredentialDialog
+          // Remount per request so a fresh prompt never inherits typed input.
+          key={credentialPrompts[0].requestId}
+          request={credentialPrompts[0]}
+          onRespond={respondCredential}
         />
       )}
       {modals}
