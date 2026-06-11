@@ -274,6 +274,45 @@ export interface AppError {
   detail?: string
 }
 
+/** What kind of secret a git/ssh credential prompt is asking for. */
+export type CredentialKind = 'username' | 'password' | 'passphrase'
+
+/**
+ * A git/ssh credential prompt, parsed from the raw prompt string (see
+ * main/git/askpass-prompt.ts). The raw text never crosses to the renderer —
+ * only this classification, so the dialog can show purposeful copy.
+ */
+export interface CredentialPrompt {
+  kind: CredentialKind
+  /** Host being authenticated against (https prompts). */
+  host?: string
+  /** Path of the SSH key being unlocked (passphrase prompts). */
+  keyPath?: string
+}
+
+/**
+ * A credential prompt pushed to the renderer while a network operation waits.
+ * The renderer answers with `respondCredential(requestId, value | null)`;
+ * null cancels, which makes the waiting git process abort cleanly.
+ */
+export interface CredentialPromptRequest extends CredentialPrompt {
+  requestId: string
+}
+
+/**
+ * The commit identity resolved from git config, with where it came from.
+ * `source: 'none'` means name or email is missing — a commit would fail with
+ * git's "Please tell me who you are" error, so the UI collects them first.
+ */
+export interface GitIdentity {
+  name: string
+  email: string
+  source: 'local' | 'global' | 'none'
+}
+
+/** Where setIdentity writes: the user's global config or just this repo's. */
+export type IdentityScope = 'global' | 'local'
+
 /**
  * Whether a usable `git` executable was found, used to gate the UI: when git is
  * missing the renderer shows a guided setup screen instead of letting the user
