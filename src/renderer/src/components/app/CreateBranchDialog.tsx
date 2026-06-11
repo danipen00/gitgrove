@@ -16,6 +16,7 @@ import type { BranchChangesAction } from '@shared/types'
 import { type FormEvent, useId, useState } from 'react'
 import { DialogShell, validateRefName } from '@/components/common/Dialog'
 import { pluralize } from '@/lib/format'
+import { PendingChangesChoice } from './PendingChangesChoice'
 
 /** What the dialog hands back on submit. */
 export interface CreateBranchRequest {
@@ -71,8 +72,6 @@ export function CreateBranchDialog({
   // Moving changes needs a branch to leave them on (not detached) and a
   // working tree no operation owns; without a checkout nothing moves at all.
   const showChanges = dirtyCount > 0 && checkout && !detached && !opInFlight
-
-  const newBranchLabel = name.trim() || 'the new branch'
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -153,43 +152,16 @@ export function CreateBranchDialog({
         )}
 
         {showChanges && (
-          <div className="option-cards" role="radiogroup" aria-label="Your uncommitted changes">
-            <p className="option-cards__label">
-              Your {pluralize(dirtyCount, 'uncommitted change')}
-            </p>
-            <label className={`option-card${changes === 'bring' ? ' is-active' : ''}`}>
-              <input
-                type="radio"
-                name="branch-changes"
-                checked={changes === 'bring'}
-                disabled={busy}
-                onChange={() => setChanges('bring')}
-              />
-              <span className="option-card__text">
-                <span className="option-card__title">Bring them along</span>
-                <span className="option-card__sub">
-                  Your work in progress follows you to <code>{newBranchLabel}</code>.
-                </span>
-              </span>
-            </label>
-            <label className={`option-card${changes === 'leave' ? ' is-active' : ''}`}>
-              <input
-                type="radio"
-                name="branch-changes"
-                checked={changes === 'leave'}
-                disabled={busy}
-                onChange={() => setChanges('leave')}
-              />
-              <span className="option-card__text">
-                <span className="option-card__title">
-                  Leave them on <code>{current}</code>
-                </span>
-                <span className="option-card__sub">
-                  Stashed away safely — they'll be waiting when you come back.
-                </span>
-              </span>
-            </label>
-          </div>
+          <>
+            <p className="option-cards__label">Your {pluralize(dirtyCount, 'pending change')}</p>
+            <PendingChangesChoice
+              current={current}
+              destination={name.trim() ? <code>{name.trim()}</code> : 'the new branch'}
+              value={changes}
+              busy={busy}
+              onChange={setChanges}
+            />
+          </>
         )}
 
         <label className="dlg-check">

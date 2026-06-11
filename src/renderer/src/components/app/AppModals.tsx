@@ -6,12 +6,13 @@
 // surface as the standard toast) unless a modal needs custom flow (delete's
 // force escalation, checkout's log reload) — those come in as callbacks.
 
-import type { BranchInfo, Commit, MergeKind, ResetMode } from '@shared/types'
+import type { BranchChangesAction, BranchInfo, Commit, MergeKind, ResetMode } from '@shared/types'
 import { ConfirmDialog, PromptDialog, validateRefName } from '@/components/common/Dialog'
 import { InteractiveRebaseDialog } from '@/components/history/InteractiveRebaseDialog'
 import { CreateBranchDialog, type CreateBranchRequest } from './CreateBranchDialog'
 import { MergeDialog } from './MergeDialog'
 import { SubmodulesDialog } from './SubmodulesDialog'
+import { SwitchBranchDialog } from './SwitchBranchDialog'
 import { WorktreesDialog } from './WorktreesDialog'
 
 /** App-level modal dialogs (branch/tag/reset/rebase/clone/worktrees/…). */
@@ -21,6 +22,7 @@ export type Modal =
   | { kind: 'identity' }
   | { kind: 'merge'; name: string }
   | { kind: 'new-branch'; from?: string; fromLabel?: string; initialName?: string }
+  | { kind: 'switch-branch'; name: string }
   | { kind: 'rename-branch'; name: string }
   | { kind: 'delete-branch'; name: string; force: boolean }
   | { kind: 'create-tag'; hash: string; shortHash: string }
@@ -51,6 +53,8 @@ interface Props {
   onMerge: (name: string, kind: MergeKind) => void
   /** Create a branch; owns the outcome notice + the log invalidation. */
   onCreateBranch: (name: string, request: CreateBranchRequest) => void
+  /** Switch to a branch carrying/leaving the pending changes; owns the outcome notice. */
+  onSwitchBranch: (name: string, changes: BranchChangesAction) => void
   /** Delete a branch; owns the "not fully merged" force escalation. */
   onDeleteBranch: (name: string, force: boolean) => Promise<void>
   /** Detached checkout; owns the follow-up log reload. */
@@ -70,6 +74,7 @@ export function AppModals({
   runModalOp,
   onMerge,
   onCreateBranch,
+  onSwitchBranch,
   onDeleteBranch,
   onCheckoutCommit,
   onOpenRepo,
@@ -102,6 +107,17 @@ export function AppModals({
           opInFlight={opInFlight}
           busy={busy}
           onSubmit={onCreateBranch}
+          onCancel={onClose}
+        />
+      )
+    case 'switch-branch':
+      return (
+        <SwitchBranchDialog
+          target={modal.name}
+          current={branch?.current ?? ''}
+          dirtyCount={dirtyCount}
+          busy={busy}
+          onConfirm={(changes) => onSwitchBranch(modal.name, changes)}
           onCancel={onClose}
         />
       )

@@ -1,10 +1,11 @@
 import type { MenuCommand } from '@shared/ipc'
 import type {
   AppInfo,
+  BranchChangesAction,
   BranchInfo,
   ChangedFile,
+  CheckoutOutcome,
   Commit,
-  CreateBranchOutcome,
   CredentialPromptRequest,
   GitAvailability,
   IdentityScope,
@@ -628,15 +629,21 @@ export function App() {
     }
   }, [trustPath, handleOpen, fail])
 
-  const checkout = useCallback(
-    async (name: string) => {
+  /** The switch itself: checkout, refresh, and narrate where the changes went. */
+  const performCheckout = useCallback(
+    async (name: string, changes?: BranchChangesAction) => {
       const repoPath = repoRef.current?.path
       if (!repoPath) return
+      const previous = branchRef.current?.current ?? 'the previous branch'
       setBusy(true)
       setCheckingOut(name)
       try {
-        const updated = await window.gitgrove.checkout(repoPath, name)
-        setBranch(updated)
+        const result = await window.gitgrove.checkout(
+          repoPath,
+          name,
+          changes ? { changes } : undefined
+        )
+        setBranch(result.branch)
         setSelectedCommit(null)
         setCommitFiles([])
         setCommitSelPath(null)
@@ -651,6 +658,18 @@ export function App() {
         if (tabRef.current === 'history') loadLog(repoPath).catch(fail)
         const files = await loadSnapshot(repoPath)
         if (files.length > 0) autoSelect(files, tabRef.current === 'changes')
+        // 'conflicts' is data, not an error (see CheckoutOutcome) — the files
+        // arrive marked conflicted in the refreshed snapshot.
+        if (result.outcome === 'conflicts') {
+          setNotice(
+            `Switched to ${name} and brought your changes — a few files need a quick ` +
+              'conflict resolution.'
+          )
+        } else if (changes === 'leave') {
+          setNotice(`Switched to ${name} — your changes stayed on ${previous}, safe in a stash.`)
+        } else if (changes === 'bring') {
+          setNotice(`Switched to ${name} — your changes came along.`)
+        }
       } catch (e) {
         fail(e)
       } finally {
@@ -659,6 +678,34 @@ export function App() {
       }
     },
     [loadSnapshot, loadLog, autoSelect, clearDiff, fail]
+  )
+
+  /**
+   * Entry point for every branch switch: a dirty working tree first asks what
+   * should happen to the pending changes (the switch-branch dialog); a clean
+   * one — or one owned by an in-flight op, which git itself arbitrates —
+   * switches straight away. Detached HEAD also goes straight through: there
+   * is no branch to leave changes on.
+   */
+  const checkout = useCallback(
+    (name: string) => {
+      const dirty = changesRef.current.length > 0
+      if (dirty && !repoStateRef.current?.op && !branchRef.current?.detached) {
+        setModal({ kind: 'switch-branch', name })
+        return
+      }
+      performCheckout(name)
+    },
+    [performCheckout]
+  )
+
+  /** Switch-branch dialog confirmed: close it and run the choreographed switch. */
+  const performSwitchBranch = useCallback(
+    (name: string, changes: BranchChangesAction) => {
+      setModal(null)
+      performCheckout(name, changes)
+    },
+    [performCheckout]
   )
 
   // ── Commit, hunks, sync, branch & history actions ──────────────────────────
@@ -949,7 +996,7 @@ export function App() {
       const previous = branchRef.current?.current ?? 'the previous branch'
       setModalBusy(true)
       try {
-        let outcome: CreateBranchOutcome | null = null
+        let outcome: CheckoutOutcome | null = null
         const ok = await runOpRef.current(async () => {
           outcome = await window.gitgrove.createBranch(repoPath, name, request)
         })
@@ -1358,6 +1405,7 @@ export function App() {
         runModalOp={runModalOp}
         onMerge={performMerge}
         onCreateBranch={performCreateBranch}
+        onSwitchBranch={performSwitchBranch}
         onDeleteBranch={deleteBranch}
         onCheckoutCommit={checkoutCommit}
         onOpenRepo={openRepoByPath}

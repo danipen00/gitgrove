@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import {
   appendIgnoreEntries,
   AUTO_STASH_MARKER,
+  checkoutBranch,
   commitMerge,
   createBranch,
   discardFiles,
@@ -600,6 +601,85 @@ describe('createBranch with uncommitted changes', () => {
     // through, never a silent stash dance the user didn't ask for.
     await expect(createBranch(repo, 'fresh', { from: 'main' })).rejects.toThrow()
     expect(git(['branch', '--show-current'])).toBe('topic')
+    expect(await listStashes(repo)).toHaveLength(0)
+  })
+})
+
+// Integration: the same leave/bring choreography on plain branch switches —
+// checkoutBranch shares checkoutWithChanges with createBranch, so these pin
+// the switch-specific corners: switching to a branch that already diverges
+// and restoring the user's state when the switch itself fails.
+describe('checkoutBranch with pending changes', () => {
+  let repo: string
+  const git = gitRunner(() => repo)
+
+  beforeEach(() => {
+    repo = mkdtempSync(join(tmpdir(), 'gitgrove-switch-'))
+    git(['init', '-q', '-b', 'main'])
+    git(['config', 'commit.gpgsign', 'false'])
+    git(['config', 'core.autocrlf', 'false'])
+    // The library functions spawn git themselves (no env override), so the
+    // committer identity must live in the repo config, not just our env.
+    git(['config', 'user.name', 'Test'])
+    git(['config', 'user.email', 't@example.com'])
+    writeFileSync(join(repo, 'f.txt'), 'line a\nline b\nline c\n')
+    writeFileSync(join(repo, 'g.txt'), 'same everywhere\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'base'])
+    // A destination branch whose committed f.txt differs from main's.
+    git(['checkout', '-q', '-b', 'other'])
+    writeFileSync(join(repo, 'f.txt'), 'line a\nline b\nline c (other)\n')
+    git(['commit', '-q', '-am', 'other edit'])
+    git(['checkout', '-q', 'main'])
+  })
+
+  afterEach(() => {
+    rmSync(repo, { recursive: true, force: true })
+  })
+
+  test('leave: changes stay stashed on the source branch, the destination is clean', async () => {
+    writeFileSync(join(repo, 'f.txt'), 'line a (wip)\nline b\nline c\n')
+    expect(await checkoutBranch(repo, 'other', { changes: 'leave' })).toBe('completed')
+    expect(git(['branch', '--show-current'])).toBe('other')
+    expect(git(['status', '--porcelain'])).toBe('')
+    const stashes = await listStashes(repo)
+    expect(stashes).toHaveLength(1)
+    expect(stashes[0]).toMatchObject({ auto: true, branchName: 'main', message: '' })
+  })
+
+  test('bring: a file identical on both branches just follows (no stash)', async () => {
+    writeFileSync(join(repo, 'g.txt'), 'dirty\n')
+    expect(await checkoutBranch(repo, 'other', { changes: 'bring' })).toBe('completed')
+    expect(git(['branch', '--show-current'])).toBe('other')
+    expect(readFileSync(join(repo, 'g.txt'), 'utf8')).toBe('dirty\n')
+    expect(await listStashes(repo)).toHaveLength(0)
+  })
+
+  test('bring: a dirty file the destination rewrites ferries across cleanly', async () => {
+    // f.txt differs between the branches, so git refuses the direct switch;
+    // the dirty line is untouched by `other`, so the ferry lands cleanly.
+    writeFileSync(join(repo, 'f.txt'), 'line a (wip)\nline b\nline c\n')
+    expect(await checkoutBranch(repo, 'other', { changes: 'bring' })).toBe('completed')
+    expect(git(['branch', '--show-current'])).toBe('other')
+    expect(readFileSync(join(repo, 'f.txt'), 'utf8')).toBe('line a (wip)\nline b\nline c (other)\n')
+    expect(await listStashes(repo)).toHaveLength(0)
+  })
+
+  test('bring: colliding changes park as conflicts data, keeping the stash', async () => {
+    // The dirty edit hits the very line `other` rewrote → the pop conflicts.
+    writeFileSync(join(repo, 'f.txt'), 'line a\nline b\nline c (wip)\n')
+    expect(await checkoutBranch(repo, 'other', { changes: 'bring' })).toBe('conflicts')
+    expect(git(['branch', '--show-current'])).toBe('other')
+    expect(git(['ls-files', '-u'])).not.toBe('')
+    expect(await listStashes(repo)).toHaveLength(1)
+  })
+
+  test('a failed switch restores the stashed changes instead of losing them', async () => {
+    writeFileSync(join(repo, 'f.txt'), 'line a (wip)\nline b\nline c\n')
+    await expect(checkoutBranch(repo, 'does-not-exist', { changes: 'leave' })).rejects.toThrow()
+    // Still on main, still dirty with the same content, nothing left stashed.
+    expect(git(['branch', '--show-current'])).toBe('main')
+    expect(readFileSync(join(repo, 'f.txt'), 'utf8')).toBe('line a (wip)\nline b\nline c\n')
     expect(await listStashes(repo)).toHaveLength(0)
   })
 })
