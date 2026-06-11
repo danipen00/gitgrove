@@ -93,6 +93,8 @@ const api: GitGroveApi = {
     ipcRenderer.invoke(IPC.worktreeRemove, repoPath, path, opts),
   submoduleList: (repoPath) => ipcRenderer.invoke(IPC.submoduleList, repoPath),
   submoduleUpdate: (repoPath) => ipcRenderer.invoke(IPC.submoduleUpdate, repoPath),
+  lfsHealth: (repoPath) => ipcRenderer.invoke(IPC.lfsHealth, repoPath),
+  lfsEnable: (repoPath) => ipcRenderer.invoke(IPC.lfsEnable, repoPath),
   optimizeRepo: (repoPath) => ipcRenderer.invoke(IPC.optimizeRepo, repoPath),
   selectionSize: (repoPath, paths) => ipcRenderer.invoke(IPC.selectionSize, repoPath, paths),
   cloneRepo: (url, parentDir) => ipcRenderer.invoke(IPC.cloneRepo, url, parentDir),

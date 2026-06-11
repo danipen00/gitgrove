@@ -21,6 +21,7 @@ import type {
   GitIdentity,
   GlobalIdentity,
   IdentityScope,
+  LfsHealth,
   LogOptions,
   MergeOutcome,
   MergePreview,
@@ -115,6 +116,9 @@ export const IPC = {
   worktreeRemove: 'repo:worktree:remove',
   submoduleList: 'repo:submodule:list',
   submoduleUpdate: 'repo:submodule:update',
+  // git lfs
+  lfsHealth: 'repo:lfs:health',
+  lfsEnable: 'repo:lfs:enable',
   optimizeRepo: 'repo:optimize',
   selectionSize: 'repo:selection-size',
   // clone
@@ -335,6 +339,11 @@ export interface GitGroveApi {
   worktreeRemove(repoPath: string, path: string, opts?: { force?: boolean }): Promise<void>
   submoduleList(repoPath: string): Promise<SubmoduleInfo[]>
   submoduleUpdate(repoPath: string): Promise<void>
+  // ── Git LFS ──
+  /** Whether LFS works here: tracked patterns, filter config, binary. */
+  lfsHealth(repoPath: string): Promise<LfsHealth>
+  /** One-click LFS setup (`git lfs install`: global filters + repo hooks). */
+  lfsEnable(repoPath: string): Promise<void>
   /** Enable git's large-repo features (fsmonitor, untracked cache, index v4). */
   optimizeRepo(repoPath: string): Promise<void>
   /** Sum of the on-disk sizes (bytes) of the given repo-relative paths. */

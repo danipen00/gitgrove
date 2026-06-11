@@ -111,6 +111,22 @@ export interface WorktreeInfo {
   isCurrent: boolean
 }
 
+/**
+ * Whether Git LFS works in a repository, probed on repo open. A repo whose
+ * `.gitattributes` tracks files with the LFS filter silently breaks on a
+ * machine missing the `git-lfs` binary or the smudge/clean filter config —
+ * files materialize as pointer text, pushes drop content. The renderer shows
+ * a one-click fix banner when `usesLfs` is true but the rest isn't.
+ */
+export interface LfsHealth {
+  /** True when a `.gitattributes` routes patterns through the LFS filter. */
+  usesLfs: boolean
+  /** True when git config resolves the LFS smudge/clean filters (any scope). */
+  filtersConfigured: boolean
+  /** True when the `git-lfs` binary is reachable from git. */
+  binaryAvailable: boolean
+}
+
 export interface SubmoduleInfo {
   path: string
   shaShort: string

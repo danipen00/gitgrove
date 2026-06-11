@@ -32,6 +32,7 @@ import { appInfo } from './app-info'
 import { setCredentialResponder } from './git/askpass'
 import { rejectStoredCredential } from './git/credential-store'
 import { getGlobalIdentity, getIdentity, setGlobalIdentity, setIdentity } from './git/identity'
+import { enableLfs, getLfsHealth } from './git/lfs'
 import {
   getBranches,
   getCommitDiff,
@@ -425,6 +426,8 @@ export function registerIpc(ctx: IpcContext): void {
   )
   ipcMain.handle(IPC.submoduleList, (_e, repoPath: string) => gitWrite.listSubmodules(repoPath))
   ipcMain.handle(IPC.submoduleUpdate, (_e, repoPath: string) => gitWrite.updateSubmodules(repoPath))
+  ipcMain.handle(IPC.lfsHealth, (_e, repoPath: string) => getLfsHealth(repoPath))
+  ipcMain.handle(IPC.lfsEnable, (_e, repoPath: string) => enableLfs(repoPath))
   ipcMain.handle(IPC.optimizeRepo, (_e, repoPath: string) => gitWrite.optimizeRepo(repoPath))
   ipcMain.handle(IPC.selectionSize, async (_e, repoPath: string, paths: string[]) => {
     // Working-tree byte sizes of the included files — a fast, honest proxy
