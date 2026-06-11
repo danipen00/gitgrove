@@ -60,12 +60,6 @@
   --welcome-grad-bottom: #0c0d10;
   --commit-divider: rgba(35, 38, 47, 0.6);
   --popover-shadow: 0 16px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.2);
-  --toast-bg: #2a1417;
-  --toast-border: rgba(240, 97, 109, 0.4);
-  --toast-fg: #ffd9dc;
-  --toast-success-bg: #12281b;
-  --toast-success-border: rgba(63, 185, 80, 0.4);
-  --toast-success-fg: #c9f2d3;
 
   /* @pierre/trees overrides (custom properties pierce the shadow root).
      The library defaults use light-dark(), which the shadow root resolves to
@@ -133,12 +127,6 @@
   --welcome-grad-bottom: #eef1f5;
   --commit-divider: rgba(210, 215, 222, 0.7);
   --popover-shadow: 0 14px 36px rgba(24, 36, 64, 0.16), 0 0 0 1px rgba(24, 36, 64, 0.06);
-  --toast-bg: #fde8ea;
-  --toast-border: rgba(207, 34, 46, 0.35);
-  --toast-fg: #8a1820;
-  --toast-success-bg: #e9f7ee;
-  --toast-success-border: rgba(26, 127, 55, 0.35);
-  --toast-success-fg: #135a28;
 
   /* @pierre/trees overrides (light) */
   --trees-bg-override: var(--bg-panel);
@@ -769,10 +757,6 @@ button {
   height: 1px;
   margin: 5px 4px;
   background: var(--border);
-}
-/* Transient confirmation (e.g. "Copied repository path"). */
-.toast--notice {
-  bottom: 24px;
 }
 .tag {
   font-size: 10px;
@@ -1710,8 +1694,12 @@ button {
   margin-top: 18px;
 }
 
-/* ── Toast / error banner ────────────────────────────────────────────────── */
+/* ── Toast (transient notification card) ─────────────────────────────────── */
+/* An elevated card on the app surface — not a tinted banner — so it reads as
+   part of the popover/dialog family. The kind only drives the tint
+   (badge + countdown), set once here and consumed below. */
 .toast {
+  --toast-tint: var(--accent);
   position: fixed;
   bottom: 18px;
   left: 50%;
@@ -1719,36 +1707,77 @@ button {
   z-index: 60;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   max-width: 70vw;
-  padding: 10px 14px;
+  padding: 11px 13px 13px;
   border-radius: var(--radius);
-  background: var(--toast-bg);
-  border: 1px solid var(--toast-border);
-  color: var(--toast-fg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--fg);
   font-size: 12.5px;
   box-shadow: var(--popover-shadow);
+  /* Clips the countdown bar to the rounded corners. */
+  overflow: hidden;
   animation: pop-in 0.12s ease-out;
 }
-.toast button {
+.toast--success {
+  --toast-tint: var(--st-added);
+}
+.toast--error {
+  --toast-tint: var(--st-deleted);
+}
+.toast__badge {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--toast-tint);
+  /* White glyph works on both themes: every tint is dark enough in light mode. */
+  color: #fff;
+}
+.toast__message {
+  /* Let the user select/copy error text; break long git messages cleanly. */
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+.toast__close {
+  flex: 0 0 auto;
+  display: flex;
+  padding: 0;
   background: none;
   border: none;
-  color: inherit;
-  opacity: 0.7;
-  display: flex;
+  color: var(--fg-faint);
 }
-.toast button:hover {
-  opacity: 1;
+.toast__close:hover {
+  color: var(--fg);
 }
-/* Positive outcomes (merge completed, already up to date) — same toast, green. */
-.toast--success {
-  background: var(--toast-success-bg);
-  border-color: var(--toast-success-border);
-  color: var(--toast-success-fg);
+/* Time-left bar along the bottom edge. Its animationend *is* the auto-dismiss
+   (see Toast.tsx), so pausing it on hover also holds the toast open. */
+.toast__countdown {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--toast-tint);
+  transform-origin: left;
+  animation-name: toast-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
 }
-.toast--success > svg {
-  flex: 0 0 auto;
-  color: var(--st-added);
+.toast:hover .toast__countdown {
+  animation-play-state: paused;
+}
+@keyframes toast-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
 
 /* ── Small button variants (About / update banner) ───────────────────────── */
@@ -1876,7 +1905,7 @@ button {
   color: var(--accent);
 }
 .about__update-text.is-error {
-  color: var(--toast-fg);
+  color: var(--st-deleted);
 }
 
 .about__meta {

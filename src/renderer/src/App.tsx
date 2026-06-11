@@ -37,6 +37,7 @@ import { ConflictPanel } from './components/changes/ConflictPanel'
 import type { ContextMenuItem } from './components/common/ContextMenu'
 import { type DiffMode, DiffViewer } from './components/common/DiffViewer'
 import { Resizer } from './components/common/Resizer'
+import { Toast } from './components/common/Toast'
 import { TooltipLayer } from './components/common/TooltipLayer'
 import { CommitSummary } from './components/history/CommitSummary'
 import { commitMenuItems } from './components/history/commitMenuItems'
@@ -1349,18 +1350,6 @@ export function App() {
     }
   }, [fail])
 
-  useEffect(() => {
-    if (!error) return
-    const t = setTimeout(() => setError(null), 6000)
-    return () => clearTimeout(t)
-  }, [error])
-
-  useEffect(() => {
-    if (!notice) return
-    const t = setTimeout(() => setNotice(null), 6000)
-    return () => clearTimeout(t)
-  }, [notice])
-
   // What the toolbar shows of the running op: the sync button's fill (only
   // when the progress kind matches the running action) and the branch
   // switcher's "switching to X" fill.
@@ -1538,7 +1527,7 @@ export function App() {
             />
           )}
         </div>
-        {error && <ErrorToast message={error} onClose={() => setError(null)} />}
+        {error && <Toast kind="error" message={error} onClose={() => setError(null)} />}
         {overlays}
       </div>
     )
@@ -1699,34 +1688,12 @@ export function App() {
         </div>
       </div>
 
-      {error && <ErrorToast message={error} onClose={() => setError(null)} />}
-      {notice && !error && <NoticeToast message={notice} onClose={() => setNotice(null)} />}
+      {error && <Toast kind="error" message={error} onClose={() => setError(null)} />}
+      {notice && !error && (
+        <Toast kind="success" message={notice} onClose={() => setNotice(null)} />
+      )}
       {overlays}
       <TooltipLayer />
-    </div>
-  )
-}
-
-function ErrorToast({ message, onClose }: { message: string; onClose: () => void }) {
-  return (
-    <div className="toast" role="alert">
-      <span>{message}</span>
-      <button onClick={onClose} title="Dismiss">
-        <Icon.Close size={14} />
-      </button>
-    </div>
-  )
-}
-
-/** Positive outcome toast (merge completed, already up to date, …). */
-function NoticeToast({ message, onClose }: { message: string; onClose: () => void }) {
-  return (
-    <div className="toast toast--success" role="status">
-      <Icon.Check size={14} />
-      <span>{message}</span>
-      <button onClick={onClose} title="Dismiss">
-        <Icon.Close size={14} />
-      </button>
     </div>
   )
 }
