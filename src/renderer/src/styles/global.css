@@ -3722,7 +3722,9 @@ button {
   touch-action: none;
 }
 .img-swipe__handle:hover {
-  background: var(--accent-soft);
+  /* The tint must stay opaque: --accent-soft alone is translucent and would
+     let the divider line show through the knob. */
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
 }
 
 /* ── Differences ── */
