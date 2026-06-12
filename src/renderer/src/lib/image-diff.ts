@@ -290,6 +290,19 @@ export function findChangedRegions(
   return blobs.sort((a, b) => a.y - b.y || a.x - b.x)
 }
 
+/**
+ * True when a region covers (almost) the whole frame — "jump to the change"
+ * would just re-fit the view, so navigation shouldn't be offered for it. The
+ * slack tolerates thin quiet borders around an otherwise global change.
+ */
+export function isWholeFrameRegion(
+  region: ChangedRegion,
+  frame: { width: number; height: number },
+  coverage = 0.9
+): boolean {
+  return region.width >= frame.width * coverage && region.height >= frame.height * coverage
+}
+
 /** One box around everything, with an exact changed-pixel count. */
 function unionRegion(blobs: ChangedRegion[], delta: Uint8Array, threshold: number): ChangedRegion {
   let minX = Number.POSITIVE_INFINITY

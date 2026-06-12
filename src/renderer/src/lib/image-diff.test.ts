@@ -9,6 +9,7 @@ import {
   DIFF_ACCENT,
   findChangedRegions,
   fitZoom,
+  isWholeFrameRegion,
   MAX_ZOOM,
   MIN_ZOOM,
   rectTransform,
@@ -235,6 +236,14 @@ describe('findChangedRegions', () => {
     const { delta, width, height } = deltaMap(['#.#.#', '.....'])
     const regions = findChangedRegions(delta, width, height, 0, { mergeGap: 0, maxBlobs: 2 })
     expect(regions).toEqual([{ x: 0, y: 0, width: 5, height: 1, pixels: 3 }])
+  })
+
+  test('isWholeFrameRegion flags near-global regions, not local ones', () => {
+    const frame = { width: 100, height: 100 }
+    const global = { x: 2, y: 3, width: 95, height: 94, pixels: 1 }
+    const tall = { x: 0, y: 0, width: 10, height: 100, pixels: 1 }
+    expect(isWholeFrameRegion(global, frame)).toBe(true)
+    expect(isWholeFrameRegion(tall, frame)).toBe(false) // full height, sliver wide
   })
 
   test('region count over the max re-merges with a doubled gap', () => {

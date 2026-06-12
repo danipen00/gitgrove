@@ -3743,12 +3743,6 @@ button {
   font-variant-numeric: tabular-nums;
   color: var(--fg-muted);
 }
-.img-pill__divider {
-  width: 1px;
-  align-self: stretch;
-  margin: 2px 0;
-  background: var(--border);
-}
 
 /* ── Onion skin ── */
 .img-onion-slider input[type='range'] {
@@ -3825,9 +3819,37 @@ button {
 .img-diff-toolbar input[type='range'] {
   width: 130px;
 }
-/* Keep "–/12" from nudging its neighbors while stepping through regions. */
-.img-diff-toolbar__count {
-  min-width: 34px;
+/* The value slot reserves three digits, so the centered pill keeps one exact
+   width as the slider sweeps 0 → 9 → 99 — it must never shift under the
+   cursor mid-drag. */
+.img-diff-toolbar__readout {
+  width: 3ch;
+  text-align: right;
+}
+/* Region navigation: its own pill stacked under the tolerance pill, so it
+   can appear and disappear (regions come and go with the tolerance) without
+   moving the slider. Deliberately quieter and shorter than the tolerance
+   pill — secondary wayfinding, not a control bar: slim padding, small
+   borderless round arrows instead of the stock 30px icon buttons. */
+.img-region-nav {
+  top: 46px;
+  padding: 4px 10px;
+  gap: 5px;
+}
+.img-region-nav .icon-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+}
+.img-region-nav .icon-btn:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+/* Keep "2 of 12" from nudging the arrows while stepping through regions. */
+.img-region-nav__count {
+  min-width: 52px;
   text-align: center;
 }
 /* Focus ring around the active changed region. Border width is set inline,
