@@ -320,25 +320,6 @@ function DiffViewerImpl({
             <span className="diff-stat__del">−{stats.deletions}</span>
           </span>
         )}
-        {/* SVG only: flip between the rendered pixels and the code diff. */}
-        {hasCodeView && (
-          <div className="segmented">
-            <button
-              className={imageAsCode ? '' : 'is-active'}
-              onClick={() => setImageAsCode(false)}
-              title="View the rendered image"
-            >
-              <Icon.Image size={15} /> Image
-            </button>
-            <button
-              className={imageAsCode ? 'is-active' : ''}
-              onClick={() => setImageAsCode(true)}
-              title="View the underlying code"
-            >
-              <Icon.Code size={15} /> Code
-            </button>
-          </div>
-        )}
         {/* Text-diff controls mean nothing while pixels are showing. */}
         {!imageView && (
           <>
@@ -366,6 +347,27 @@ function DiffViewerImpl({
               </button>
             </div>
           </>
+        )}
+        {/* SVG only: flip between the rendered pixels and the code diff.
+            Last in the header — the right edge anchors it, so it keeps its
+            position when the text controls appear/disappear around it. */}
+        {hasCodeView && (
+          <div className="segmented">
+            <button
+              className={imageAsCode ? '' : 'is-active'}
+              onClick={() => setImageAsCode(false)}
+              title="View the rendered image"
+            >
+              <Icon.Image size={15} /> Image
+            </button>
+            <button
+              className={imageAsCode ? 'is-active' : ''}
+              onClick={() => setImageAsCode(true)}
+              title="View the underlying code"
+            >
+              <Icon.Code size={15} /> Code
+            </button>
+          </div>
         )}
       </div>
 
