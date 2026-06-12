@@ -23,6 +23,9 @@ export function SwipeMode({ oldImage, newImage, frame, panZoom }: Props) {
   // The whole divider is the drag surface (a 14px invisible strip around the
   // 2px line — splitter-style tolerance), not just the knob.
   const onDividerDown = useCallback((e: React.PointerEvent) => {
+    // Left or middle button, matching the stage's pan (middle acts as
+    // primary across the image viewer); never the context-menu button.
+    if (e.button !== 0 && e.button !== 1) return
     const el = containerRef.current
     if (!el) return
     const strip = e.currentTarget as HTMLElement

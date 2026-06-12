@@ -151,12 +151,17 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
   useEffect(() => () => resizeObserver.disconnect(), [resizeObserver])
 
   const onPointerDown = useCallback((el: HTMLElement, e: PointerEvent) => {
-    // Left button only; leave controls layered over the stage alone. The
-    // check must happen here, natively: this listener fires while the event
-    // bubbles to the viewport, before any React synthetic handler — a
-    // control's stopPropagation would arrive too late to stop the pan.
-    // `data-no-pan` marks stage controls with their own drag (swipe handle).
-    if (e.button !== 0 || (e.target as HTMLElement).closest(NO_PAN_TARGETS)) return
+    // Left or middle button (the image-tool convention: middle-drag pans);
+    // leave controls layered over the stage alone. The check must happen
+    // here, natively: this listener fires while the event bubbles to the
+    // viewport, before any React synthetic handler — a control's
+    // stopPropagation would arrive too late to stop the pan. `data-no-pan`
+    // marks stage controls with their own drag (swipe divider).
+    if ((e.button !== 0 && e.button !== 1) || (e.target as HTMLElement).closest(NO_PAN_TARGETS))
+      return
+    // Middle button: cancel the default so Chromium never starts its
+    // autoscroll affordance over the stage.
+    if (e.button === 1) e.preventDefault()
     const frame = frameRef.current
     const image = imageRef.current
     if (!frame || !image) return
