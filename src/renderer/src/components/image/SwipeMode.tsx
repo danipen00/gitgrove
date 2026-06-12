@@ -20,24 +20,31 @@ export function SwipeMode({ oldImage, newImage, frame, panZoom }: Props) {
   const [split, setSplit] = useState(0.5)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const onHandleDown = useCallback((e: React.PointerEvent) => {
+  // The whole divider is the drag surface (a 14px invisible strip around the
+  // 2px line — splitter-style tolerance), not just the knob.
+  const onDividerDown = useCallback((e: React.PointerEvent) => {
     const el = containerRef.current
     if (!el) return
-    const handle = e.currentTarget as HTMLElement
-    handle.setPointerCapture(e.pointerId)
+    const strip = e.currentTarget as HTMLElement
+    strip.setPointerCapture(e.pointerId)
     const move = (ev: PointerEvent) => {
       const rect = el.getBoundingClientRect()
       setSplit(Math.min(0.98, Math.max(0.02, (ev.clientX - rect.left) / rect.width)))
     }
     const up = () => {
-      handle.removeEventListener('pointermove', move)
-      handle.removeEventListener('pointerup', up)
-      handle.removeEventListener('pointercancel', up)
+      strip.removeEventListener('pointermove', move)
+      strip.removeEventListener('pointerup', up)
+      strip.removeEventListener('pointercancel', up)
     }
-    handle.addEventListener('pointermove', move)
-    handle.addEventListener('pointerup', up)
-    handle.addEventListener('pointercancel', up)
+    strip.addEventListener('pointermove', move)
+    strip.addEventListener('pointerup', up)
+    strip.addEventListener('pointercancel', up)
   }, [])
+
+  // At far-out zoom the 32px knob would cover the whole picture — fade it
+  // away and let the (fully draggable) line carry the interaction.
+  const { scale } = panZoom.transform
+  const handleHidden = Math.min(frame.width * scale, frame.height * scale) < 96
 
   return (
     <div className="img-swipe" ref={containerRef}>
@@ -52,14 +59,28 @@ export function SwipeMode({ oldImage, newImage, frame, panZoom }: Props) {
             <CenteredImage image={newImage} frame={frame} side="new" />
           </World>
         </div>
-        <div className="img-swipe__divider" style={{ left: `${split * 100}%` }}>
-          {/* data-no-pan: the viewport's native pan listener fires before any
-              React handler here could stopPropagation — the stage checks the
-              attribute instead (see usePanZoom NO_PAN_TARGETS). */}
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: a drag handle, keyboard-reachable via the stage shortcuts */}
-          <div className="img-swipe__handle" data-no-pan onPointerDown={onHandleDown}>
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M3.5 1 0.5 5l3 4M6.5 1l3 4-3 4" fill="none" stroke="currentColor" />
+        {/* data-no-pan: the viewport's native pan listener fires before any
+            React handler here could stopPropagation — the stage checks the
+            attribute instead (see usePanZoom NO_PAN_TARGETS). Double-click
+            snaps the split back to center. */}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: a drag divider, keyboard-reachable via the stage shortcuts */}
+        <div
+          className="img-swipe__divider"
+          style={{ left: `${split * 100}%` }}
+          data-no-pan
+          onPointerDown={onDividerDown}
+          onDoubleClick={() => setSplit(0.5)}
+        >
+          <div className={`img-swipe__handle${handleHidden ? ' img-swipe__handle--hidden' : ''}`}>
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+              <path
+                d="M5 3 1.8 7 5 11M9 3l3.2 4L9 11"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </div>
         </div>
