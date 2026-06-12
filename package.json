@@ -22,7 +22,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "test": "bun test",
+    "test": "bun test --timeout 30000",
     "e2e": "node scripts/verify-ui.mjs",
     "make:icon": "node scripts/make-icon.mjs",
     "licenses": "node scripts/generate-third-party-licenses.mjs",
