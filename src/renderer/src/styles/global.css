@@ -3847,6 +3847,11 @@ button {
   color: var(--fg);
   background: var(--bg-hover);
 }
+/* When the tolerance pill is hidden (no delta the slider could affect — see
+   DifferencesMode toleranceMatters), the nav pill takes its top spot. */
+.img-region-nav--solo {
+  top: 10px;
+}
 /* Keep "2 of 12" from nudging the arrows while stepping through regions. */
 .img-region-nav__count {
   min-width: 52px;
