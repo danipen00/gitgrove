@@ -68,6 +68,23 @@ export function SyncButton({
             ? 'Push'
             : 'Fetch'
 
+  // A one-line read of where the branch stands relative to its remote, shown
+  // under the action so the button explains itself at a glance. While an op is
+  // running we surface the upstream it's talking to instead of a stale state.
+  const remote = sync.remotes[0]
+  const sub =
+    running !== null
+      ? (sync.upstream ?? remote)
+      : primary === 'publish'
+        ? `Publish to ${remote}`
+        : primary === 'pull'
+          ? sync.ahead > 0
+            ? `Diverged from ${remote}`
+            : `Behind ${remote}`
+          : primary === 'push'
+            ? `Ahead of ${remote}`
+            : 'Up to date'
+
   // Glyph mirrors the menu's icon vocabulary so the pill and its popup never
   // disagree: Upload for sending (push/publish), Refresh for fetch (check the
   // remote, nothing merged), Download for pull (bring changes in).
@@ -132,7 +149,10 @@ export function SyncButton({
             <span className="pill__fill" style={{ width: `${progress}%` }} aria-hidden="true" />
           )}
           <span className="pill__icon">{glyph}</span>
-          <span className="pill__label">{label}</span>
+          <span className="pill__stack">
+            <span className="pill__label">{label}</span>
+            <span className="pill__sub">{sub}</span>
+          </span>
           {sync.behind > 0 && <span className="sync-badge sync-badge--behind">{sync.behind}↓</span>}
           {sync.ahead > 0 && <span className="sync-badge sync-badge--ahead">{sync.ahead}↑</span>}
         </button>

@@ -383,7 +383,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 34px;
+  height: 40px;
   max-width: 320px;
   padding: 0 10px;
   border-radius: var(--radius-sm);
@@ -420,15 +420,42 @@ button {
   flex: 0 0 auto;
   display: flex;
 }
+/* The two-line pills get a comfortable minimum so a short value ("main") can't
+   shrink the pill down to just its caption + chevron. The narrow sync-chevron
+   button has no stack, so :has keeps it out. */
+.pill:has(.pill__stack) {
+  min-width: 150px;
+}
+/* Two-line label: a small muted caption on top ("Repository", "Branch", or the
+   sync action) with the live value/state below — the GitHub-Desktop toolbar
+   read. The stack truncates as one unit so the icon and chevron stay put. */
+.pill__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+/* The caption ("Repository"/"Branch") and the sync sub ("Up to date") are the
+   same quiet voice — keep them identical so the toolbar's secondary lines match. */
+.pill__caption,
+.pill__sub {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--fg-faint);
+}
 .pill__label {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
-}
-.pill__sub {
-  color: var(--fg-faint);
-  font-weight: 400;
 }
 .pill__chev {
   color: var(--fg-faint);
