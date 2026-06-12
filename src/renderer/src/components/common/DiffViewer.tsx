@@ -3,10 +3,15 @@ import type { BaseDiffOptions, DiffLineAnnotation } from '@pierre/diffs/react'
 import { FileDiff, MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
 import type { DiffPayload } from '@shared/types'
 import { memo, useEffect, useMemo, useState } from 'react'
-import { ImageDiffViewer } from '@/components/image/ImageDiffViewer'
+import {
+  IMAGE_DIFF_MODES,
+  type ImageDiffMode,
+  ImageDiffViewer
+} from '@/components/image/ImageDiffViewer'
 import type { FileSelection } from '@/lib/commit-selection'
 import { formatBytes, splitPath, statusLabel, statusLetter } from '@/lib/format'
 import { Icon } from '@/lib/icons'
+import { usePersistentState } from '@/lib/persist'
 import { buildBlockPatch, buildExcludedDiffCss, listChangeBlocks } from '@/lib/staging'
 import type { ResolvedTheme } from '@/lib/theme'
 import { useSpinDelay } from '@/lib/useSpinDelay'
@@ -127,6 +132,18 @@ function DiffViewerImpl({
   // rasters, whose patch is a textless rename header.
   const hasCodeView = !!diff?.image && diff.oldContents != null && diff.newContents != null
   const imageView = !!diff?.image && (!hasCodeView || !imageAsCode)
+  // The image diff mode lives where Split/Unified does for text — one header
+  // spot for "how do I view this diff", whatever the file type. Persisted
+  // values are validated so a stale/garbage key can't blank the stage.
+  const [imageModePref, setImageModePref] = usePersistentState<ImageDiffMode>(
+    'gg.imageDiffMode',
+    'side-by-side'
+  )
+  const imageMode = IMAGE_DIFF_MODES.some((m) => m.id === imageModePref)
+    ? imageModePref
+    : 'side-by-side'
+  // Single-sided payloads (added/deleted) are previews — no modes to offer.
+  const imageIsDiff = !!diff?.image && diff.image.old !== null && diff.image.new !== null
   // Most loads finish in a few ms — keep the previous diff on screen and swap
   // it for the new payload when it lands. The spinner only ever appears for
   // slow loads (huge files), never as a one-frame flash on every click.
@@ -320,7 +337,23 @@ function DiffViewerImpl({
             <span className="diff-stat__del">−{stats.deletions}</span>
           </span>
         )}
-        {/* Text-diff controls mean nothing while pixels are showing. */}
+        {/* The same header spot answers "how do I view this diff" for every
+            file type: image modes while pixels show, Split/Unified for text —
+            icon + label, matching the text viewer's segments. */}
+        {imageView && imageIsDiff && (
+          <div className="segmented">
+            {IMAGE_DIFF_MODES.map((m) => (
+              <button
+                key={m.id}
+                className={imageMode === m.id ? 'is-active' : ''}
+                onClick={() => setImageModePref(m.id)}
+                data-tip={m.title ?? m.label}
+              >
+                {m.icon(15)} {m.label}
+              </button>
+            ))}
+          </div>
+        )}
         {!imageView && (
           <>
             <button
@@ -348,26 +381,18 @@ function DiffViewerImpl({
             </div>
           </>
         )}
-        {/* SVG only: flip between the rendered pixels and the code diff.
-            Last in the header — the right edge anchors it, so it keeps its
-            position when the text controls appear/disappear around it. */}
+        {/* SVG only: representation toggle (pixels ⇄ code). A single
+            icon-button, last in the header — the right edge anchors it, so
+            it never moves when the controls beside it change between
+            representations. */}
         {hasCodeView && (
-          <div className="segmented">
-            <button
-              className={imageAsCode ? '' : 'is-active'}
-              onClick={() => setImageAsCode(false)}
-              title="View the rendered image"
-            >
-              <Icon.Image size={15} /> Image
-            </button>
-            <button
-              className={imageAsCode ? 'is-active' : ''}
-              onClick={() => setImageAsCode(true)}
-              title="View the underlying code"
-            >
-              <Icon.Code size={15} /> Code
-            </button>
-          </div>
+          <button
+            className={`icon-btn${imageAsCode ? ' is-active' : ''}`}
+            data-tip={imageAsCode ? 'View the rendered image' : 'View the underlying code'}
+            onClick={() => setImageAsCode(!imageAsCode)}
+          >
+            <Icon.Code size={16} />
+          </button>
         )}
       </div>
 
@@ -378,7 +403,7 @@ function DiffViewerImpl({
           </div>
         )}
         {!spin && diff?.image && imageView && (
-          <ImageDiffViewer key={diff.path} image={diff.image} />
+          <ImageDiffViewer key={diff.path} image={diff.image} mode={imageMode} />
         )}
         {!spin && diff && !imageView && diff.notice && (
           <div className="center-state">

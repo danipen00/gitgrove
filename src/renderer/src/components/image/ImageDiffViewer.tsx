@@ -1,15 +1,16 @@
 // The image pane: a single preview for added/deleted images, and a four-mode
 // visual diff (onion skin / side by side / differences / swipe) for modified
-// ones. One shared pan/zoom drives every mode, so switching modes keeps the
-// framing; zoom controls float over the stage; an HUD strip narrates the
-// change (dimensions, sizes, % of pixels that differ).
+// ones. The mode control lives in the diff header (DiffViewer renders it in
+// the same spot text diffs show Split/Unified — one place for "how do I view
+// this diff" across the app). One shared pan/zoom drives every mode, so
+// switching modes keeps the framing; zoom controls float over the stage; an
+// HUD strip narrates the change (dimensions, sizes, % of pixels that differ).
 
 import type { ImageDiffSides } from '@shared/types'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatBytes } from '@/lib/format'
 import { Icon } from '@/lib/icons'
 import { composedSize, zoomLabel } from '@/lib/image-diff'
-import { usePersistentState } from '@/lib/persist'
 import { type DecodedImage, useDecodedImage } from '@/lib/useDecodedImage'
 import { usePanZoom } from '@/lib/usePanZoom'
 import { type DiffComposition, DifferencesMode, type DiffStats } from './DifferencesMode'
@@ -20,21 +21,33 @@ import { SwipeMode } from './SwipeMode'
 
 export type ImageDiffMode = 'onion' | 'side-by-side' | 'differences' | 'swipe'
 
-interface ModeDef {
+interface ImageModeDef {
   id: ImageDiffMode
   label: string
+  /** Tooltip text when the label is an abbreviation; defaults to the label. */
+  title?: string
   icon: (size: number) => ReactNode
 }
 
-const MODES: ModeDef[] = [
-  { id: 'onion', label: 'Onion skin', icon: (s) => <Icon.Layers size={s} /> },
-  { id: 'side-by-side', label: 'Side by side', icon: (s) => <Icon.Split size={s} /> },
-  { id: 'differences', label: 'Differences', icon: (s) => <Icon.Compare size={s} /> },
+/** The header's mode options, in the order they read naturally. Labels are
+ *  deliberately one short word each — four segments share the header with
+ *  the file path. Tooltips carry the full names. */
+export const IMAGE_DIFF_MODES: ImageModeDef[] = [
+  { id: 'onion', label: 'Onion', title: 'Onion skin', icon: (s) => <Icon.Layers size={s} /> },
+  { id: 'side-by-side', label: 'Split', icon: (s) => <Icon.Split size={s} /> },
+  {
+    id: 'differences',
+    label: 'Diffs',
+    title: 'Differences',
+    icon: (s) => <Icon.Compare size={s} />
+  },
   { id: 'swipe', label: 'Swipe', icon: (s) => <Icon.Swipe size={s} /> }
 ]
 
 interface Props {
   image: ImageDiffSides
+  /** Active diff mode; owned by DiffViewer (the header's segmented control). */
+  mode: ImageDiffMode
 }
 
 /** "1024×768 · 245 KB" — one revision's identity card for the HUD. */
@@ -42,10 +55,9 @@ function sideLabel(image: DecodedImage, bytes: number): string {
   return `${image.width}×${image.height} · ${formatBytes(bytes)}`
 }
 
-export function ImageDiffViewer({ image }: Props) {
+export function ImageDiffViewer({ image, mode }: Props) {
   const oldState = useDecodedImage(image.old?.dataUrl)
   const newState = useDecodedImage(image.new?.dataUrl)
-  const [mode, setMode] = usePersistentState<ImageDiffMode>('gg.imageDiffMode', 'side-by-side')
   // Onion blend lives here (not in the mode) so a trip through other modes
   // comes back to the same mix. Reset per file via the image-keyed effect.
   const [blend, setBlend] = useState(0.5)
@@ -155,22 +167,6 @@ export function ImageDiffViewer({ image }: Props) {
               <SwipeMode oldImage={oldImage} newImage={newImage} frame={frame} panZoom={panZoom} />
             )}
           </>
-        )}
-
-        {isDiff && (
-          <div className="img-modes segmented">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                className={mode === m.id ? 'is-active' : ''}
-                data-tip={m.label}
-                aria-label={m.label}
-                onClick={() => setMode(m.id)}
-              >
-                {m.icon(15)}
-              </button>
-            ))}
-          </div>
         )}
 
         <div className="img-zoom">

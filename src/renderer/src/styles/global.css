@@ -1345,6 +1345,7 @@ button {
   gap: 2px;
 }
 .segmented button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1362,6 +1363,25 @@ button {
 .segmented button.is-active {
   background: var(--bg-active);
   color: var(--fg);
+}
+/* Hairline dividers between segments (the macOS pattern): with many options
+   the unselected ones otherwise blur into one long pill. Centered in the 2px
+   gap; hidden next to the active segment so its highlight reads as one clean
+   shape. (Not on hover — our hover has no background fill, so a vanishing
+   divider would just look broken.) With two segments one is always active,
+   so both its dividers vanish — the classic pair looks exactly as before. */
+.segmented button + button::before {
+  content: '';
+  position: absolute;
+  left: -1.5px;
+  top: 22%;
+  bottom: 22%;
+  width: 1px;
+  background: var(--border-strong);
+}
+.segmented button.is-active::before,
+.segmented button.is-active + button::before {
+  background: transparent;
 }
 
 .icon-btn {
@@ -3538,20 +3558,9 @@ button {
   display: block;
 }
 
-/* ── Floating controls ── */
-/* Mode switcher, top center — the segmented base style, lifted on a shadow. */
-.img-modes {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--bg-elevated);
-  box-shadow: var(--popover-shadow);
-  z-index: 3;
-}
-.img-modes button {
-  padding: 5px 9px;
-}
+/* ── Floating controls ──
+   (The diff-mode switcher lives in the diff header, not over the stage —
+   the same spot text diffs show Split/Unified.) */
 
 /* Zoom cluster, bottom right (the UVCS spot). */
 .img-zoom {
@@ -3660,7 +3669,7 @@ button {
 /* ── Onion skin ── */
 .img-onion-slider {
   position: absolute;
-  top: 52px; /* below the floating mode switcher */
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
