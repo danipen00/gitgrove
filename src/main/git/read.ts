@@ -21,6 +21,7 @@ import type {
   RepoSummary
 } from '@shared/types'
 import { locateGit } from './bin'
+import { imageMimeType, loadCommitImageSides, loadWorkingImageSides } from './image'
 import { describeLfsPatch } from './lfs-pointer'
 import { describeSubmodulePatch } from './submodule-patch'
 
@@ -593,11 +594,45 @@ export async function getWorkingDiff(
   }
 
   const payload = finalizeDiff({ ...base, patch })
-  if (payload.notice || payload.binary || payload.submodule) return payload
+  // LFS pointers and submodules own their panels — never treat them as images
+  // (the LFS "old side" blob would be pointer text, not pixels).
+  if (payload.lfs || payload.submodule) return payload
 
-  // Old/new sides matching the patch above, so the viewer can expand context.
-  // `:0` is the index (stage 0); HEAD is the last commit. The old side of an
-  // unstaged diff is the index; everything else diffs from HEAD.
+  // Renderable image: ship both sides as data URLs and let the viewer take
+  // over. SVG additionally keeps its text diff (it IS text) so the viewer can
+  // offer an Image ⇄ Code toggle; rasters drop the "binary file" notice.
+  // Rasters must never ship text contents: a rename-only jpeg diffs to just
+  // the rename header (no "Binary files differ" line, binary=false), which
+  // would otherwise read as a diffable text file and attach raw image bytes
+  // decoded as utf8.
+  const mime = imageMimeType(file.path)
+  if (mime) {
+    const image = await loadWorkingImageSides(repoPath, file, status, area)
+    if (image) {
+      if (mime === 'image/svg+xml' && !payload.binary && !payload.notice) {
+        return { ...(await attachWorkingContents(payload, repoPath, file, status, area)), image }
+      }
+      return { ...payload, notice: undefined, image }
+    }
+  }
+  if (payload.notice || payload.binary) return payload
+
+  return attachWorkingContents(payload, repoPath, file, status, area)
+}
+
+/**
+ * Attach the full old/new text contents matching a working diff, so the
+ * viewer can expand context. `:0` is the index (stage 0); HEAD is the last
+ * commit. The old side of an unstaged diff is the index; everything else
+ * diffs from HEAD. No-ops for statuses with no expandable sides.
+ */
+async function attachWorkingContents(
+  payload: DiffPayload,
+  repoPath: string,
+  file: ChangedFile,
+  status: FileStatus,
+  area: DiffArea
+): Promise<DiffPayload> {
   const oldSideRef = area === 'unstaged' ? ':0' : 'HEAD'
   const newFromIndex = (path: string) => showFile(repoPath, ':0', path)
   let oldContents: string | null
@@ -666,8 +701,34 @@ export async function getCommitDiff(
     }
   }
   const payload = finalizeDiff({ ...base, patch })
-  if (payload.notice || payload.binary || payload.submodule) return payload
+  if (payload.lfs || payload.submodule) return payload
 
+  // Same image hand-off as working diffs: data-URL sides for the image
+  // viewer; only SVG keeps its text diff for the Image ⇄ Code toggle (see
+  // getWorkingDiff for why rasters must not ship text contents).
+  const mime = imageMimeType(file.path)
+  if (mime) {
+    const image = await loadCommitImageSides(repoPath, hash, file, hasParent)
+    if (image) {
+      if (mime === 'image/svg+xml' && !payload.binary && !payload.notice) {
+        return { ...(await attachCommitContents(payload, repoPath, hash, file, hasParent)), image }
+      }
+      return { ...payload, notice: undefined, image }
+    }
+  }
+  if (payload.notice || payload.binary) return payload
+
+  return attachCommitContents(payload, repoPath, hash, file, hasParent)
+}
+
+/** Attach the full old/new text contents matching a commit diff. */
+async function attachCommitContents(
+  payload: DiffPayload,
+  repoPath: string,
+  hash: string,
+  file: ChangedFile,
+  hasParent: boolean
+): Promise<DiffPayload> {
   const oldContents =
     file.status === 'added' || !hasParent
       ? ''

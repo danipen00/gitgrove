@@ -22,7 +22,11 @@ export function samePayload(a: DiffPayload | null, b: DiffPayload): boolean {
     a.language === b.language &&
     a.patch === b.patch &&
     a.oldContents === b.oldContents &&
-    a.newContents === b.newContents
+    a.newContents === b.newContents &&
+    // Data URLs compare cheaply for the common case (same reference → same
+    // string instance; different images differ early in the bytes).
+    a.image?.old?.dataUrl === b.image?.old?.dataUrl &&
+    a.image?.new?.dataUrl === b.image?.new?.dataUrl
   )
 }
 

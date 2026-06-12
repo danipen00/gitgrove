@@ -299,6 +299,79 @@ export const Icon = {
       <path d="M8 11V8a4 4 0 0 1 8 0v3" />
     </Svg>
   ),
+  /** A solid frame over a dashed ghost frame — onion skinning, as animation
+   *  tools draw it: the previous frame showing through the current one. */
+  Onion: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M9.5 3.5h9.5a2 2 0 0 1 2 2v9.5" strokeDasharray="2.4 2.7" />
+      <rect x="3" y="7" width="14" height="14" rx="2" />
+    </Svg>
+  ),
+  /** A venn pair with the intersection marked — the pixel-differences mode.
+   *  (A filled lens fuses into a blob at 15px; the dot stays legible.) */
+  Compare: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="9" cy="12" r="6.5" />
+      <circle cx="15" cy="12" r="6.5" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    </Svg>
+  ),
+  /** A wipe divider with reveal arrows — the swipe mode. */
+  Swipe: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M12 3v18" />
+      <path d="m8 9-3 3 3 3" />
+      <path d="m16 9 3 3-3 3" />
+    </Svg>
+  ),
+  ZoomIn: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m21 21-4.3-4.3" />
+      <path d="M8 11h6M11 8v6" />
+    </Svg>
+  ),
+  ZoomOut: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m21 21-4.3-4.3" />
+      <path d="M8 11h6" />
+    </Svg>
+  ),
+  /** Arrows tucking into corners — zoom to fit. */
+  Fit: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M9 3H5a2 2 0 0 0-2 2v4" />
+      <path d="M15 3h4a2 2 0 0 1 2 2v4" />
+      <path d="M9 21H5a2 2 0 0 1-2-2v-4" />
+      <path d="M15 21h4a2 2 0 0 0 2-2v-4" />
+    </Svg>
+  ),
+  /** "1:1" — show the image at its actual pixel size. */
+  ActualSize: (p: IconProps) => (
+    <Svg {...p}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M8 10v5M7 11l1-1" />
+      <path d="M16 10v5M15 11l1-1" />
+      <circle cx="12" cy="10.6" r="0.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="13.8" r="0.4" fill="currentColor" stroke="none" />
+    </Svg>
+  ),
+  /** Angle brackets — view an SVG's underlying code diff. */
+  Code: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="m8 7-5 5 5 5" />
+      <path d="m16 7 5 5-5 5" />
+    </Svg>
+  ),
+  /** Picture frame — the image (visual) view of an SVG diff. */
+  Image: (p: IconProps) => (
+    <Svg {...p}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="m3 17 5-4 4 3 4-4 5 5" />
+    </Svg>
+  ),
   EyeOff: (p: IconProps) => (
     <Svg {...p}>
       <path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68" />
