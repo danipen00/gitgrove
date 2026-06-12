@@ -176,8 +176,8 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
     // marks stage controls with their own drag (swipe divider).
     if ((e.button !== 0 && e.button !== 1) || (e.target as HTMLElement).closest(NO_PAN_TARGETS))
       return
-    // Middle button: cancel the default so Chromium never starts its
-    // autoscroll affordance over the stage.
+    // Middle button: cancel the pointer default too (the mousedown listener
+    // in bindViewport is what actually disarms Chromium's autoscroll).
     if (e.button === 1) e.preventDefault()
     const frame = frameRef.current
     const image = imageRef.current
@@ -204,10 +204,15 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
       el.removeEventListener('pointermove', onMove)
       el.removeEventListener('pointerup', onUp)
       el.removeEventListener('pointercancel', onUp)
+      el.removeEventListener('lostpointercapture', onUp)
     }
     el.addEventListener('pointermove', onMove)
     el.addEventListener('pointerup', onUp)
     el.addEventListener('pointercancel', onUp)
+    // Safety net: if the capture is lost without a pointerup reaching us
+    // (release outside the window, element churn, the OS stealing the mouse),
+    // the drag must still end — a pan that survives its button is a stuck UI.
+    el.addEventListener('lostpointercapture', onUp)
   }, [])
 
   const onDoubleClick = useCallback(
@@ -264,14 +269,24 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
       }
       const onDown = (e: PointerEvent) => onPointerDown(el, e)
       const onDbl = (e: MouseEvent) => onDoubleClick(el, e)
+      // Middle-button autoscroll arms on the *mousedown* default action —
+      // canceling pointerdown does not stop it. Armed, it keeps gliding the
+      // view while the cursor rests mid-drag, and it swallows the pointerup
+      // when the button is released outside the window (a stuck pan). Kill it
+      // at the source so middle-drag behaves exactly like left-drag.
+      const onMouseDown = (e: MouseEvent) => {
+        if (e.button === 1) e.preventDefault()
+      }
       el.addEventListener('wheel', onWheel, { passive: false })
       el.addEventListener('pointerdown', onDown)
+      el.addEventListener('mousedown', onMouseDown)
       el.addEventListener('dblclick', onDbl)
       return () => {
         viewports.current.delete(el)
         resizeObserver.unobserve(el)
         el.removeEventListener('wheel', onWheel)
         el.removeEventListener('pointerdown', onDown)
+        el.removeEventListener('mousedown', onMouseDown)
         el.removeEventListener('dblclick', onDbl)
         // The surviving viewport (mode switch) re-measures the frame.
         const next = viewports.current.values().next().value

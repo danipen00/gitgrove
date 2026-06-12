@@ -40,10 +40,14 @@ export function SwipeMode({ oldImage, newImage, frame, panZoom, anchor }: Props)
       strip.removeEventListener('pointermove', move)
       strip.removeEventListener('pointerup', up)
       strip.removeEventListener('pointercancel', up)
+      strip.removeEventListener('lostpointercapture', up)
     }
     strip.addEventListener('pointermove', move)
     strip.addEventListener('pointerup', up)
     strip.addEventListener('pointercancel', up)
+    // Same safety net as the stage pan: end the drag whenever the capture is
+    // lost, even if the release lands outside the window.
+    strip.addEventListener('lostpointercapture', up)
   }, [])
 
   // At far-out zoom the 32px knob would cover the whole picture — fade it
