@@ -85,6 +85,30 @@ export function SyncButton({
             ? `Ahead of ${remote}`
             : 'Up to date'
 
+  // One plain-language description per action, the single source of truth shared
+  // by the dropdown items and the main button's hover tooltip — so the two can
+  // never drift out of sync.
+  const describe = (action: SyncAction): string => {
+    switch (action) {
+      case 'fetch':
+        return 'Check the remote for new commits — nothing is merged'
+      case 'pull':
+        return sync.behind > 0
+          ? `Merge ${pluralize(sync.behind, 'incoming commit')} into ${branch}`
+          : `Merge ${sync.upstream}'s changes into ${branch}`
+      case 'pull-rebase':
+        return 'Replay your commits on top — no merge commit'
+      case 'push':
+        return sync.ahead > 0
+          ? `Send ${pluralize(sync.ahead, 'commit')} to ${sync.upstream}`
+          : `Upload your local commits to ${sync.upstream}`
+      case 'publish':
+        return `Create ${branch} on ${remote} and start tracking it`
+      case 'force-push':
+        return `Careful — overwrites ${sync.upstream} with your history`
+    }
+  }
+
   // Glyph mirrors the menu's icon vocabulary so the pill and its popup never
   // disagree: Upload for sending (push/publish), Refresh for fetch (check the
   // remote, nothing merged), Download for pull (bring changes in).
@@ -103,15 +127,9 @@ export function SyncButton({
 
   // Each item carries a one-line explanation under its label — the same
   // title+sub pattern as the conflict-resolve menu — so the choice is clear
-  // without reaching for the git docs. The `tip` keeps the exact command on
-  // hover for users who want it.
-  const item = (
-    action: SyncAction,
-    icon: React.ReactNode,
-    text: string,
-    sub: string,
-    tip?: string
-  ) => (
+  // without reaching for the git docs. The sub comes from `describe` (shared
+  // with the main button), and `tip` keeps the exact command on hover.
+  const item = (action: SyncAction, icon: React.ReactNode, text: string, tip?: string) => (
     <button
       className="popover__item"
       data-tip={tip}
@@ -126,7 +144,7 @@ export function SyncButton({
       </span>
       <span className="popover__item-main">
         <span className="popover__item-title">{text}</span>
-        <span className="popover__item-sub">{sub}</span>
+        <span className="popover__item-sub">{describe(action)}</span>
       </span>
     </button>
   )
@@ -137,11 +155,7 @@ export function SyncButton({
         <button
           className="pill sync__main"
           disabled={busy}
-          data-tip={
-            primary === 'publish'
-              ? `Publish ${branch} to ${sync.remotes[0]}`
-              : `${label} ${sync.upstream ?? ''}`
-          }
+          data-tip={describe(primary)}
           onClick={() => onAction(primary)}
         >
           {/* Determinate fill while the running action reports progress. */}
@@ -176,23 +190,8 @@ export function SyncButton({
       >
         <div className="popover__list">
           <div className="popover__group-label">Sync with {sync.remotes[0]}</div>
-          {item(
-            'fetch',
-            <Icon.Refresh size={15} />,
-            'Fetch',
-            'Check the remote for new commits — nothing is merged',
-            'git fetch --prune'
-          )}
-          {sync.upstream &&
-            item(
-              'pull',
-              <Icon.Download size={15} />,
-              'Pull',
-              sync.behind > 0
-                ? `Merge ${pluralize(sync.behind, 'incoming commit')} into ${branch}`
-                : `Merge ${sync.upstream}'s changes into ${branch}`,
-              'git pull'
-            )}
+          {item('fetch', <Icon.Refresh size={15} />, 'Fetch', 'git fetch --prune')}
+          {sync.upstream && item('pull', <Icon.Download size={15} />, 'Pull', 'git pull')}
           {sync.upstream &&
             item(
               'pull-rebase',
@@ -200,25 +199,15 @@ export function SyncButton({
               // commits onto a new base — distinct from a plain merging pull.
               <Icon.Branch size={15} />,
               'Pull with rebase',
-              'Replay your commits on top — no merge commit',
               'git pull --rebase'
             )}
           {sync.upstream
-            ? item(
-                'push',
-                <Icon.Upload size={15} />,
-                'Push',
-                sync.ahead > 0
-                  ? `Send ${pluralize(sync.ahead, 'commit')} to ${sync.upstream}`
-                  : `Upload your local commits to ${sync.upstream}`,
-                'git push'
-              )
+            ? item('push', <Icon.Upload size={15} />, 'Push', 'git push')
             : item(
                 'publish',
                 <Icon.Upload size={15} />,
                 'Publish branch',
-                `Create ${branch} on ${sync.remotes[0]} and start tracking it`,
-                `push -u ${sync.remotes[0]} ${branch}`
+                `push -u ${remote} ${branch}`
               )}
           {sync.upstream && (
             <>
@@ -227,7 +216,6 @@ export function SyncButton({
                 'force-push',
                 <Icon.Alert size={15} />,
                 'Force push…',
-                `Careful — overwrites ${sync.upstream} with your history`,
                 'git push --force-with-lease'
               )}
             </>
