@@ -246,6 +246,7 @@ export function RepoSwitcher({ repo, onOpenRepo, onPickRepo }: Props) {
       <button
         ref={anchor}
         className="pill"
+        data-tip={repo?.path}
         onClick={() => (open ? close() : setOpen(true))}
         onContextMenu={repo ? (e) => openMenu(e, repo, false) : undefined}
       >
