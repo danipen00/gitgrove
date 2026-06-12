@@ -3540,25 +3540,37 @@ button {
   cursor: grabbing;
 }
 
-/* The composed frame both revisions share, moved by one GPU transform.
-   The checkerboard scales with the image — its squares are image pixels,
-   which doubles as a size reference while zooming. */
+/* The composed frame both revisions share, moved by one GPU transform. */
 .img-world {
   position: absolute;
   top: 0;
   left: 0;
   transform-origin: 0 0;
   will-change: transform;
-  /* Tile size is set inline, counter-scaled by the zoom so the squares stay
-     a constant ~16 screen pixels (see stage.tsx World). */
-  background: repeating-conic-gradient(var(--img-checker) 0% 25%, transparent 0% 50%) 0 0;
 }
 .img-world--gliding {
-  /* background-size glides with the transform so the checkerboard doesn't
-     pop while an animated zoom is mid-flight. */
+  transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* The transparency backdrop: an untransformed twin of the world's screen
+   rect (geometry set inline by stage.tsx World) painting constant 16px
+   screen tiles. Never on the transformed element — Chromium rasterizes the
+   gradient at layout resolution, so counter-scaled tiles alias and fade at
+   deep zooms. */
+.img-checkerboard {
+  position: absolute;
+  background: repeating-conic-gradient(var(--img-checker) 0% 25%, transparent 0% 50%) 0 0;
+  background-size: 16px 16px;
+  pointer-events: none;
+}
+.img-checkerboard--gliding {
+  /* Mirrors the world's glide: left/top/width/height interpolate on the same
+     curve as its translate/scale, so backdrop and artwork move as one. */
   transition:
-    transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    background-size 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    left 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .img-world[data-pixelated] .img-layer,
 .img-world[data-pixelated] .img-diff-canvas {

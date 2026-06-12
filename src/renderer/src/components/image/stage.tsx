@@ -36,29 +36,44 @@ interface WorldProps {
  * The composed frame, placed by the shared transform. Scaling happens here
  * (one GPU-composited transform), so layers inside are laid out once in image
  * pixels and never reflow while zooming.
+ *
+ * The transparency checkerboard is an untransformed twin underneath: it
+ * covers exactly the world's screen rect but paints constant 16px screen
+ * tiles. Counter-scaling a background on the transformed element reads
+ * simpler, but Chromium rasterizes the repeating gradient at layout
+ * resolution — at deep zoom the fractional sub-pixel tiles alias away, and
+ * the repeating conic visibly loses contrast with distance from its origin.
+ * Screen-space tiles can't break at any zoom, and since the twin rides the
+ * same translation the pattern still pans with the image.
  */
 export function World({ panZoom, frame, children }: WorldProps) {
   const { transform, animated } = panZoom
-  // The transparency checkerboard must read as a constant backdrop, not as
-  // part of the artwork: counter-scale its tile so squares stay ~16 screen
-  // pixels at every zoom level (the world's transform would otherwise blow
-  // them up into slabs or shrink them into noise).
-  const checker = 16 / transform.scale
+  const gliding = (name: string) => `${name}${animated ? ` ${name}--gliding` : ''}`
   return (
-    <div
-      className={`img-world${animated ? ' img-world--gliding' : ''}`}
-      // Pixelated upscaling from ~4× so pixel-peeping shows crisp texels
-      // instead of smear; below that, smooth interpolation looks right.
-      data-pixelated={transform.scale >= 4 || undefined}
-      style={{
-        width: frame.width,
-        height: frame.height,
-        backgroundSize: `${checker}px ${checker}px`,
-        transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`
-      }}
-    >
-      {children}
-    </div>
+    <>
+      <div
+        className={gliding('img-checkerboard')}
+        style={{
+          left: transform.x,
+          top: transform.y,
+          width: frame.width * transform.scale,
+          height: frame.height * transform.scale
+        }}
+      />
+      <div
+        className={gliding('img-world')}
+        // Pixelated upscaling from ~4× so pixel-peeping shows crisp texels
+        // instead of smear; below that, smooth interpolation looks right.
+        data-pixelated={transform.scale >= 4 || undefined}
+        style={{
+          width: frame.width,
+          height: frame.height,
+          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`
+        }}
+      >
+        {children}
+      </div>
+    </>
   )
 }
 
