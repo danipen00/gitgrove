@@ -26,7 +26,8 @@ export function SideBySideMode({ oldImage, newImage, frame, panZoom }: Props) {
         <World panZoom={panZoom} frame={frame}>
           <CenteredImage image={newImage} frame={frame} side="new" />
         </World>
-        <span className="img-side-chip img-side-chip--new">New</span>
+        {/* Outer corner: the inner one sits under the floating mode switcher. */}
+        <span className="img-side-chip img-side-chip--new img-side-chip--right">New</span>
       </Viewport>
     </div>
   )
