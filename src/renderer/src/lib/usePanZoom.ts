@@ -1,7 +1,7 @@
 // Shared pan/zoom state for the image viewer. One instance is owned by the
 // viewer host and passed to whichever mode is active, so switching between
-// onion skin / side-by-side / differences / swipe keeps the exact framing —
-// you never lose the pixel you were inspecting.
+// onion skin / side-by-side / differences / swipe / blink keeps the exact
+// framing — you never lose the pixel you were inspecting.
 //
 // Interaction model (the muscle memory of every image tool):
 //   wheel / two-finger scroll   pan
@@ -19,6 +19,7 @@ import {
   clampPan,
   clampZoom,
   fitZoom,
+  rectTransform,
   type ViewTransform,
   ZOOM_STEP,
   zoomAroundPoint
@@ -47,6 +48,8 @@ export interface PanZoom {
   zoomOut: () => void
   zoomToFit: () => void
   zoomToActualSize: () => void
+  /** Animated jump that frames `rect` (image coords) — region navigation. */
+  zoomToRect: (rect: { x: number; y: number; width: number; height: number }) => void
 }
 
 /**
@@ -135,6 +138,20 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
     glideTo(fitZoom(frame, image), true)
   }, [glideTo])
   const zoomToActualSize = useCallback(() => glideTo(1, false), [glideTo])
+
+  const zoomToRect = useCallback(
+    (rect: { x: number; y: number; width: number; height: number }) => {
+      const frame = frameRef.current
+      const image = imageRef.current
+      if (!frame || !image) return
+      setAnimated(true)
+      setFitted(false)
+      // Unlike fitZoom this upscales happily — jumping to a 4-pixel region is
+      // the whole point — capped so a nick doesn't become a wall of texels.
+      setTransform(clampPan(rectTransform(frame, rect), frame, image))
+    },
+    []
+  )
 
   // One observer for every bound viewport: fit mode follows pane resizes
   // (sidebar splitter drags, window resizes); free mode just re-clamps.
@@ -276,8 +293,19 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
       zoomIn,
       zoomOut,
       zoomToFit,
-      zoomToActualSize
+      zoomToActualSize,
+      zoomToRect
     }),
-    [transform, animated, fitted, bindViewport, zoomIn, zoomOut, zoomToFit, zoomToActualSize]
+    [
+      transform,
+      animated,
+      fitted,
+      bindViewport,
+      zoomIn,
+      zoomOut,
+      zoomToFit,
+      zoomToActualSize,
+      zoomToRect
+    ]
   )
 }

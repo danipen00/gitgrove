@@ -379,5 +379,46 @@ export const Icon = {
       <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
       <path d="m2 2 20 20" />
     </Svg>
+  ),
+  /** An eye — the blink mode (the comparator's alternating flash). */
+  Blink: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.7" />
+    </Svg>
+  ),
+  Play: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M8 5.5v13l10-6.5z" />
+    </Svg>
+  ),
+  Pause: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M9 5v14M15 5v14" />
+    </Svg>
+  ),
+  Prev: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="m14.5 6-6 6 6 6" />
+    </Svg>
+  ),
+  Next: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="m9.5 6 6 6-6 6" />
+    </Svg>
+  ),
+  /** A crosshair — align differently-sized revisions by their centers. */
+  AnchorCenter: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" />
+    </Svg>
+  ),
+  /** A corner with a nested box — align revisions by their top-left corners. */
+  AnchorCorner: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M20.5 3.5h-17v17" />
+      <rect x="7" y="7" width="8.5" height="8.5" rx="1" />
+    </Svg>
   )
 }

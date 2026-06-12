@@ -3501,10 +3501,10 @@ button {
 }
 
 /* ── Image diff viewer ─────────────────────────────────────────────────────
-   Single previews and the four-mode visual diff (onion skin / side by side /
-   differences / swipe). The stage fills the pane; every control floats over
-   it so the pixels keep all the room. One shared transform moves every mode
-   (see lib/usePanZoom.ts). */
+   Single previews and the five-mode visual diff (onion skin / side by side /
+   differences / swipe / blink). The stage fills the pane; every control
+   floats over it so the pixels keep all the room. One shared transform moves
+   every mode (see lib/usePanZoom.ts). */
 
 /* The diff body becomes a fixed (non-scrolling) flex cell: the stage owns
    panning, the page must never scroll under it. */
@@ -3589,7 +3589,8 @@ button {
    (The diff-mode switcher lives in the diff header, not over the stage —
    the same spot text diffs show Split/Unified.) */
 
-/* Zoom cluster, bottom right (the UVCS spot). */
+/* Zoom cluster, bottom right (the UVCS spot). The anchor toggle joins it
+   below a separator when the revisions differ in size. */
 .img-zoom {
   position: absolute;
   right: 12px;
@@ -3599,6 +3600,11 @@ button {
   gap: 4px;
   align-items: stretch;
   z-index: 3;
+}
+.img-zoom__sep {
+  height: 1px;
+  margin: 2px 3px;
+  background: var(--border);
 }
 .img-zoom .icon-btn {
   background: var(--bg-elevated);
@@ -3693,8 +3699,11 @@ button {
   border-left: 1px solid var(--border);
 }
 
-/* ── Onion skin ── */
-.img-onion-slider {
+/* ── Floating pills (top center) ──
+   The per-mode control strip: the onion blend, the differences tolerance +
+   region navigation, the blink transport. One shape so the modes read as one
+   viewer. */
+.img-pill {
   position: absolute;
   top: 10px;
   left: 50%;
@@ -3708,14 +3717,30 @@ button {
   box-shadow: var(--popover-shadow);
   z-index: 3;
 }
-.img-onion-slider input[type='range'] {
-  width: 220px;
+.img-pill input[type='range'] {
   accent-color: var(--accent);
 }
-.img-onion-slider__label {
+.img-pill__label {
   font-size: 11px;
   font-weight: 600;
   color: var(--fg-muted);
+}
+.img-pill__value {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+}
+.img-pill__divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 0;
+  background: var(--border);
+}
+
+/* ── Onion skin ── */
+.img-onion-slider input[type='range'] {
+  width: 220px;
 }
 
 /* ── Swipe ── */
@@ -3785,6 +3810,98 @@ button {
 }
 
 /* ── Differences ── */
+.img-diff-toolbar input[type='range'] {
+  width: 130px;
+}
+/* Keep "–/12" from nudging its neighbors while stepping through regions. */
+.img-diff-toolbar__count {
+  min-width: 34px;
+  text-align: center;
+}
+/* Focus ring around the active changed region. Border width is set inline,
+   counter-scaled against the world transform (~2 screen px at any zoom). */
+.img-region-focus {
+  position: absolute;
+  border-style: solid;
+  border-color: var(--accent);
+  pointer-events: none;
+}
+
+/* ── Blink ── */
+/* Both labels occupy the same grid cell; the inactive one stays in the
+   layout but invisible, so the chip's width is the wider word at all times —
+   the pill must not jitter while the revisions alternate. */
+.img-blink-side {
+  display: inline-grid;
+  justify-items: center;
+  border: none;
+  background: none;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--st-deleted);
+  cursor: pointer;
+}
+.img-blink-side > span {
+  grid-area: 1 / 1;
+}
+.img-blink-side > span:last-child,
+.img-blink-side--new > span:first-child {
+  visibility: hidden;
+}
+.img-blink-side--new > span:last-child {
+  visibility: visible;
+}
+.img-blink-side--new {
+  color: var(--st-added);
+}
+
+/* ── Pixel inspector ──
+   Bottom left, stacked above the HUD: coordinates plus old → new texels.
+   pointer-events off — it reports the cursor, it must never catch it. */
+.img-inspector {
+  position: absolute;
+  left: 12px;
+  bottom: 46px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  box-shadow: var(--popover-shadow);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  z-index: 3;
+  pointer-events: none;
+}
+.img-inspector__pos {
+  color: var(--fg);
+  font-weight: 600;
+}
+.img-inspector__arrow,
+.img-inspector__none {
+  color: var(--fg-faint);
+}
+.img-inspector__color {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.img-inspector__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  /* The sample color paints as a gradient layer (set inline) over this
+     checkerboard, so translucent texels read like they do on the stage. */
+  background-size:
+    auto,
+    6px 6px;
+}
+
 .img-computing {
   position: absolute;
   left: 50%;

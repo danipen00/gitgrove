@@ -4,18 +4,20 @@
 // underneath it — exactly how a film wipe behaves.
 
 import { useCallback, useRef, useState } from 'react'
+import type { AnchorMode } from '@/lib/image-diff'
 import type { DecodedImage } from '@/lib/useDecodedImage'
 import type { PanZoom } from '@/lib/usePanZoom'
-import { CenteredImage, Viewport, World } from './stage'
+import { ImageLayer, Viewport, World } from './stage'
 
 interface Props {
   oldImage: DecodedImage
   newImage: DecodedImage
   frame: { width: number; height: number }
   panZoom: PanZoom
+  anchor: AnchorMode
 }
 
-export function SwipeMode({ oldImage, newImage, frame, panZoom }: Props) {
+export function SwipeMode({ oldImage, newImage, frame, panZoom, anchor }: Props) {
   /** Divider position as a fraction of the viewport width. */
   const [split, setSplit] = useState(0.5)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -53,13 +55,13 @@ export function SwipeMode({ oldImage, newImage, frame, panZoom }: Props) {
     <div className="img-swipe" ref={containerRef}>
       <Viewport panZoom={panZoom}>
         <World panZoom={panZoom} frame={frame}>
-          <CenteredImage image={oldImage} frame={frame} side="old" />
+          <ImageLayer image={oldImage} frame={frame} side="old" anchor={anchor} />
         </World>
         {/* The new revision rides the same transform inside a viewport-level
             clip, so only the divider decides how much of it shows. */}
         <div className="img-swipe__reveal" style={{ clipPath: `inset(0 0 0 ${split * 100}%)` }}>
           <World panZoom={panZoom} frame={frame}>
-            <CenteredImage image={newImage} frame={frame} side="new" />
+            <ImageLayer image={newImage} frame={frame} side="new" anchor={anchor} />
           </World>
         </div>
         {/* data-no-pan: the viewport's native pan listener fires before any

@@ -1,12 +1,12 @@
 // Building blocks every image-diff mode composes: a Viewport (the pan/zoom
 // event surface), a World (the transformed composed frame both revisions
-// share) and a CenteredImage (one revision, centered in that frame — resized
-// assets stay visually anchored, the UVCS convention). Keeping these tiny and
-// shared is what lets all four modes feel like one viewer: same checkerboard,
-// same transform, same physics.
+// share) and an ImageLayer (one revision, placed in that frame by the active
+// anchor — centered by default, the UVCS convention; top-left for canvas-grow
+// comparisons). Keeping these tiny and shared is what lets all five modes
+// feel like one viewer: same checkerboard, same transform, same physics.
 
 import type { ReactNode } from 'react'
-import { centeredOffset } from '@/lib/image-diff'
+import { type AnchorMode, anchoredOffset } from '@/lib/image-diff'
 import type { DecodedImage } from '@/lib/useDecodedImage'
 import type { PanZoom } from '@/lib/usePanZoom'
 
@@ -62,18 +62,21 @@ export function World({ panZoom, frame, children }: WorldProps) {
   )
 }
 
-interface CenteredImageProps {
+interface ImageLayerProps {
   image: DecodedImage
   frame: { width: number; height: number }
   /** Tints the revision border: old reads red, new reads green. */
   side: 'old' | 'new'
-  /** 0–1 opacity for the onion-skin blend. */
+  /** How the revision is placed in the composed frame (only matters when the
+   *  revisions differ in size). Defaults to centered. */
+  anchor?: AnchorMode
+  /** 0–1 opacity for the onion-skin blend and the blink flip. */
   opacity?: number
 }
 
-/** One revision, centered in the composed frame at its natural pixel size. */
-export function CenteredImage({ image, frame, side, opacity }: CenteredImageProps) {
-  const off = centeredOffset(frame, image)
+/** One revision, placed in the composed frame at its natural pixel size. */
+export function ImageLayer({ image, frame, side, anchor = 'center', opacity }: ImageLayerProps) {
+  const off = anchoredOffset(frame, image, anchor)
   return (
     <img
       className={`img-layer img-layer--${side}`}
