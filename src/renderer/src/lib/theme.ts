@@ -19,7 +19,7 @@ export interface ThemeOption {
   value: ThemePref
   label: string
   sub: string
-  icon: keyof (typeof import('@/lib/icons'))['Icon']
+  icon: keyof typeof import('@/lib/icons')['Icon']
 }
 
 export const THEME_OPTIONS: ThemeOption[] = [

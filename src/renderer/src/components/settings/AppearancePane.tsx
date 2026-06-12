@@ -16,21 +16,21 @@ export function AppearancePane({ pref, onChange }: Props) {
       {THEME_OPTIONS.map((option) => {
         const OptIcon = Icon[option.icon]
         return (
-        <button
-          key={option.value}
-          type="button"
-          role="radio"
-          aria-checked={pref === option.value}
-          className={`acct-choice${pref === option.value ? ' is-selected' : ''}`}
-          onClick={() => onChange(option.value)}
-        >
-          <OptIcon size={18} />
-          <span className="acct-choice__main">
-            <span className="acct-choice__title">{option.label}</span>
-            <span className="acct-choice__sub">{option.sub}</span>
-          </span>
-          {pref === option.value && <Icon.Check size={14} />}
-        </button>
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={pref === option.value}
+            className={`acct-choice${pref === option.value ? ' is-selected' : ''}`}
+            onClick={() => onChange(option.value)}
+          >
+            <OptIcon size={18} />
+            <span className="acct-choice__main">
+              <span className="acct-choice__title">{option.label}</span>
+              <span className="acct-choice__sub">{option.sub}</span>
+            </span>
+            {pref === option.value && <Icon.Check size={14} />}
+          </button>
         )
       })}
     </div>
