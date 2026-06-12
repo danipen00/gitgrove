@@ -39,6 +39,11 @@ interface WorldProps {
  */
 export function World({ panZoom, frame, children }: WorldProps) {
   const { transform, animated } = panZoom
+  // The transparency checkerboard must read as a constant backdrop, not as
+  // part of the artwork: counter-scale its tile so squares stay ~16 screen
+  // pixels at every zoom level (the world's transform would otherwise blow
+  // them up into slabs or shrink them into noise).
+  const checker = 16 / transform.scale
   return (
     <div
       className={`img-world${animated ? ' img-world--gliding' : ''}`}
@@ -48,6 +53,7 @@ export function World({ panZoom, frame, children }: WorldProps) {
       style={{
         width: frame.width,
         height: frame.height,
+        backgroundSize: `${checker}px ${checker}px`,
         transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`
       }}
     >
