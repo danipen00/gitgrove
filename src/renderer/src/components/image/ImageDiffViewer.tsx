@@ -33,7 +33,7 @@ interface ImageModeDef {
  *  deliberately one short word each — four segments share the header with
  *  the file path. Tooltips carry the full names. */
 export const IMAGE_DIFF_MODES: ImageModeDef[] = [
-  { id: 'onion', label: 'Onion', title: 'Onion skin', icon: (s) => <Icon.Layers size={s} /> },
+  { id: 'onion', label: 'Onion', title: 'Onion skin', icon: (s) => <Icon.Onion size={s} /> },
   { id: 'side-by-side', label: 'Split', icon: (s) => <Icon.Split size={s} /> },
   {
     id: 'differences',

@@ -299,19 +299,21 @@ export const Icon = {
       <path d="M8 11V8a4 4 0 0 1 8 0v3" />
     </Svg>
   ),
-  /** Stacked translucent sheets — the onion-skin blend mode. */
-  Layers: (p: IconProps) => (
+  /** A solid frame over a dashed ghost frame — onion skinning, as animation
+   *  tools draw it: the previous frame showing through the current one. */
+  Onion: (p: IconProps) => (
     <Svg {...p}>
-      <path d="m12 3 9 5-9 5-9-5z" />
-      <path d="m3 12.5 9 5 9-5" />
-      <path d="m3 16.5 9 5 9-5" />
+      <path d="M9.5 3.5h9.5a2 2 0 0 1 2 2v9.5" strokeDasharray="2.4 2.7" />
+      <rect x="3" y="7" width="14" height="14" rx="2" />
     </Svg>
   ),
-  /** Two overlapping frames — the pixel-differences mode. */
+  /** A venn pair with the intersection marked — the pixel-differences mode.
+   *  (A filled lens fuses into a blob at 15px; the dot stays legible.) */
   Compare: (p: IconProps) => (
     <Svg {...p}>
-      <rect x="3" y="3" width="13" height="13" rx="2" />
-      <rect x="8" y="8" width="13" height="13" rx="2" />
+      <circle cx="9" cy="12" r="6.5" />
+      <circle cx="15" cy="12" r="6.5" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
     </Svg>
   ),
   /** A wipe divider with reveal arrows — the swipe mode. */
