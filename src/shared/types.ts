@@ -336,7 +336,7 @@ export interface ImageContents {
 /**
  * Both sides of an image change. A null side means the image doesn't exist
  * there (added/untracked → no old, deleted → no new); the viewer renders a
- * single-image preview for those and the five-mode diff when both exist.
+ * single-image preview for those and the four-mode diff when both exist.
  */
 export interface ImageDiffSides {
   old: ImageContents | null
@@ -369,7 +369,7 @@ export interface DiffPayload {
   /**
    * Set when the path is a renderable image (see main/git/image.ts): the
    * old/new contents as data URLs. The viewer swaps the text diff for the
-   * image viewer (single preview or five-mode visual diff). For SVG the text
+   * image viewer (single preview or four-mode visual diff). For SVG the text
    * `patch`/contents are still shipped alongside, so the viewer can offer an
    * Image ⇄ Code toggle.
    */

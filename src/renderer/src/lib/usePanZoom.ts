@@ -1,7 +1,7 @@
 // Shared pan/zoom state for the image viewer. One instance is owned by the
 // viewer host and passed to whichever mode is active, so switching between
-// onion skin / side-by-side / differences / swipe / blink keeps the exact
-// framing — you never lose the pixel you were inspecting.
+// onion skin / side-by-side / differences / swipe keeps the exact framing —
+// you never lose the pixel you were inspecting.
 //
 // Interaction model (the muscle memory of every image tool):
 //   wheel / two-finger scroll   pan

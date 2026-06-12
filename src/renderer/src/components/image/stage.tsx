@@ -2,7 +2,7 @@
 // event surface), a World (the transformed composed frame both revisions
 // share) and an ImageLayer (one revision, placed in that frame by the active
 // anchor — centered by default, the UVCS convention; top-left for canvas-grow
-// comparisons). Keeping these tiny and shared is what lets all five modes
+// comparisons). Keeping these tiny and shared is what lets all four modes
 // feel like one viewer: same checkerboard, same transform, same physics.
 
 import type { ReactNode } from 'react'

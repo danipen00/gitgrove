@@ -1,12 +1,13 @@
-// The image pane: a single preview for added/deleted images, and a five-mode
-// visual diff (onion skin / side by side / differences / swipe / blink) for
-// modified ones. The mode control lives in the diff header (DiffViewer
-// renders it in the same spot text diffs show Split/Unified — one place for
-// "how do I view this diff" across the app). One shared pan/zoom drives every
-// mode, so switching modes keeps the framing; zoom controls float over the
-// stage (joined by the anchor toggle when the revisions differ in size); an
-// HUD strip narrates the change (dimensions, sizes, % of pixels that differ)
-// and a pixel inspector reports exact texels from 8× zoom.
+// The image pane: a single preview for added/deleted images, and a four-mode
+// visual diff (onion skin — with its blink autoplay — / side by side /
+// differences / swipe) for modified ones. The mode control lives in the diff
+// header (DiffViewer renders it in the same spot text diffs show
+// Split/Unified — one place for "how do I view this diff" across the app).
+// One shared pan/zoom drives every mode, so switching modes keeps the
+// framing; zoom controls float over the stage (joined by the anchor toggle
+// when the revisions differ in size); an HUD strip narrates the change
+// (dimensions, sizes, % of pixels that differ) and a pixel inspector reports
+// exact texels from 8× zoom.
 
 import type { ImageDiffSides } from '@shared/types'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -16,7 +17,6 @@ import { type AnchorMode, composedSize, MAX_TOLERANCE, zoomLabel } from '@/lib/i
 import { usePersistentState } from '@/lib/persist'
 import { type DecodedImage, useDecodedImage } from '@/lib/useDecodedImage'
 import { usePanZoom } from '@/lib/usePanZoom'
-import { BlinkMode } from './BlinkMode'
 import { type DiffComposition, DifferencesMode, type DiffStats } from './DifferencesMode'
 import { OnionSkinMode } from './OnionSkinMode'
 import { PixelInspector } from './PixelInspector'
@@ -24,7 +24,7 @@ import { SideBySideMode } from './SideBySideMode'
 import { SwipeMode } from './SwipeMode'
 import { ImageLayer, Viewport, World } from './stage'
 
-export type ImageDiffMode = 'onion' | 'side-by-side' | 'differences' | 'swipe' | 'blink'
+export type ImageDiffMode = 'onion' | 'side-by-side' | 'differences' | 'swipe'
 
 interface ImageModeDef {
   id: ImageDiffMode
@@ -35,8 +35,9 @@ interface ImageModeDef {
 }
 
 /** The header's mode options, in the order they read naturally. Labels are
- *  deliberately one short word each — five segments share the header with
- *  the file path. Tooltips carry the full names. */
+ *  deliberately one short word each — four segments share the header with
+ *  the file path. Tooltips carry the full names. (Blink lives inside Onion
+ *  as its play button — it's the blend automated, not a fifth way to look.) */
 export const IMAGE_DIFF_MODES: ImageModeDef[] = [
   { id: 'onion', label: 'Onion', title: 'Onion skin', icon: (s) => <Icon.Onion size={s} /> },
   { id: 'side-by-side', label: 'Split', icon: (s) => <Icon.Split size={s} /> },
@@ -46,13 +47,7 @@ export const IMAGE_DIFF_MODES: ImageModeDef[] = [
     title: 'Differences',
     icon: (s) => <Icon.Compare size={s} />
   },
-  { id: 'swipe', label: 'Swipe', icon: (s) => <Icon.Swipe size={s} /> },
-  {
-    id: 'blink',
-    label: 'Blink',
-    title: 'Blink old and new',
-    icon: (s) => <Icon.Blink size={s} />
-  }
+  { id: 'swipe', label: 'Swipe', icon: (s) => <Icon.Swipe size={s} /> }
 ]
 
 interface Props {
@@ -194,15 +189,6 @@ export function ImageDiffViewer({ image, mode }: Props) {
             )}
             {mode === 'swipe' && (
               <SwipeMode
-                oldImage={oldImage}
-                newImage={newImage}
-                frame={frame}
-                panZoom={panZoom}
-                anchor={anchor}
-              />
-            )}
-            {mode === 'blink' && (
-              <BlinkMode
                 oldImage={oldImage}
                 newImage={newImage}
                 frame={frame}

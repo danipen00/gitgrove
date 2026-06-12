@@ -380,21 +380,19 @@ export const Icon = {
       <path d="m2 2 20 20" />
     </Svg>
   ),
-  /** An eye — the blink mode (the comparator's alternating flash). */
-  Blink: (p: IconProps) => (
-    <Svg {...p}>
-      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
-      <circle cx="12" cy="12" r="2.7" />
-    </Svg>
-  ),
+  /** Filled with a rounded outline: thin strokes alias into mush at pill
+   *  sizes, solid bodies anti-alias cleanly. Nudged right of geometric
+   *  center — optical centering inside a circle. */
   Play: (p: IconProps) => (
     <Svg {...p}>
-      <path d="M8 5.5v13l10-6.5z" />
+      <path d="M9 5.5v13l10-6.5z" fill="currentColor" strokeLinejoin="round" />
     </Svg>
   ),
+  /** Filled bars for the same anti-aliasing reason as Play. */
   Pause: (p: IconProps) => (
     <Svg {...p}>
-      <path d="M9 5v14M15 5v14" />
+      <rect x="7.6" y="5.5" width="3.4" height="13" rx="1.2" fill="currentColor" stroke="none" />
+      <rect x="13.4" y="5.5" width="3.4" height="13" rx="1.2" fill="currentColor" stroke="none" />
     </Svg>
   ),
   Prev: (p: IconProps) => (

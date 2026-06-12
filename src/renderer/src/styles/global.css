@@ -3501,10 +3501,10 @@ button {
 }
 
 /* ── Image diff viewer ─────────────────────────────────────────────────────
-   Single previews and the five-mode visual diff (onion skin / side by side /
-   differences / swipe / blink). The stage fills the pane; every control
-   floats over it so the pixels keep all the room. One shared transform moves
-   every mode (see lib/usePanZoom.ts). */
+   Single previews and the four-mode visual diff (onion skin — with its blink
+   autoplay — / side by side / differences / swipe). The stage fills the pane;
+   every control floats over it so the pixels keep all the room. One shared
+   transform moves every mode (see lib/usePanZoom.ts). */
 
 /* The diff body becomes a fixed (non-scrolling) flex cell: the stage owns
    panning, the page must never scroll under it. */
@@ -3732,6 +3732,19 @@ button {
 .img-pill input[type='range'] {
   accent-color: var(--accent);
 }
+/* Buttons inside pills are quiet, small and round — the stock 30px bordered
+   icon button would dominate the strip. */
+.img-pill .icon-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+}
+.img-pill .icon-btn:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
 .img-pill__label {
   font-size: 11px;
   font-weight: 600;
@@ -3747,6 +3760,15 @@ button {
 /* ── Onion skin ── */
 .img-onion-slider input[type='range'] {
   width: 220px;
+}
+/* The play/pause keeps a bordered circle: a bare triangle next to the slider
+   reads as a chevron, not a button. A couple px larger than the bare pill
+   arrows — it's the pill's one real action. */
+.img-onion-slider .icon-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  background: var(--bg);
 }
 
 /* ── Swipe ── */
@@ -3829,23 +3851,11 @@ button {
 /* Region navigation: its own pill stacked under the tolerance pill, so it
    can appear and disappear (regions come and go with the tolerance) without
    moving the slider. Deliberately quieter and shorter than the tolerance
-   pill — secondary wayfinding, not a control bar: slim padding, small
-   borderless round arrows instead of the stock 30px icon buttons. */
+   pill — secondary wayfinding, not a control bar. */
 .img-region-nav {
   top: 46px;
   padding: 4px 10px;
   gap: 5px;
-}
-.img-region-nav .icon-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: 999px;
-  background: none;
-}
-.img-region-nav .icon-btn:hover {
-  color: var(--fg);
-  background: var(--bg-hover);
 }
 /* When the tolerance pill is hidden (no delta the slider could affect — see
    DifferencesMode toleranceMatters), the nav pill takes its top spot. */
@@ -3864,35 +3874,6 @@ button {
   border-style: solid;
   border-color: var(--accent);
   pointer-events: none;
-}
-
-/* ── Blink ── */
-/* Both labels occupy the same grid cell; the inactive one stays in the
-   layout but invisible, so the chip's width is the wider word at all times —
-   the pill must not jitter while the revisions alternate. */
-.img-blink-side {
-  display: inline-grid;
-  justify-items: center;
-  border: none;
-  background: none;
-  padding: 2px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--st-deleted);
-  cursor: pointer;
-}
-.img-blink-side > span {
-  grid-area: 1 / 1;
-}
-.img-blink-side > span:last-child,
-.img-blink-side--new > span:first-child {
-  visibility: hidden;
-}
-.img-blink-side--new > span:last-child {
-  visibility: visible;
-}
-.img-blink-side--new {
-  color: var(--st-added);
 }
 
 /* ── Pixel inspector ──
