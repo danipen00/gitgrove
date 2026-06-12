@@ -3702,38 +3702,59 @@ button {
   position: absolute;
   inset: 0;
 }
+/* The divider is a 14px invisible strip — the whole line drags like a
+   splitter, with comfortable tolerance — drawing the visible 2px line via
+   ::before. Whole CSS pixels only for the line: it sits at arbitrary
+   subpixel offsets while dragging, so a fractional width rasterizes as 1 or
+   2 device pixels depending on position and visibly flickers. No shadow
+   halo either (it read as gray bars beside the line). */
 .img-swipe__divider {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 0;
-  border-left: 1.5px solid var(--accent);
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.35);
+  width: 14px;
+  margin-left: -7px;
   z-index: 2;
-  pointer-events: none;
+  cursor: ew-resize;
+  touch-action: none;
 }
+.img-swipe__divider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+}
+/* Purely visual — the strip owns the pointer; fades away at far-out zoom
+   levels where 32px would cover the whole picture. */
 .img-swipe__handle {
   position: absolute;
   top: 50%;
-  left: 0;
-  transform: translate(calc(-50% - 0.75px), -50%);
-  width: 28px;
-  height: 28px;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--bg-elevated);
-  border: 1.5px solid var(--accent);
+  /* Same weight as the divider line, so knob and line read as one tool. */
+  border: 2px solid var(--accent);
   color: var(--accent);
-  cursor: ew-resize;
-  pointer-events: auto;
-  touch-action: none;
+  pointer-events: none;
+  transition: opacity 140ms ease;
 }
-.img-swipe__handle:hover {
+.img-swipe__divider:hover .img-swipe__handle {
   /* The tint must stay opaque: --accent-soft alone is translucent and would
      let the divider line show through the knob. */
   background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
+}
+.img-swipe__handle--hidden {
+  opacity: 0;
 }
 
 /* ── Differences ── */
