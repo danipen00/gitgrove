@@ -601,11 +601,18 @@ export async function getWorkingDiff(
   // Renderable image: ship both sides as data URLs and let the viewer take
   // over. SVG additionally keeps its text diff (it IS text) so the viewer can
   // offer an Image ⇄ Code toggle; rasters drop the "binary file" notice.
-  if (imageMimeType(file.path)) {
+  // Rasters must never ship text contents: a rename-only jpeg diffs to just
+  // the rename header (no "Binary files differ" line, binary=false), which
+  // would otherwise read as a diffable text file and attach raw image bytes
+  // decoded as utf8.
+  const mime = imageMimeType(file.path)
+  if (mime) {
     const image = await loadWorkingImageSides(repoPath, file, status, area)
     if (image) {
-      if (payload.binary || payload.notice) return { ...payload, notice: undefined, image }
-      return { ...(await attachWorkingContents(payload, repoPath, file, status, area)), image }
+      if (mime === 'image/svg+xml' && !payload.binary && !payload.notice) {
+        return { ...(await attachWorkingContents(payload, repoPath, file, status, area)), image }
+      }
+      return { ...payload, notice: undefined, image }
     }
   }
   if (payload.notice || payload.binary) return payload
@@ -697,12 +704,16 @@ export async function getCommitDiff(
   if (payload.lfs || payload.submodule) return payload
 
   // Same image hand-off as working diffs: data-URL sides for the image
-  // viewer; SVG keeps its text diff for the Image ⇄ Code toggle.
-  if (imageMimeType(file.path)) {
+  // viewer; only SVG keeps its text diff for the Image ⇄ Code toggle (see
+  // getWorkingDiff for why rasters must not ship text contents).
+  const mime = imageMimeType(file.path)
+  if (mime) {
     const image = await loadCommitImageSides(repoPath, hash, file, hasParent)
     if (image) {
-      if (payload.binary || payload.notice) return { ...payload, notice: undefined, image }
-      return { ...(await attachCommitContents(payload, repoPath, hash, file, hasParent)), image }
+      if (mime === 'image/svg+xml' && !payload.binary && !payload.notice) {
+        return { ...(await attachCommitContents(payload, repoPath, hash, file, hasParent)), image }
+      }
+      return { ...payload, notice: undefined, image }
     }
   }
   if (payload.notice || payload.binary) return payload

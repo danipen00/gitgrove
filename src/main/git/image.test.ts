@@ -133,6 +133,28 @@ describe('image sides on commit diffs', () => {
     expect(fromDataUrl(diff.image?.old?.dataUrl ?? '').equals(RED_PNG)).toBe(true)
     expect(fromDataUrl(diff.image?.new?.dataUrl ?? '').equals(BLUE_PNG)).toBe(true)
   })
+
+  test('a rename-only raster never ships text contents (no Code view)', async () => {
+    // A 100% similarity rename diffs to just the rename header — no "Binary
+    // files differ" line — which must not be mistaken for a diffable text
+    // file (that would attach raw image bytes decoded as utf8).
+    git(['mv', 'pixel.png', 'renamed.png'])
+    git(['commit', '-m', 'rename pixel'])
+    const renameHash = git(['rev-parse', 'HEAD'])
+    try {
+      const [file] = await getCommitFiles(repo, renameHash)
+      expect(file.status).toBe('renamed')
+      const diff = await getCommitDiff(repo, renameHash, file)
+      expect(diff.image).toBeDefined()
+      expect(fromDataUrl(diff.image?.old?.dataUrl ?? '').equals(BLUE_PNG)).toBe(true)
+      expect(fromDataUrl(diff.image?.new?.dataUrl ?? '').equals(BLUE_PNG)).toBe(true)
+      expect(diff.oldContents).toBeUndefined()
+      expect(diff.newContents).toBeUndefined()
+    } finally {
+      git(['mv', 'renamed.png', 'pixel.png'])
+      git(['commit', '-m', 'rename back'])
+    }
+  })
 })
 
 describe('image sides on working diffs', () => {

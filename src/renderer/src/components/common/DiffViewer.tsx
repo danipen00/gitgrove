@@ -122,8 +122,10 @@ function DiffViewerImpl({
   const [imageAsCode, setImageAsCode] = useState(false)
   const diffPath = diff?.path
   useEffect(() => setImageAsCode(false), [diffPath])
-  // Rasters have no text to fall back to; only SVG offers the toggle.
-  const hasCodeView = !!diff?.image && !!diff.patch && !diff.binary
+  // Only SVG offers the toggle: main ships text contents alongside the image
+  // exclusively for SVG. Keying off the patch would misfire on rename-only
+  // rasters, whose patch is a textless rename header.
+  const hasCodeView = !!diff?.image && diff.oldContents != null && diff.newContents != null
   const imageView = !!diff?.image && (!hasCodeView || !imageAsCode)
   // Most loads finish in a few ms — keep the previous diff on screen and swap
   // it for the new payload when it lands. The spinner only ever appears for
