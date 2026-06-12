@@ -213,7 +213,14 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
         if (e.ctrlKey || e.metaKey) {
           const rect = el.getBoundingClientRect()
           // Exponential mapping keeps pinch speed proportional at any zoom.
-          zoomAt(transformRef.current.scale * Math.exp(-e.deltaY * 0.012), {
+          // Trackpad pinches stream many small deltas; a mouse wheel fires
+          // one big notch (±100ish pixels, or line-mode deltas) that would
+          // jump several zoom levels at once. Clamping the per-event delta
+          // caps a notch at a gentle ~1.2× step while leaving the small
+          // pinch deltas untouched.
+          const raw = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : e.deltaY * 16
+          const delta = Math.max(-16, Math.min(16, raw))
+          zoomAt(transformRef.current.scale * Math.exp(-delta * 0.012), {
             x: e.clientX - rect.left,
             y: e.clientY - rect.top
           })
