@@ -21,7 +21,6 @@ export function SwipeMode({ oldImage, newImage, frame, panZoom }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const onHandleDown = useCallback((e: React.PointerEvent) => {
-    e.stopPropagation() // the stage must not interpret this drag as a pan
     const el = containerRef.current
     if (!el) return
     const handle = e.currentTarget as HTMLElement
@@ -54,8 +53,11 @@ export function SwipeMode({ oldImage, newImage, frame, panZoom }: Props) {
           </World>
         </div>
         <div className="img-swipe__divider" style={{ left: `${split * 100}%` }}>
+          {/* data-no-pan: the viewport's native pan listener fires before any
+              React handler here could stopPropagation — the stage checks the
+              attribute instead (see usePanZoom NO_PAN_TARGETS). */}
           {/* biome-ignore lint/a11y/noStaticElementInteractions: a drag handle, keyboard-reachable via the stage shortcuts */}
-          <div className="img-swipe__handle" onPointerDown={onHandleDown}>
+          <div className="img-swipe__handle" data-no-pan onPointerDown={onHandleDown}>
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
               <path d="M3.5 1 0.5 5l3 4M6.5 1l3 4-3 4" fill="none" stroke="currentColor" />
             </svg>

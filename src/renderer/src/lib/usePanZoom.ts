@@ -26,6 +26,10 @@ import {
 
 type Size = { width: number; height: number }
 
+/** Elements over the stage whose pointer interactions must never pan/zoom:
+ *  real controls, plus anything marked `data-no-pan` (the swipe handle). */
+const NO_PAN_TARGETS = 'button, input, [data-no-pan]'
+
 export interface PanZoom {
   /** Current transform; apply as `translate(x, y) scale(scale)`. */
   transform: ViewTransform
@@ -147,8 +151,12 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
   useEffect(() => () => resizeObserver.disconnect(), [resizeObserver])
 
   const onPointerDown = useCallback((el: HTMLElement, e: PointerEvent) => {
-    // Left button only; leave controls layered over the stage alone.
-    if (e.button !== 0 || (e.target as HTMLElement).closest('button, input')) return
+    // Left button only; leave controls layered over the stage alone. The
+    // check must happen here, natively: this listener fires while the event
+    // bubbles to the viewport, before any React synthetic handler — a
+    // control's stopPropagation would arrive too late to stop the pan.
+    // `data-no-pan` marks stage controls with their own drag (swipe handle).
+    if (e.button !== 0 || (e.target as HTMLElement).closest(NO_PAN_TARGETS)) return
     const frame = frameRef.current
     const image = imageRef.current
     if (!frame || !image) return
@@ -182,7 +190,7 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
 
   const onDoubleClick = useCallback(
     (el: HTMLElement, e: MouseEvent) => {
-      if ((e.target as HTMLElement).closest('button, input')) return
+      if ((e.target as HTMLElement).closest(NO_PAN_TARGETS)) return
       const rect = el.getBoundingClientRect()
       const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top }
       const frame = frameRef.current
