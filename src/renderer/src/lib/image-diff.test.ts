@@ -16,7 +16,9 @@ import {
 /** Build a bitmap from per-pixel RGBA tuples (row-major). */
 function bitmap(width: number, height: number, pixels: number[][]): RgbaBitmap {
   const data = new Uint8ClampedArray(width * height * 4)
-  pixels.forEach((px, i) => data.set(px, i * 4))
+  pixels.forEach((px, i) => {
+    data.set(px, i * 4)
+  })
   return { data, width, height }
 }
 

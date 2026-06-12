@@ -16,8 +16,8 @@ import { usePanZoom } from '@/lib/usePanZoom'
 import { type DiffComposition, DifferencesMode, type DiffStats } from './DifferencesMode'
 import { OnionSkinMode } from './OnionSkinMode'
 import { SideBySideMode } from './SideBySideMode'
-import { CenteredImage, Viewport, World } from './stage'
 import { SwipeMode } from './SwipeMode'
+import { CenteredImage, Viewport, World } from './stage'
 
 export type ImageDiffMode = 'onion' | 'side-by-side' | 'differences' | 'swipe'
 
@@ -122,7 +122,6 @@ export function ImageDiffViewer({ image, mode }: Props) {
     stats && stats.coveredPixels > 0 ? (stats.changedPixels / stats.coveredPixels) * 100 : null
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: focusable stage so the zoom keys work; all actions also have buttons.
     <div className="img-pane" tabIndex={0} onKeyDown={onKeyDown}>
       <div className="img-stage-area">
         {!isDiff && (oldImage || newImage) && (

@@ -66,7 +66,6 @@ export function SwipeMode({ oldImage, newImage, frame, panZoom }: Props) {
             React handler here could stopPropagation — the stage checks the
             attribute instead (see usePanZoom NO_PAN_TARGETS). Double-click
             snaps the split back to center. */}
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: a drag divider, keyboard-reachable via the stage shortcuts */}
         <div
           className="img-swipe__divider"
           style={{ left: `${split * 100}%` }}

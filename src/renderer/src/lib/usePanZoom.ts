@@ -42,7 +42,7 @@ export interface PanZoom {
    * (side-by-side binds two). Wires wheel/pinch/drag/double-click and size
    * tracking; React 19 ref cleanups detach when the mode unmounts.
    */
-  bindViewport: (el: HTMLElement | null) => void | (() => void)
+  bindViewport: (el: HTMLElement | null) => undefined | (() => void)
   zoomIn: () => void
   zoomOut: () => void
   zoomToFit: () => void
@@ -209,7 +209,7 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
   )
 
   const bindViewport = useCallback(
-    (el: HTMLElement | null): void | (() => void) => {
+    (el: HTMLElement | null): undefined | (() => void) => {
       if (!el) return
       viewports.current.add(el)
       frameRef.current = { width: el.clientWidth, height: el.clientHeight }

@@ -126,6 +126,7 @@ function DiffViewerImpl({
   // regular code diff. Per-file choice — a new selection goes back to pixels.
   const [imageAsCode, setImageAsCode] = useState(false)
   const diffPath = diff?.path
+  // biome-ignore lint/correctness/useExhaustiveDependencies: diffPath is the trigger, not a read — selecting a new file resets the toggle to pixels.
   useEffect(() => setImageAsCode(false), [diffPath])
   // Only SVG offers the toggle: main ships text contents alongside the image
   // exclusively for SVG. Keying off the patch would misfire on rename-only
@@ -460,16 +461,16 @@ function DiffViewerImpl({
           diff.patch &&
           selectable &&
           meta && (
-          <FileDiff<BlockRef>
-            key={`${diff.path}:${theme}`}
-            fileDiff={meta}
-            lineAnnotations={annotations}
-            renderAnnotation={renderSelectionBar}
-            disableWorkerPool
-            options={fileDiffOptions}
-            style={{ minHeight: '100%' }}
-          />
-        )}
+            <FileDiff<BlockRef>
+              key={`${diff.path}:${theme}`}
+              fileDiff={meta}
+              lineAnnotations={annotations}
+              renderAnnotation={renderSelectionBar}
+              disableWorkerPool
+              options={fileDiffOptions}
+              style={{ minHeight: '100%' }}
+            />
+          )}
         {!spin &&
           diff &&
           !imageView &&
@@ -510,14 +511,14 @@ function DiffViewerImpl({
           !diff.submodule &&
           !isEmptyFile &&
           !diff.patch && (
-          <div className="center-state">
-            <div className="icon-ring">
-              <Icon.Check size={22} />
+            <div className="center-state">
+              <div className="icon-ring">
+                <Icon.Check size={22} />
+              </div>
+              <h3>No changes</h3>
+              <p>This file has no textual differences to display.</p>
             </div>
-            <h3>No changes</h3>
-            <p>This file has no textual differences to display.</p>
-          </div>
-        )}
+          )}
       </div>
 
       {confirmDiscard && selectionActions && (
