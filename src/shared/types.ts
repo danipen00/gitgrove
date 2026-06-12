@@ -322,6 +322,27 @@ export interface LogOptions {
   search?: string
 }
 
+/**
+ * One side of an image diff, shipped ready to paint: a `data:` URL the
+ * renderer feeds straight to an <img> (no file:// access from the sandboxed
+ * renderer, no temp files), plus the encoded size for the info bar.
+ */
+export interface ImageContents {
+  dataUrl: string
+  /** Encoded size in bytes (the blob, not the decoded bitmap). */
+  bytes: number
+}
+
+/**
+ * Both sides of an image change. A null side means the image doesn't exist
+ * there (added/untracked → no old, deleted → no new); the viewer renders a
+ * single-image preview for those and the four-mode diff when both exist.
+ */
+export interface ImageDiffSides {
+  old: ImageContents | null
+  new: ImageContents | null
+}
+
 /** A single file's unified diff plus light metadata for the diff viewer. */
 export interface DiffPayload {
   /** Unified git patch (with `diff --git` header), or empty when not diffable. */
@@ -345,6 +366,14 @@ export interface DiffPayload {
    * submodule panel instead of raw "Subproject commit" plumbing text.
    */
   submodule?: { oldSha: string | null; newSha: string | null; dirty: boolean }
+  /**
+   * Set when the path is a renderable image (see main/git/image.ts): the
+   * old/new contents as data URLs. The viewer swaps the text diff for the
+   * image viewer (single preview or four-mode visual diff). For SVG the text
+   * `patch`/contents are still shipped alongside, so the viewer can offer an
+   * Image ⇄ Code toggle.
+   */
+  image?: ImageDiffSides
   language?: string
   /**
    * Full old/new file contents. When both are present the diff viewer renders

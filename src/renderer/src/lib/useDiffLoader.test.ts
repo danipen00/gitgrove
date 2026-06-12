@@ -26,4 +26,17 @@ describe('samePayload', () => {
     expect(samePayload(payload(), payload({ notice: 'Too large.' }))).toBe(false)
     expect(samePayload(payload(), payload({ oldContents: 'x', newContents: 'y' }))).toBe(false)
   })
+
+  test('image sides participate in equality', () => {
+    const side = { dataUrl: 'data:image/png;base64,AAAA', bytes: 3 }
+    const withImage = () => payload({ image: { old: null, new: side } })
+    expect(samePayload(withImage(), withImage())).toBe(true)
+    expect(samePayload(payload(), withImage())).toBe(false)
+    expect(
+      samePayload(
+        withImage(),
+        payload({ image: { old: null, new: { dataUrl: 'data:image/png;base64,BBBB', bytes: 3 } } })
+      )
+    ).toBe(false)
+  })
 })

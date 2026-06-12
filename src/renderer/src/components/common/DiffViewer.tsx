@@ -2,7 +2,8 @@ import { parseDiffFromFile } from '@pierre/diffs'
 import type { BaseDiffOptions, DiffLineAnnotation } from '@pierre/diffs/react'
 import { FileDiff, MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
 import type { DiffPayload } from '@shared/types'
-import { memo, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
+import { ImageDiffViewer } from '@/components/image/ImageDiffViewer'
 import type { FileSelection } from '@/lib/commit-selection'
 import { formatBytes, splitPath, statusLabel, statusLetter } from '@/lib/format'
 import { Icon } from '@/lib/icons'
@@ -116,6 +117,14 @@ function DiffViewerImpl({
 }: Props) {
   const stats = useMemo(() => (diff?.patch ? countChanges(diff.patch) : null), [diff?.patch])
   const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null)
+  // SVG ships both pixels and text: `imageAsCode` flips the pane to the
+  // regular code diff. Per-file choice — a new selection goes back to pixels.
+  const [imageAsCode, setImageAsCode] = useState(false)
+  const diffPath = diff?.path
+  useEffect(() => setImageAsCode(false), [diffPath])
+  // Rasters have no text to fall back to; only SVG offers the toggle.
+  const hasCodeView = !!diff?.image && !!diff.patch && !diff.binary
+  const imageView = !!diff?.image && (!hasCodeView || !imageAsCode)
   // Most loads finish in a few ms — keep the previous diff on screen and swap
   // it for the new payload when it lands. The spinner only ever appears for
   // slow loads (huge files), never as a one-frame flash on every click.
@@ -303,44 +312,71 @@ function DiffViewerImpl({
           </>
         )}
         <div className="diff-head__spacer" />
-        {stats && (stats.additions > 0 || stats.deletions > 0) && (
+        {!imageView && stats && (stats.additions > 0 || stats.deletions > 0) && (
           <span className="diff-stat">
             <span className="diff-stat__add">+{stats.additions}</span>
             <span className="diff-stat__del">−{stats.deletions}</span>
           </span>
         )}
-        <button
-          className={`icon-btn${wrap ? ' is-active' : ''}`}
-          title="Toggle line wrapping"
-          onClick={() => onWrapChange(!wrap)}
-        >
-          <Icon.Wrap size={16} />
-        </button>
-        <div className="segmented">
-          <button
-            className={mode === 'split' ? 'is-active' : ''}
-            onClick={() => onModeChange('split')}
-            title="Split view"
-          >
-            <Icon.Split size={15} /> Split
-          </button>
-          <button
-            className={mode === 'unified' ? 'is-active' : ''}
-            onClick={() => onModeChange('unified')}
-            title="Unified view"
-          >
-            <Icon.Unified size={15} /> Unified
-          </button>
-        </div>
+        {/* SVG only: flip between the rendered pixels and the code diff. */}
+        {hasCodeView && (
+          <div className="segmented">
+            <button
+              className={imageAsCode ? '' : 'is-active'}
+              onClick={() => setImageAsCode(false)}
+              title="View the rendered image"
+            >
+              <Icon.Image size={15} /> Image
+            </button>
+            <button
+              className={imageAsCode ? 'is-active' : ''}
+              onClick={() => setImageAsCode(true)}
+              title="View the underlying code"
+            >
+              <Icon.Code size={15} /> Code
+            </button>
+          </div>
+        )}
+        {/* Text-diff controls mean nothing while pixels are showing. */}
+        {!imageView && (
+          <>
+            <button
+              className={`icon-btn${wrap ? ' is-active' : ''}`}
+              title="Toggle line wrapping"
+              onClick={() => onWrapChange(!wrap)}
+            >
+              <Icon.Wrap size={16} />
+            </button>
+            <div className="segmented">
+              <button
+                className={mode === 'split' ? 'is-active' : ''}
+                onClick={() => onModeChange('split')}
+                title="Split view"
+              >
+                <Icon.Split size={15} /> Split
+              </button>
+              <button
+                className={mode === 'unified' ? 'is-active' : ''}
+                onClick={() => onModeChange('unified')}
+                title="Unified view"
+              >
+                <Icon.Unified size={15} /> Unified
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="diff-body">
+      <div className={`diff-body${imageView ? ' diff-body--image' : ''}`}>
         {spin && (
           <div className="center-state">
             <div className="spinner" />
           </div>
         )}
-        {!spin && diff && diff.notice && (
+        {!spin && diff?.image && imageView && (
+          <ImageDiffViewer key={diff.path} image={diff.image} />
+        )}
+        {!spin && diff && !imageView && diff.notice && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Diff size={22} />
@@ -356,7 +392,7 @@ function DiffViewerImpl({
             <p>{diff.notice}</p>
           </div>
         )}
-        {!spin && diff && !diff.notice && diff.submodule && (
+        {!spin && diff && !imageView && !diff.notice && diff.submodule && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Module size={22} />
@@ -378,7 +414,7 @@ function DiffViewerImpl({
             <p>{submoduleSummary(diff.submodule)}</p>
           </div>
         )}
-        {!spin && diff && !diff.notice && !diff.submodule && isEmptyFile && (
+        {!spin && diff && !imageView && !diff.notice && !diff.submodule && isEmptyFile && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Diff size={22} />
@@ -387,7 +423,14 @@ function DiffViewerImpl({
             <p>This file has no content.</p>
           </div>
         )}
-        {!spin && diff && !diff.notice && !isEmptyFile && diff.patch && selectable && meta && (
+        {!spin &&
+          diff &&
+          !imageView &&
+          !diff.notice &&
+          !isEmptyFile &&
+          diff.patch &&
+          selectable &&
+          meta && (
           <FileDiff<BlockRef>
             key={`${diff.path}:${theme}`}
             fileDiff={meta}
@@ -400,6 +443,7 @@ function DiffViewerImpl({
         )}
         {!spin &&
           diff &&
+          !imageView &&
           !diff.notice &&
           !isEmptyFile &&
           diff.patch &&
@@ -416,6 +460,7 @@ function DiffViewerImpl({
           )}
         {!spin &&
           diff &&
+          !imageView &&
           !diff.notice &&
           !isEmptyFile &&
           diff.patch &&
@@ -429,7 +474,13 @@ function DiffViewerImpl({
               style={{ minHeight: '100%' }}
             />
           )}
-        {!spin && diff && !diff.notice && !diff.submodule && !isEmptyFile && !diff.patch && (
+        {!spin &&
+          diff &&
+          !imageView &&
+          !diff.notice &&
+          !diff.submodule &&
+          !isEmptyFile &&
+          !diff.patch && (
           <div className="center-state">
             <div className="icon-ring">
               <Icon.Check size={22} />
