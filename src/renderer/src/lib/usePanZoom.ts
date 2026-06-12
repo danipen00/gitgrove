@@ -65,6 +65,10 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
   // Bound viewport elements. Simultaneous viewports are layout twins (the
   // side-by-side halves), so any one of them measures the shared frame.
   const viewports = useRef(new Set<HTMLElement>())
+  // True while a button drag pans the view. A drag owns the gesture: wheel
+  // events that arrive mid-drag are noise (tilt wheels physically nudge
+  // sideways while the wheel button is pressed) and must not also pan.
+  const dragging = useRef(false)
   const frameRef = useRef<Size | null>(null)
   const imageRef = useRef(imageSize)
   imageRef.current = imageSize
@@ -185,6 +189,7 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
     const start = { x: e.clientX, y: e.clientY }
     const origin = transformRef.current
     el.setPointerCapture(e.pointerId)
+    dragging.current = true
     setAnimated(false)
     const onMove = (ev: PointerEvent) => {
       setFitted(false)
@@ -201,6 +206,7 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
       )
     }
     const onUp = () => {
+      dragging.current = false
       el.removeEventListener('pointermove', onMove)
       el.removeEventListener('pointerup', onUp)
       el.removeEventListener('pointercancel', onUp)
@@ -242,6 +248,11 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
       // beat the page scroll and macOS back-swipe. Pinch = wheel + ctrlKey.
       const onWheel = (e: WheelEvent) => {
         e.preventDefault()
+        // One gesture at a time: while a drag pans (or the wheel button is
+        // held at all — `buttons` bit 4), wheel deltas are tilt-wheel noise
+        // from the pressed wheel, not intent. Without this the view "scrolls
+        // by itself" under a held middle button.
+        if (dragging.current || (e.buttons & 4) !== 0) return
         const frame = frameRef.current
         const image = imageRef.current
         if (!frame || !image) return
