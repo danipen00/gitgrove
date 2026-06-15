@@ -7,8 +7,8 @@
 // explains itself; touching the slider pauses playback.
 
 import { useEffect, useRef, useState } from 'react'
-import type { AnchorMode } from '@/lib/image-diff'
 import { Icon } from '@/lib/icons'
+import type { AnchorMode } from '@/lib/image-diff'
 import type { DecodedImage } from '@/lib/useDecodedImage'
 import type { PanZoom } from '@/lib/usePanZoom'
 import { ImageLayer, Viewport, World } from './stage'

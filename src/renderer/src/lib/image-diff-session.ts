@@ -10,8 +10,8 @@ import {
   computeDiff,
   type DiffData,
   findChangedRegions,
-  renderDiffFrame,
-  type RgbaBitmap
+  type RgbaBitmap,
+  renderDiffFrame
 } from './image-diff'
 import type { BitmapPayload, DiffWorkerRequest, DiffWorkerResponse } from './image-diff.worker'
 
@@ -123,7 +123,7 @@ export async function computeImageDiff(
     },
     w
   )
-  if (!res || res.kind !== 'computed') {
+  if (res?.kind !== 'computed') {
     return syncCompute(key, oldBitmap, newBitmap, anchor, threshold)
   }
   return {

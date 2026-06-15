@@ -12,9 +12,9 @@ import {
   isWholeFrameRegion,
   MAX_ZOOM,
   MIN_ZOOM,
+  type RgbaBitmap,
   rectTransform,
   renderDiffFrame,
-  type RgbaBitmap,
   zoomAroundPoint,
   zoomLabel
 } from './image-diff'

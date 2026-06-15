@@ -11,8 +11,8 @@ import {
   computeDiff,
   type DiffData,
   findChangedRegions,
-  renderDiffFrame,
-  type RgbaBitmap
+  type RgbaBitmap,
+  renderDiffFrame
 } from './image-diff'
 
 /** A bitmap flattened for postMessage (structured clone keeps it intact). */
