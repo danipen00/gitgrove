@@ -34,6 +34,10 @@ const NO_PAN_TARGETS = 'button, input, [data-no-pan]'
 export interface PanZoom {
   /** Current transform; apply as `translate(x, y) scale(scale)`. */
   transform: ViewTransform
+  /** Viewport (pane) size in screen px; null until a viewport is measured.
+   *  The checkerboard backdrop uses it to stay viewport-bounded instead of
+   *  ballooning to the full scaled world rect at deep zoom. */
+  viewport: Size | null
   /** True while a button/double-click zoom glides (drives the CSS transition). */
   animated: boolean
   /** True when the view is in "fit" mode (auto re-fits on pane resize). */
@@ -61,6 +65,9 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
   const [transform, setTransform] = useState<ViewTransform>({ scale: 1, x: 0, y: 0 })
   const [animated, setAnimated] = useState(false)
   const [fitted, setFitted] = useState(true)
+  // Reactive mirror of frameRef, for renderers that need the viewport rect
+  // (the checkerboard clips itself to the world's screen rect — see World).
+  const [viewport, setViewport] = useState<Size | null>(null)
 
   // Bound viewport elements. Simultaneous viewports are layout twins (the
   // side-by-side halves), so any one of them measures the shared frame.
@@ -70,6 +77,13 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
   // sideways while the wheel button is pressed) and must not also pan.
   const dragging = useRef(false)
   const frameRef = useRef<Size | null>(null)
+  // Record the viewport size in both the synchronous ref (read by gesture
+  // handlers) and the reactive state (read while rendering).
+  const measure = useCallback((el: HTMLElement) => {
+    const size = { width: el.clientWidth, height: el.clientHeight }
+    frameRef.current = size
+    setViewport(size)
+  }, [])
   const imageRef = useRef(imageSize)
   imageRef.current = imageSize
   const transformRef = useRef(transform)
@@ -164,10 +178,10 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
       new ResizeObserver((entries) => {
         const el = entries[0]?.target as HTMLElement | undefined
         if (!el || !viewports.current.has(el)) return
-        frameRef.current = { width: el.clientWidth, height: el.clientHeight }
+        measure(el)
         reconcile()
       }),
-    [reconcile]
+    [reconcile, measure]
   )
   useEffect(() => () => resizeObserver.disconnect(), [resizeObserver])
 
@@ -240,7 +254,7 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
     (el: HTMLElement | null): undefined | (() => void) => {
       if (!el) return
       viewports.current.add(el)
-      frameRef.current = { width: el.clientWidth, height: el.clientHeight }
+      measure(el)
       resizeObserver.observe(el)
       reconcile()
 
@@ -302,17 +316,18 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
         // The surviving viewport (mode switch) re-measures the frame.
         const next = viewports.current.values().next().value
         if (next) {
-          frameRef.current = { width: next.clientWidth, height: next.clientHeight }
+          measure(next)
           reconcile()
         }
       }
     },
-    [resizeObserver, reconcile, zoomAt, onPointerDown, onDoubleClick]
+    [resizeObserver, reconcile, zoomAt, onPointerDown, onDoubleClick, measure]
   )
 
   return useMemo(
     () => ({
       transform,
+      viewport,
       animated,
       fitted,
       bindViewport,
@@ -324,6 +339,7 @@ export function usePanZoom(imageSize: Size | null): PanZoom {
     }),
     [
       transform,
+      viewport,
       animated,
       fitted,
       bindViewport,

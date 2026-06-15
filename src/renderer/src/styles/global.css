@@ -3540,37 +3540,45 @@ button {
   cursor: grabbing;
 }
 
-/* The composed frame both revisions share, moved by one GPU transform. */
+/* The composed frame both revisions share, moved by one GPU transform.
+   Deliberately NOT `will-change: transform`: that pins the element to a
+   permanent composited layer which Chromium rasterizes at its *transformed*
+   size — at 64× a 1125×750 image becomes a 72000×48000px texture, and two of
+   them (swipe's old+new worlds) blow past the tile-memory budget, so Chromium
+   drops tiles and the picture tears/blinks mid-zoom. Without will-change the
+   transform still composites (the glide transition promotes it for its
+   duration), but rasterization stays viewport-tiled — only visible tiles are
+   painted, bounded at any zoom. */
 .img-world {
   position: absolute;
   top: 0;
   left: 0;
   transform-origin: 0 0;
-  will-change: transform;
 }
 .img-world--gliding {
   transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* The transparency backdrop: an untransformed twin of the world's screen
-   rect (geometry set inline by stage.tsx World) painting constant 16px
-   screen tiles. Never on the transformed element — Chromium rasterizes the
-   gradient at layout resolution, so counter-scaled tiles alias and fade at
-   deep zooms. */
+/* The transparency backdrop: a viewport-filling, untransformed twin painting
+   constant 16px screen tiles, clipped to the world's screen rect (geometry
+   set inline by stage.tsx World). Never on the transformed element — Chromium
+   rasterizes the gradient at layout resolution, so counter-scaled tiles alias
+   and fade at deep zooms; and never sized to the full scaled world rect — at
+   deep zoom that element exhausts tile memory. Viewport-bounded + clipped is
+   safe at any zoom. */
 .img-checkerboard {
   position: absolute;
+  inset: 0;
   background: repeating-conic-gradient(var(--img-checker) 0% 25%, transparent 0% 50%) 0 0;
   background-size: 16px 16px;
   pointer-events: none;
 }
 .img-checkerboard--gliding {
-  /* Mirrors the world's glide: left/top/width/height interpolate on the same
-     curve as its translate/scale, so backdrop and artwork move as one. */
-  transition:
-    left 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    top 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    width 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    height 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Mirrors the world's glide: the clip rect interpolates on the same curve as
+     its translate/scale (both linear in scale), so backdrop and artwork move
+     as one. The pattern phase (background-position) snaps — identical tiles
+     make the jump invisible. */
+  transition: clip-path 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .img-world[data-pixelated] .img-layer,
 .img-world[data-pixelated] .img-diff-canvas {
